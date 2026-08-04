@@ -213,7 +213,7 @@ Typed route keys are stable screen contracts for future Compose implementation. 
 | `TransactionDetail` | `transactionId` plus optional origin context | The exact originating Timeline, Finance, Project, or Search state |
 | `NoteDetail` | `noteId` plus optional origin context | The exact originating Timeline, Notes, Project, or Search state |
 | `AccountDetail` | `accountId` | Prior Finance state |
-| `ProjectDetail` | `projectId`, including archived-state display when referenced historically | Prior Projects state |
+| `ProjectDetail` | `projectId` plus origin-derived read-only or Projects-management mode; an archived historical target remains resolvable | Exact originating Transaction/Note detail or retained Projects state |
 | `ExpenseEditor` / `IncomeEditor` / `TransferEditor` | New typed draft or an existing `transactionId` | Launching detail or top-level state |
 | `NoteEditor` | New note draft or existing `noteId` | Launching detail or top-level state |
 | `AccountOpeningEditor` | New account draft | Prior Finance state |
@@ -274,8 +274,8 @@ Compose implementation must hoist these values out of disposable list items and 
 3. Back from the source detail returns to the exact origin with its scroll position, filters, query, and selected date intact.
 4. Editing is dispatched by source type. Timeline and Search never host a generic editor and never mutate a projection. Projects may create, rename, archive, or restore Project facts, but it never edits transaction/note facts or writes an aggregation projection.
 5. Transaction-to-note and note-to-transaction links open the linked source detail in the owning feature. Back returns to the originating detail.
-6. A primary-project chip or assignment may open `ProjectDetail`; this navigation does not change the fact's assignment.
-7. Missing or soft-deleted targets render an unavailable state and a safe Back action; they do not redirect to an unrelated record.
+6. An active primary-project chip or an archived historical primary-project reference opens the matching `ProjectDetail`; navigation alone never changes the assignment. An archived Project detail is read-only when opened from Transaction/Note history and clearly marks the archived state. Restore is the only permitted mutation and is exposed only in an authorized Projects-management context after normal shell access is allowed; restoring does not create a new assignment.
+7. A missing target, or a soft-deleted Transaction/Note target, renders an unavailable state with safe Back and never redirects to an unrelated record. A soft-deleted Project is the user-facing archived state, so an existing historical reference resolves to the read-only archived `ProjectDetail` instead of the unavailable state. Archived Projects remain excluded from every new-assignment selector.
 8. Successful creation of an Expense, Income, or Transfer opens its Finance-owned `TransactionDetail`; successful account creation opens `AccountDetail`. Back restores the exact retained launch context. Successful edit returns to its source detail. A relationship/assignment action launched from a saved Detail may save independently and returns to that Detail; the same action launched from any Editor only updates and returns to the parent draft. Image/picker subflows also return to the parent draft. None applies a top-level success route.
 9. Search result and error updates are scoped to the current query/filter request revision. Clearing, closing, or leaving Search invalidates pending updates, except that opening a current result preserves the completed Search state for Back.
 10. App startup evaluates the restore/migration recovery gate before Room and before the shell. When App Lock is enabled and authentication has not succeeded, pending recovery may show only `LockedRecoverySurface`; detailed status, diagnostics, terminal outcomes, counts, and user data remain hidden. Authentication then routes to the detailed recovery state. Replacement verification leads to terminal success, verified rollback leads to terminal failure with access to the original data, and unresolved recovery never enters the shell.
@@ -295,6 +295,7 @@ Future Compose navigation and UI tests must demonstrate:
 - global Search and Settings are reachable from every top-level app bar;
 - editors, attachment preview, and Restore Wizard hide bottom navigation and restore the prior context on return;
 - cards from Timeline and Search dispatch to the correct source detail and Back restores origin state;
+- missing or soft-deleted Transaction/Note targets show unavailable, while a historical reference to an archived Project opens its marked read-only detail; only Projects-management context may expose Restore, and archived Projects never appear as new assignment choices;
 - new finance/account success routes and edit/subflow returns follow the deterministic destinations above;
 - relationship and assignment subflows choose save behavior from saved Detail versus any Editor context; an existing-record Editor never uses the independent Detail save path;
 - empty Category/Tag/Project lists expose type-appropriate Create, inline create returns to the same picker with the new item selected, and the parent draft otherwise remains byte-for-byte equivalent at the UI-state boundary;

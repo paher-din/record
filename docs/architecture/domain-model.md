@@ -121,9 +121,9 @@ The financial rules in this document refine, but do not duplicate, the user jour
 
 ## Catalog lifecycle
 
-`Category`, `Tag`, and `Project` are three separate catalogs. Each catalog may contain zero items; absence of seeded items is valid domain state.
+`Category`, `Tag`, and `Project` are three separate catalogs. Each catalog may contain zero items; absence of seeded items is valid domain state. The persisted naming, lifecycle, backup, and migration contract is accepted in [ADR 0004](decisions/0004-catalog-lifecycle-and-normalized-names.md).
 
-Each item has a user-visible name. After trimming, the name must contain 1–40 Unicode code points. Its comparison key is Unicode `NFKC_Casefold(trimmedName)`. Within each catalog, that key is unique across active and archived items together. The comparison key is an invariant, not a second user-visible name. Renaming updates the one referenced catalog fact, so every historical allocation, tag association, or project assignment resolves the current name. A create request colliding with an archived item is rejected as a duplicate and identifies Restore as the valid transition.
+Each item has a user-visible name. After Unicode trim, the name must contain 1–40 Unicode code points. Name semantics version 1 derives the comparison key by applying Unicode trim, then NFKC, then full Unicode case folding without locale dependence. Within each catalog, that versioned key is unique across active and archived items together. The comparison key is an invariant, not a second user-visible name. Renaming updates the one referenced catalog fact, so every historical allocation, tag association, or project assignment resolves the current name. A create request colliding with an archived item is rejected as a duplicate and identifies Restore as the valid transition.
 
 The availability rule distinguishes a historical reference from a new request:
 
@@ -178,7 +178,7 @@ The following concepts are explicitly deferred and must not acquire placeholder 
 - `Timeline` and `SearchDocument` are disposable projections and cannot originate domain writes.
 - Category, Tag, and Project catalogs may be empty and receive no personalized seed data.
 - Category is first-level only and has no hierarchy relationship in MVP.
-- Every Category, Tag, and Project name is 1–40 Unicode code points after trimming and has a `NFKC_Casefold(trimmedName)` key unique across active and archived items within that catalog.
+- Every Category, Tag, and Project name is 1–40 Unicode code points after Unicode trim and has a version-1 key derived by Unicode trim → NFKC → full Unicode case fold, unique across active and archived items within that catalog.
 - Archived Category, Tag, and Project items cannot be introduced by new allocations or assignments; existing historical references remain valid, retain their endpoint type, and resolve the current name plus archived state.
 - Category and Tag have no hard-delete transition in MVP. Project Archive is its recoverable `EntityRef` soft-delete transition; no Category, Tag, or Project physical purge is exposed to the user.
 

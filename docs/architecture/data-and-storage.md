@@ -8,7 +8,7 @@ This document is the stable source of truth for persistence and recovery decisio
 - Attachment binary content uses content-addressed storage coordinated by `:core:data`.
 - `SearchDocument` is a rebuildable projection, never a domain fact.
 - The logical backup is the external portability source and is separate from the internal database schema.
-- The binding inputs to persistence behavior are the domain transaction matrix, the XOR `EntityRef` subtype invariant, the endpoint whitelist, and atomic purge.
+- The binding inputs to persistence behavior are the domain transaction matrix, the XOR `EntityRef` subtype invariant, the endpoint whitelist, atomic purge, and the versioned catalog name/lifecycle invariants accepted in [ADR 0004](decisions/0004-catalog-lifecycle-and-normalized-names.md).
 
 ## Room baseline and migrations
 
@@ -18,6 +18,21 @@ This document is the stable source of truth for persistence and recovery decisio
 - Migration tests cover both N-1 and N-2 database versions upgrading to the current version.
 - Every migration verifies applicable data invariants, not only the existence of tables.
 - Backup `formatVersion` and `databaseSchemaVersion` are separate version axes. A backup format can remain compatible across internal schema changes, and internal schema compatibility does not imply backup-format compatibility.
+- A catalog normalization implementation, Unicode data-table version, pipeline, or `nameKeyVersion` cannot change through an ordinary dependency update. It requires a new ADR plus explicit database and logical-backup migration evidence.
+
+### Catalog persistence contract
+
+The initial catalog persistence model follows [ADR 0004](decisions/0004-catalog-lifecycle-and-normalized-names.md):
+
+- every Category, Tag, and Project fact stores trimmed `displayName`, derived `nameKey`, and `nameKeyVersion` together;
+- version 1 derives `nameKey` through Unicode trim → NFKC → full Unicode case fold, independent of locale, and persists the resulting Unicode scalar sequence as UTF-8 text rather than a locale/database-collation result;
+- Category and Tag store only `ACTIVE` or `ARCHIVED`; `archivedAt` is absent for `ACTIVE` and present for `ARCHIVED`;
+- Project Archive is represented only by its `EntityRef.deletedAt`; Project does not persist a second lifecycle state;
+- the initial schema/index contract enforces one active-plus-archived `nameKey` namespace inside each catalog type, while Category, Tag, and Project namespaces remain independent;
+- Category has no persisted hierarchy edge in MVP;
+- create and rename atomically write all three name fields; Category/Tag Archive/Restore atomically update state and archive metadata; Project Archive/Restore atomically updates the same-ID `EntityRef.deletedAt` without changing primary assignments.
+
+Before M2 begins, the owning spec freezes the concrete version-1 implementation and Unicode data-table version and records the fixed-corpus result. A future normalization change must migrate from a declared source version to a newly accepted version in one recoverable operation. It recomputes and collision-checks the entire affected catalog namespace before publishing any key. Unsupported source versions, generated collisions, or an incomplete name/lifecycle tuple block migration and use the recoverable migration path; no runtime open may silently repair or rewrite keys.
 
 ### Recoverable migration snapshot
 
@@ -101,11 +116,20 @@ The portable backup is a ZIP with these logical contents:
 - versioned JSONL for entity references (`EntityRef`), accounts, categories (`Category`), transactions, account entries, category allocations, notes, projects, tags, entity tags, transaction-note associations, attachments, and attachment ownership;
 - attachment binaries at `attachments/<sha256>`.
 
+Catalog logical records are complete rather than display-only:
+
+- Category and Tag records contain identity, `displayName`, `nameKey`, `nameKeyVersion`, `state`, and nullable `archivedAt`;
+- Project records contain identity, `displayName`, `nameKey`, and `nameKeyVersion`, while the matching `EntityRef.deletedAt` is their archive metadata;
+- Category records contain no hierarchy/parent field in MVP;
+- `CategoryAllocation`, `EntityTag`, and Transaction/Note primary-project references preserve their target IDs even when the target catalog item is archived.
+
+This preserves current names, lifecycle states, archive metadata, and every historical reference across export and restore. Availability rules that prevent a new allocation or assignment to an archived item do not delete or invalidate those historical references.
+
 `transactions.csv` is not embedded in the logical restore ZIP. CSV is a separate, independent export artifact and journey and is never a restore input.
 
-The manifest includes `formatVersion`, `databaseSchemaVersion`, `appVersion`, `createdAt`, `backupId`, and `hashAlgorithm=SHA-256`. It contains one descriptor for every payload entry except `manifest.json` itself. Each descriptor contains `logicalType`, normalized relative `path`, byte `size`, `sha256`, and, for a JSONL dataset, `recordCount`. The manifest contains no device identifier or hardware IDs.
+The manifest includes `formatVersion`, `databaseSchemaVersion`, `appVersion`, `createdAt`, `backupId`, `hashAlgorithm=SHA-256`, and the sorted set `catalogNameKeyVersions` summarizing versions used by catalog records; the set is empty when the backup contains no catalog records. It contains one descriptor for every payload entry except `manifest.json` itself. Each descriptor contains `logicalType`, normalized relative `path`, byte `size`, `sha256`, and, for a JSONL dataset, `recordCount`. The manifest summary does not repeat per-record catalog content; every catalog record remains self-describing through its own `nameKeyVersion`. The manifest contains no device identifier or hardware IDs.
 
-Backup acceptance or rejection for compatibility is determined only by `formatVersion`. `databaseSchemaVersion` is provenance and debugging information; it cannot by itself reject a logically supported backup.
+`formatVersion` determines structural backup-format compatibility. Within a structurally supported format, every declared and encountered `nameKeyVersion` is an independent required sub-contract and must be implemented by the restore reader. `databaseSchemaVersion` remains provenance and debugging information; it cannot by itself reject a logically supported backup.
 
 Generation follows one ordered reliability boundary:
 
@@ -115,7 +139,7 @@ Atomic publication applies only in the app-private backup directory: write a tem
 
 For a Storage Access Framework destination, first build and validate the complete package in private storage. Copy it to a provider target marked or named as temporary or incomplete. If the provider supports rename, rename it only after the full copy closes and verification succeeds. If rename is unavailable, report success only after the full copy closes and the provider copy verifies successfully; only then clear the app's incomplete marker and treat that verified URI as final. Any partial residue remains marked or named incomplete, is deleted on a best-effort basis, is never reported as success, and is never listed by the app as restorable.
 
-An incomplete temporary package is never listed as restorable. Before import, the app validates `formatVersion`, normalized relative paths with no traversal, duplicate normalized paths, duplicate `logicalType`/`path` pairs, duplicate singleton JSONL `logicalType` values, declared and actual size limits, SHA-256 values, and JSONL record counts.
+An incomplete temporary package is never listed as restorable. Before import, the app validates `formatVersion`, every manifest-declared catalog normalization version, normalized relative paths with no traversal, duplicate normalized paths, duplicate `logicalType`/`path` pairs, duplicate singleton JSONL `logicalType` values, declared and actual size limits, SHA-256 values, and JSONL record counts. During streaming, the encountered per-record `nameKeyVersion` set must exactly match the manifest summary; an omitted, extra, or unsupported version rejects the candidate.
 
 ### Restore preflight resource limits
 
@@ -130,7 +154,7 @@ The following are binding MVP input limits. They protect the current vault from 
 
 Preflight enforces these limits twice. The declaration pass combines the manifest descriptors with ZIP-directory metadata: it counts declared entries and normalized UTF-8 path bytes, uses manifest `size` plus ZIP-declared uncompressed/compressed sizes, and checks per-entry ratios and aggregate values before staging. Streaming import independently counts actual entry count and actual compressed and uncompressed bytes without trusting manifest or ZIP headers. Actual streamed bytes may never exceed the manifest or ZIP-declared size, the per-entry limit, the aggregate limit, or the available-space budget; crossing any limit fails immediately, closes the stream, leaves the current vault unchanged, reports no restore success, and leaves temporary staging content identifiable for safe cleanup. A declared value below actual bytes is corruption, not a reason to expand the budget.
 
-The restore process does not use `databaseSchemaVersion` as a compatibility gate and does not accept any path, payload, or count that fails validation.
+The restore process does not use `databaseSchemaVersion` as a compatibility gate and does not accept any path, payload, count, catalog normalization version, or catalog invariant that fails validation.
 
 ## Android system backup exclusion
 
@@ -142,9 +166,20 @@ The only supported user migration path is the app's explicit complete logical ba
 
 ## Generation-based overwrite restore
 
-Restore preflight validates the manifest and every rule above. Insufficient temporary storage is a blocking preflight error.
+Restore preflight has both the manifest/resource pass above and a record-level candidate pass. Insufficient temporary storage is a blocking preflight error. The record-level pass imports database and attachment content into an isolated, non-active staging generation before overwrite confirmation is enabled. It validates record counts, foreign keys, the `EntityRef` XOR invariant, the finance transaction matrix, resulting balances, associations, endpoint ownership, attachment hashes, and the complete catalog contract. The current generation remains untouched. Final confirmation authorizes activation of that exact validated candidate; it does not bypass or postpone candidate validation. If the selected bytes or validation context change, preflight must run again.
 
-After preflight, the app imports the database and attachment content into an isolated staging generation. It validates record counts, foreign keys, the `EntityRef` XOR invariant, the finance transaction matrix, resulting balances, associations, endpoint ownership, and attachment hashes before activation.
+Catalog staging validation is mandatory and ordered before the activation-record switch:
+
+1. Every persisted `displayName` is already Unicode-trimmed and contains 1–40 Unicode code points.
+2. Every Category is first-level and contains no hierarchy/parent data.
+3. Every `nameKeyVersion` is declared by the manifest and supported by the current reader.
+4. The reader recomputes the key using the exact implementation and Unicode table for that declared version and requires an exact match with persisted `nameKey`.
+5. Recomputed keys are unique across active and archived items within each catalog type; Category, Tag, and Project are checked as three independent namespaces.
+6. Category and Tag have only valid `ACTIVE`/`ARCHIVED` states, with `archivedAt` absent/present consistently. Project archive state is represented only by matching `EntityRef.deletedAt`, without a contradictory parallel state.
+7. Every Category allocation, Tag association, and primary-project assignment targets an existing catalog fact, including when that target is archived. Historical archived references are valid; the active-only availability rule applies to new writes, not restore of history.
+8. Current names, states, archive metadata, and all historical reference endpoints match the exported logical records exactly.
+
+Any empty/overlong name, unsupported or mismatched key/version, per-type canonical duplicate, invalid state/archive metadata, non-first-level Category, contradictory Project lifecycle, or dangling catalog reference rejects preflight for the complete candidate before overwrite confirmation and activation. Rejection leaves the current vault unchanged, reports no restore success, and leaves staging identifiable for deterministic safe cleanup. No invalid catalog subset can be skipped, repaired implicitly, or partially restored.
 
 The storage convention is:
 
@@ -158,7 +193,7 @@ The activation protocol is:
 |---|---|---|---|
 | 1. Stage | `activeGenerationId=O`, `candidateGenerationId=null`, `state=HEALTHY`; `previousGenerationId` may retain an older rollback generation | A staging candidate is imported and validated. | The activation record is unchanged; the validated staging generation is not yet referenced. |
 | 2. Activate pending | Old generation `O` is active; validated candidate is `C`. | Commit one activation-record write. | `activeGenerationId=C`, `previousGenerationId=O`, `candidateGenerationId=C`, `state=PENDING`. |
-| 3. Startup gate | `state=PENDING` | The next startup begins. | Revalidate candidate checksums and domain invariants before normal use; do not clear `PENDING` early. |
+| 3. Startup gate | `state=PENDING` | The next startup begins. | Revalidate candidate checksums, catalog name/lifecycle/version rules, historical catalog references, and all other domain invariants before normal use; do not clear `PENDING` early. |
 | 4. Confirm healthy | Candidate startup validation succeeds. | Commit one activation-record write. | Keep `activeGenerationId=C` and `previousGenerationId=O`, clear `candidateGenerationId`, and set `state=HEALTHY`. The previous generation remains for the rollback retention policy. |
 | 5. Roll back | Candidate startup validation fails. | Using the candidate and previous IDs from the complete `PENDING` record, commit one rollback-record write. | Restore `activeGenerationId` from `previousGenerationId` to `O`, set `previousGenerationId=null`, `candidateGenerationId=null`, and `state=HEALTHY`; then quarantine `C`. Only after the restored record is durably confirmed may `C` be cleaned. |
 
@@ -188,6 +223,7 @@ Future fault-injection coverage is required at these boundaries:
 - immediately before and after atomic migration-snapshot replacement;
 - during interruption of failed-database `-wal` and `-shm` sidecar isolation or cleanup;
 - during SAF copy and provider rename.
+- while recomputing catalog keys, checking name-key versions/uniqueness, validating lifecycle metadata, or resolving historical catalog references in staging and startup revalidation.
 
 For every migration-recovery fault injection, the expected result is the same: startup creates no empty database, opens no mixed database/sidecar set, automatically resumes the recorded recovery idempotently, and leaves the published snapshot unchanged.
 
