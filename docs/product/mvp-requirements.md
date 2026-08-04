@@ -1,6 +1,8 @@
 # MVP requirements
 
-This document defines the observable MVP behavior for the owner's daily use. A financial action is successful only after it has been durably saved.
+This document defines the observable MVP behavior for the owner's daily use within the [product vision](vision.md).
+
+“Durably saved” means the complete record remains present after the user leaves the screen and restarts the app. Success is never shown for a partial state.
 
 ## Journey 1: Create an account with an opening-balance transaction
 
@@ -18,11 +20,11 @@ After the account and its opening-balance transaction are durably saved together
 
 ### Validation failure
 
-If required details are missing or invalid, the app identifies the fields to correct, creates neither the account nor its opening-balance transaction, and preserves the entered values.
+If the account name is blank after trimming, no currency is selected, or the opening balance is not a valid amount in that currency, the app identifies the fields to correct and creates neither the account nor its opening-balance transaction. The cross-cutting draft-preservation rule applies.
 
 ### Infrastructure failure
 
-If the save cannot complete, the app shows no success state, leaves no partial account or opening-balance transaction, and preserves the unsaved account draft where recovery is possible.
+If the save cannot complete, the app shows no success state and leaves no partial account or opening-balance transaction. The cross-cutting draft-preservation rule applies.
 
 ## Journey 2: Record income and expense with one or more category allocations
 
@@ -36,15 +38,15 @@ The user chooses income or expense, enters an amount and details, distributes th
 
 ### Success state
 
-After durable save, the transaction appears in account history and the timeline. Expense amounts have negative product semantics, income amounts have positive product semantics, and the category allocation totals equal the transaction amount's magnitude.
+After durable save, the transaction appears in account history and the timeline. An expense reduces the selected account balance, an income increases it, and the category allocation totals equal the transaction amount's magnitude.
 
 ### Validation failure
 
-If the amount is invalid, no category is selected, or allocation totals do not equal the transaction amount's magnitude, the app explains the mismatch, saves nothing, and preserves the draft.
+If the amount is missing, zero, or not a valid amount in the selected account's currency, if no category is selected, or if allocation totals do not equal the transaction amount's magnitude, the app explains the issue and saves neither the transaction nor any allocation. The cross-cutting draft-preservation rule applies.
 
 ### Infrastructure failure
 
-If the save cannot complete, the app shows no financial success, creates no partial transaction or allocations, and preserves the unsaved draft where recovery is possible.
+If the save cannot complete, the app shows no financial success and creates no partial transaction or allocation. The cross-cutting draft-preservation rule applies.
 
 ## Journey 3: Transfer between two distinct accounts in the same currency
 
@@ -62,11 +64,11 @@ When the source and destination are distinct and their currencies match, the tra
 
 ### Validation failure
 
-If the accounts are the same, their currencies differ, or the amount is invalid, the app explains the issue, saves no part of the transfer, and preserves the draft.
+If the accounts are the same, their currencies differ, or the amount is missing, zero, negative, or not valid in their currency, the app explains the issue and saves no part of the transfer. The cross-cutting draft-preservation rule applies.
 
 ### Infrastructure failure
 
-If any part of the save cannot complete, neither account is changed, no success is shown, and the unsaved transfer draft is preserved where recovery is possible.
+If any part of the save cannot complete, neither account is changed and no success is shown. The cross-cutting draft-preservation rule applies.
 
 ## Journey 4: Create and edit a Markdown note
 
@@ -76,19 +78,19 @@ The user can open note creation or an existing note.
 
 ### User action
 
-The user writes or edits basic Markdown content and confirms the note.
+The user writes or edits a title or basic Markdown body, optionally confirms an image attachment, and confirms the note.
 
 ### Success state
 
-After durable save, the note opens with the confirmed content and appears in the appropriate timeline day.
+After durable save, the note opens with the confirmed content and attachments and appears in the appropriate timeline day.
 
 ### Validation failure
 
-If the note does not meet the visible input rules, the app explains what must change, saves no invalid revision, and keeps the edited content available.
+A note is saveable only when at least one of its title, body, or confirmed image attachments is present. If all three are absent, the app requests content, saves no revision, and applies the cross-cutting draft-preservation rule.
 
 ### Infrastructure failure
 
-If the save cannot complete, the prior saved version remains unchanged, no success is shown, and the unsaved edits are preserved where recovery is possible.
+If the save cannot complete, the prior saved version remains unchanged and no success is shown. The cross-cutting draft-preservation rule applies.
 
 ## Journey 5: Link multiple notes to one transaction and multiple transactions to one note
 
@@ -106,17 +108,17 @@ After durable save, every confirmed link is visible and navigable from both side
 
 ### Validation failure
 
-If a selected record is unavailable or a requested link is invalid, the app identifies the issue, adds no invalid or one-sided link, and preserves the remaining selection where recovery is possible.
+Every selected record must still exist when the user confirms. If any selected record is unavailable, none of the requested link changes are saved and the prior saved links remain unchanged.
 
 ### Infrastructure failure
 
-If the links cannot be saved completely, the app shows no success, leaves the previously saved links unchanged, creates no orphan or one-sided relation, and preserves the pending selection where recovery is possible.
+If the requested links cannot all be saved, the app shows no success, saves none of the requested link changes, leaves the prior saved links unchanged, and creates no orphan or one-sided relation.
 
 ## Journey 6: Assign shared tags and at most one primary project
 
 ### Preconditions
 
-A transaction or note is open for editing, and shared tags or projects are available for selection.
+A transaction or note is open for editing, and the app presents the currently available shared tags and projects.
 
 ### User action
 
@@ -124,15 +126,15 @@ The user assigns any number of shared tags and optionally chooses one primary pr
 
 ### Success state
 
-After durable save, all selected tags and zero or one primary project appear on the transaction or note. The same tag can be used across both record types.
+After durable save, all selected tags and zero or one selected primary project appear on the transaction or note. The same tag can be used across both record types.
 
 ### Validation failure
 
-If more than one primary project is requested or a selection is no longer available, the app explains the issue, saves no invalid assignment, and preserves valid pending choices where recovery is possible.
+Every selected tag must still exist and be available. The user may select at most one project, and that project must still exist and be available. If any requested assignment fails these rules, none of the requested tag or project changes are saved and the prior saved assignments remain unchanged.
 
 ### Infrastructure failure
 
-If assignments cannot be saved completely, the previous saved assignments remain unchanged, no success is shown, and pending choices are preserved where recovery is possible.
+If all requested assignments cannot be saved, none of the requested tag or project changes are saved, the prior saved assignments remain unchanged, and no success is shown.
 
 ## Journey 7: Attach an image through a system picker
 
@@ -146,15 +148,15 @@ The user opens the system picker, selects an image, reviews the pending attachme
 
 ### Success state
 
-After durable save, the image is visible from the transaction or note and remains available during later offline use.
+After durable save, the selected image is visible as an attachment of the confirmed transaction or note and remains available during later offline use.
 
 ### Validation failure
 
-If the selected item is not a usable image or violates a visible limit, the app explains the issue, does not attach it, and preserves the rest of the draft.
+If the picker returns no selection, no attachment is added. If the selected item cannot be opened as an image, the app explains the failure, adds no attachment, and applies the cross-cutting draft-preservation rule.
 
 ### Infrastructure failure
 
-If the image cannot be retained or the record cannot be saved, the app shows no success, leaves the saved record unchanged, and preserves the draft and pending selection where recovery is possible.
+If the image cannot be retained or the record cannot be saved completely, the app shows no success, leaves the prior saved record unchanged, and saves no orphan image. The cross-cutting draft-preservation rule applies.
 
 ## Journey 8: Browse a mixed day timeline using persistent bottom navigation
 
@@ -190,15 +192,15 @@ The user enters a query and optionally filters results to transactions or notes.
 
 ### Success state
 
-The app shows matching transactions and notes together when no type filter is active, shows only the selected type when filtered, and lets the user open each result.
+For a trimmed non-empty query, the app shows matching transactions and notes together when no type filter is active, shows only the selected type when filtered, and lets the user open each result.
 
 ### Validation failure
 
-If the query is empty or otherwise invalid under the visible search rules, the app prompts for a usable query without discarding the entered text or active filter.
+A search executes only for a trimmed non-empty query. An empty query shows the search prompt or empty state, retains the active type filter, and does not claim search results.
 
 ### Infrastructure failure
 
-If search cannot complete, the app does not present partial results as complete and preserves the query and filter so the user can retry.
+If search cannot complete, the app does not present partial results as complete. The query and filter remain available for retry under the cross-cutting draft-preservation rule.
 
 ## Journey 10: View monthly income, expense, and category statistics
 
@@ -216,7 +218,7 @@ The app shows that month's income total, expense total, and category breakdown b
 
 ### Validation failure
 
-If the requested month is invalid or unavailable, the app identifies the issue and retains the last valid view.
+If no calendar month is selected, the app requests a month and retains the last valid view without claiming new statistics.
 
 ### Infrastructure failure
 
@@ -230,67 +232,81 @@ The user can choose a destination for export or select a candidate ZIP for resto
 
 ### User action
 
-The user exports a complete logical ZIP, or selects one for overwrite restore and confirms replacement only after validation succeeds.
+The user exports a logical ZIP, then verifies the required round trip by intentionally wiping or overwriting current data, selecting that ZIP, and confirming restore only after validation succeeds.
 
 ### Success state
 
-Export produces the complete artifact required to restore the user's logical data, including relationships and images. Restore validates the whole artifact before asking for confirmation, then replaces and activates the current logical data as one complete operation. The restored content is available after activation.
+The export → wipe or overwrite → restore round trip succeeds only when every account, transaction, note, category, tag, project, transaction-note relation, attachment link, image, and resulting account balance matches the exported state. Restore validates the entire ZIP before asking for confirmation and replaces current data only as one complete operation.
 
 ### Validation failure
 
-If the candidate ZIP is incomplete, incompatible, corrupt, or internally inconsistent, the app rejects it before confirmation or activation, explains that it cannot be restored, and leaves current data unchanged.
+Validation succeeds only when the entire ZIP can be read and every contained record, relation, attachment link, and image is complete and mutually consistent. Otherwise, the app rejects the ZIP before asking for confirmation and leaves current data unchanged.
 
 ### Infrastructure failure
 
-If export cannot complete, no incomplete artifact is reported as successful. If restore fails after validation, the app does not partially replace or activate the candidate data, keeps current data usable, and reports the failure.
+Any failure during export, wipe or overwrite, or restore leaves the data that was current when the failed operation began unchanged. No incomplete artifact is reported as successful, no partial replacement occurs, and the app reports the failure.
 
 ## Journey 12: Export transaction CSV
 
 ### Preconditions
 
-The user can choose a destination for a transaction export.
+Transactions are available for selection, and the user can choose a destination for a transaction export.
 
 ### User action
 
-The user requests a CSV export of transactions and confirms the destination.
+The user selects transactions, requests their CSV export, and confirms the destination.
 
 ### Success state
 
-The app produces a readable transaction CSV for interoperability and reports success only after the export is complete. The CSV is not presented as the complete restore artifact; the logical ZIP serves that purpose.
+The CSV contains every selected transaction exactly once. It uses UTF-8, a header row, RFC 4180 quoting, and locale-independent date and decimal representations. Required fields are stable transaction ID, ISO-8601 occurrence time, type, account, source and destination account for transfers, amount, currency, category allocations, payee, memo, project, and tags. The app reports success only after export completes. CSV is for interoperability; the logical ZIP is the complete restore artifact.
 
 ### Validation failure
 
-If the destination or export selection is invalid, the app explains the issue and allows correction without changing saved data.
+If no transaction is selected or no writable destination is confirmed, the app explains the issue, produces no CSV, and leaves saved data unchanged.
 
 ### Infrastructure failure
 
-If the export cannot complete, the app does not report success or present an incomplete CSV as complete, and saved data remains unchanged.
+If the export cannot complete, the app does not report success or present an incomplete CSV as complete, and current data remains unchanged.
 
 ## Journey 13: Receive shared text or image as an unsaved draft
 
 ### Preconditions
 
-Another app shares supported text or an image to this app.
+Another app shares text or a system-provided image to this app.
 
 ### User action
 
-The user chooses this app as the share target, reviews the populated draft, completes any required details, and either confirms or leaves without saving.
+The user chooses this app as the share target, chooses a note or transaction draft, reviews the populated draft, completes that record's required details, and either confirms or leaves without saving.
 
 ### Success state
 
-Shared content first appears only as an unsaved draft. It becomes a saved note or attachment only after the user explicitly confirms and durable save completes.
+Shared text or image first creates only an unsaved note or transaction draft. It becomes saved only after the user explicitly confirms the owning note or transaction and durable save completes. A shared image is saved only as an attachment of that confirmed owner and is never saved as an orphan.
 
 ### Validation failure
 
-If the shared content cannot form a valid record, the app explains what is missing or unusable, saves nothing, and preserves usable shared content in the draft where recovery is possible.
+If shared text is empty after trimming and no shared image can be opened, the app shows an empty-share state and saves nothing. If the chosen note or transaction fails its journey's validation rules, no record or image is saved. The cross-cutting draft-preservation rule applies.
 
 ### Infrastructure failure
 
-If the draft cannot be saved, the app shows no success, creates no partial record, and preserves the shared content and user edits where recovery is possible.
+If the draft cannot be saved completely, the app shows no success and creates no partial record, attachment link, or orphan image. The cross-cutting draft-preservation rule applies.
 
 ## Cross-cutting acceptance
 
 - 30 consecutive days dogfood.
-- core workflows work without network permission.
+- With Android network permission denied, all journeys work:
+  1. create an account with an opening-balance transaction;
+  2. record income and expense with category allocations;
+  3. transfer between distinct same-currency accounts;
+  4. create and edit a Markdown note;
+  5. link transactions and notes from either side;
+  6. assign shared tags and at most one primary project;
+  7. attach an image through the system picker;
+  8. browse the mixed day timeline through persistent bottom navigation;
+  9. search transactions and notes with type filtering;
+  10. view monthly income, expense, and category statistics;
+  11. export and restore a logical ZIP round trip;
+  12. export transaction CSV;
+  13. receive shared text or image as an unsaved draft.
+- Recoverable operation failures that return control to the running app preserve all entered fields and selected media for retry. The MVP does not promise unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss.
 - no ads, analytics, or closed-source tracking SDK in release.
 - release blockers: any data loss, non-recomputable balance, orphan relation, or backup that cannot restore.

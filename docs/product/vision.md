@@ -1,5 +1,7 @@
 # Product vision
 
+See [MVP requirements](mvp-requirements.md) for the user journeys and acceptance criteria that implement this vision.
+
 ## Core proposition
 
 Connect “what I spent” with “what happened” in one local, private, portable timeline.
@@ -43,7 +45,7 @@ Thirty consecutive days of real use with reliable linking, search, export, wipe,
 - subcategories;
 - cross-currency transfer and exchange-rate history;
 - arbitrary file attachments;
-- OCR, automatic AI classification, voice transcription;
+- OCR, AI features, voice transcription;
 - SQLCipher as default;
 - cloud backup, record-level sync, real-time multi-device, collaboration;
 - generic arbitrary entity relations;
