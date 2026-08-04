@@ -4,9 +4,9 @@ This roadmap defines the only authorized stage order for one-person, Codex-assis
 
 ## Current position
 
-- The documentation foundation is complete when its implementation plan and final audit pass.
+- Tech PoC P0 is `completed` (2026-08-05): the seven-module skeleton builds on the approved toolchain, the module dependency check is wired into `check` and passes its negative verification, and launch was verified on the Xiaomi 14 Pro reference device.
 - Current active spec: none. No functional specification is currently `in-progress`.
-- Tech PoC P0 is the next candidate for specification work. Like every roadmap item that has not entered the formal lifecycle, it has no implementation authorization merely because it appears below.
+- Tech PoC P1 is the next candidate for specification work. Like every roadmap item that has not entered the formal lifecycle, it has no implementation authorization merely because it appears below.
 - A failed gate follows the same-slice revision and retry protocol below. The current slice remains the unique `in-progress` slice, and no later slice may start.
 
 ## Stage sequence

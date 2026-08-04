@@ -4,8 +4,8 @@ A private Android timeline connecting money with life context.
 
 ## Current status
 
-- Documentation foundation
-- Next gate: Tech PoC P0
+- Tech PoC P0 completed (seven-module skeleton verified on Xiaomi 14 Pro)
+- Next gate: Tech PoC P1
 - Supported baseline: Android 14+
 
 ## Start here

@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none; Tech PoC P0 is only the next candidate and is not authorized implementation
+- Current active spec: none; Tech PoC P1 is only the next candidate and is not authorized implementation
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules

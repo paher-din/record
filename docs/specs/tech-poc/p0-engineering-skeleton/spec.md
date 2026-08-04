@@ -1,8 +1,9 @@
 # Tech PoC P0 — Engineering Skeleton
 
-- **Status:** `in-progress`
+- **Status:** `completed` — read-only history; later corrections use a new specification or ADR.
 - **Spec approved:** 2026-08-04 — the user accepted the boundaries and acceptance criteria and confirmed the reference environment is a physical Xiaomi 14 Pro.
-- **Plan approved:** 2026-08-04 — the user approved the implementation plan; this slice is the project's single active specification.
+- **Plan approved:** 2026-08-04 — the user approved the implementation plan; this slice was the project's single active specification.
+- **Completed:** 2026-08-05 — acceptance criteria and the roadmap P0 exit gate have verification evidence in `verification.md`; the user confirmed acceptance.
 - **Drafted:** 2026-08-04
 - **Roadmap:** [Tech PoC P0](../../../roadmap.md)
 - **Module boundaries:** [Architecture overview](../../architecture/overview.md)
