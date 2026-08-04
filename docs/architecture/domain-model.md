@@ -101,7 +101,7 @@ The three optional identity edges at the top of the diagram are conditional on `
 
 `CategoryAllocation` is a positive absolute allocation whose lifecycle is owned by a `Transaction`. It references exactly one required `Category` as its classifier; the category does not own the allocation. An income or expense has one or more allocations whose amounts sum exactly to the transaction magnitude.
 
-`Account` identifies a balance-bearing account and its currency. Its balance is derived from effective entries rather than stored as a directly editable fact. `Category` classifies income or expense and may be archived while historical allocations continue to reference it.
+`Account` identifies a balance-bearing account and its currency. Its balance is derived from effective entries rather than stored as a directly editable fact. `Category` is a first-level-only classifier for income or expense; MVP has no category parent, child, path, or hierarchy field.
 
 The financial rules in this document refine, but do not duplicate, the user journeys in the [MVP requirements](../product/mvp-requirements.md).
 
@@ -119,14 +119,35 @@ The financial rules in this document refine, but do not duplicate, the user jour
 
 `Timeline` and `SearchDocument` are rebuildable read projections, never facts. They may reference domain IDs and be rebuilt from facts; they never become write authorities. Their persistence and indexing details belong to the owning data and storage architecture document.
 
+## Catalog lifecycle
+
+`Category`, `Tag`, and `Project` are three separate catalogs. Each catalog may contain zero items; absence of seeded items is valid domain state.
+
+Each item has a user-visible name. After trimming, the name must contain 1–40 Unicode code points. Its comparison key is Unicode `NFKC_Casefold(trimmedName)`. Within each catalog, that key is unique across active and archived items together. The comparison key is an invariant, not a second user-visible name. Renaming updates the one referenced catalog fact, so every historical allocation, tag association, or project assignment resolves the current name. A create request colliding with an archived item is rejected as a duplicate and identifies Restore as the valid transition.
+
+The availability rule distinguishes a historical reference from a new request:
+
+- only an active `Category` may be introduced by a new or changed `CategoryAllocation`;
+- only an active `Tag` may be introduced by a new `EntityTag` assignment;
+- only an active `Project` may be introduced as a new primary-project assignment;
+- an existing reference to an item that was archived later remains valid and resolvable, may remain unchanged during an unrelated owner edit, and displays the current name plus archived state;
+- once an archived reference is removed, it cannot be added again unless the catalog item is restored first.
+
+Category and Tag expose `create`, `rename`, `archive`, and `restore` lifecycle transitions. They have no MVP hard-delete transition. Project exposes the same user-visible lifecycle, with Archive represented by the Project `EntityRef` soft-delete state and Restore clearing that recoverable state. Each lifecycle transition is one atomic durable catalog operation: validation or persistence failure leaves the prior catalog fact and every historical reference unchanged.
+
+Catalog names are user content even though they are not credentials or cryptographic secrets. They are forbidden from retained or exported diagnostic events under the engineering logging boundary.
+
 ## Deletion and archive
 
-- `Transaction`, `Note`, and `Project` use soft delete first: deletion records a deleted timestamp on their `EntityRef` and excludes the fact from effective reads while preserving recoverability and history.
-- An `Account` or `Category` with history is archived, not deleted. Archiving prevents inappropriate new use without altering past entries or allocations.
+- `Transaction` and `Note` use soft delete first: deletion records a deleted timestamp on their `EntityRef` and excludes the fact from effective reads while preserving recoverability and history.
+- User-visible Project Archive uses the Project `EntityRef` soft-delete state. It removes the project from the default active list and new-assignment choices, but existing primary assignments continue to resolve it as archived. Restore makes it active and selectable again.
+- Category and Tag use an explicit recoverable archived state. Archiving prevents new allocation or assignment without altering historical `CategoryAllocation` or `EntityTag` records; Restore makes the item available again.
+- `Account` with history is archived, not deleted. Its account-specific lifecycle is outside the shared catalog contract.
+- MVP exposes no hard delete or physical purge action for Category, Tag, or Project.
 
 ### Physical purge invariant
 
-A physical purge is one atomic operation: it deletes the concrete fact (`Transaction`, `Note`, or `Project`), its same-ID `EntityRef`, all owned children, and all applicable relation records. If any required cleanup fails, none of the purge changes is committed. The type-specific cleanup is:
+A physical purge is an internal maintenance invariant rather than an MVP user action. If a future approved maintenance flow invokes it, it is one atomic operation: it deletes the concrete fact (`Transaction`, `Note`, or `Project`), its same-ID `EntityRef`, all owned children, and all applicable relation records. If any required cleanup fails, none of the purge changes is committed. The type-specific cleanup is:
 
 - `Transaction`: delete its `AccountEntry` and `CategoryAllocation` children; delete its `TransactionNoteRelation`, `EntityTag`, and `AttachmentLink` records; then delete the `Transaction` and same-ID `EntityRef`.
 - `Note`: delete its `TransactionNoteRelation`, `EntityTag`, and `AttachmentLink` records; then delete the `Note` and same-ID `EntityRef`.
@@ -155,6 +176,11 @@ The following concepts are explicitly deferred and must not acquire placeholder 
 - `EntityTag` and `AttachmentLink` endpoints are limited to `Transaction` and `Note` EntityRefs in MVP; a `Project` EntityRef is not a valid endpoint for either capability.
 - Typed relation endpoints must exist and match the relation's declared entity types.
 - `Timeline` and `SearchDocument` are disposable projections and cannot originate domain writes.
+- Category, Tag, and Project catalogs may be empty and receive no personalized seed data.
+- Category is first-level only and has no hierarchy relationship in MVP.
+- Every Category, Tag, and Project name is 1–40 Unicode code points after trimming and has a `NFKC_Casefold(trimmedName)` key unique across active and archived items within that catalog.
+- Archived Category, Tag, and Project items cannot be introduced by new allocations or assignments; existing historical references remain valid, retain their endpoint type, and resolve the current name plus archived state.
+- Category and Tag have no hard-delete transition in MVP. Project Archive is its recoverable `EntityRef` soft-delete transition; no Category, Tag, or Project physical purge is exposed to the user.
 
 ### Financial invariants
 

@@ -115,7 +115,7 @@ The selected transaction type is fixed by the typed entry point. A new draft sta
 - required account;
 - required amount in the selected account currency;
 - required occurrence date/time;
-- one or more required first-level category allocations;
+- one or more required first-level category allocations selected from the active Category catalog; an empty picker exposes inline Create Category;
 - optional descriptive transaction fields;
 - optional shared tags, one optional primary project, links to saved notes, and pending confirmed images.
 
@@ -125,7 +125,7 @@ The UI displays allocation values as positive magnitudes. It does not ask the us
 
 - Account and occurrence date/time must be present and available.
 - Amount must be parseable in the account currency, representable in integer minor units, and greater than zero.
-- At least one available first-level category is selected.
+- At least one available first-level category is selected. An unchanged historical allocation may continue to reference a category archived after the original save, but an archived category cannot be newly selected or receive a changed allocation.
 - Every allocation is positive and the allocation sum equals the transaction amount exactly in minor units.
 - Requested tags, project, note links, and images must pass their typed selection and attachment rules before the save can commit.
 
@@ -139,7 +139,7 @@ Use the shared dirty-draft rule. No transaction, allocation, relation, or attach
 
 **Failure/retry**
 
-Validation failure leaves focusable field errors and the complete draft. A save or image-import failure applies none of the requested change, shows no financial success, leaves prior balances unchanged, and preserves the draft for Retry or Reselect. A failed image preparation may be removed or reselected without clearing unrelated transaction fields.
+Validation failure leaves focusable field errors and the complete draft. If a newly selected category becomes archived before parent confirmation, the allocation remains visibly marked in the draft and Save requires Reselect or Restore; it is never silently dropped. A save or image-import failure applies none of the requested change, shows no financial success, leaves prior balances unchanged, and preserves the draft for Retry or Reselect. A failed image preparation may be removed or reselected without clearing unrelated transaction fields.
 
 ### Transfer creation
 
@@ -255,6 +255,84 @@ Before `Phase.Saving`, use the shared dirty-draft rule. Cancellation creates nei
 
 Any failure leaves no partial account or opening transaction and shows no success. The complete draft retains name, currency, amount, and the opening time captured by the first Create press. Retry reuses that same captured time rather than reading the device clock again; only discard followed by a new draft causes recapture.
 
+## Category, Tag, and Project catalog lifecycle
+
+The three catalogs start empty-capable and contain no personalized seed data. Category is first-level only. Catalog management and inline creation are typed operations; there is no generic catalog item that can change type.
+
+### Entry points and list state
+
+- Expense/Income Category picker → **Create Category** opens inline `CategoryEditor`.
+- Transaction/Note tag selector → **Create Tag** opens inline `TagEditor`.
+- Transaction/Note project selector → **Create Project** opens inline `ProjectEditor`.
+- Settings → Categories opens `CategoryCatalog`; Settings → Tags opens `TagCatalog`.
+- Projects opens its active list by default. Its empty/list action creates a Project, and switching to Archived exposes archived projects and Restore.
+
+Category and Tag management lists start in `Phase.Loading`, then `Phase.Idle` with active items by default, an Active/Archived switch, and a type-specific Create action. Projects uses the same list-state behavior in its top-level retained tab. An empty active or archived list is a valid empty state, never a load failure; the active empty state exposes Create, while archived empty state explains that no items are available to restore.
+
+Each list row shows the current name and active/archived state. An active row offers Rename and Archive; an archived row offers Rename and Restore. Category history/statistics, historical Tag assignments, and historical Project details also show an archived badge rather than hiding the referenced item. No list or detail exposes Hard Delete or Purge in MVP.
+
+### Picker and inline-create state
+
+A Category, Tag, or Project picker starts in `Phase.Loading` until its active choices and current parent selection are known, then enters `Phase.Idle`. A first-install empty picker shows a type-specific empty state plus Create. For a new selection, only active items are enabled.
+
+An existing archived reference is shown as archived when loading a saved owner. It may remain unchanged or be removed, but it cannot be added to a different owner, re-added after removal, or receive a changed Category allocation. If an active item selected in the current draft becomes archived before parent Save, the picker retains and marks the invalid selection and requires Reselect or Restore.
+
+Inline Create opens the typed create form without writing the parent. After the new catalog item reaches `Phase.Completed`, navigation returns to the exact same picker, automatically selects the new item, and preserves every other parent-draft field, allocation, link, assignment, and pending-media selection. The parent owner remains unsaved until its own Save completes.
+
+### Create and rename form
+
+**Entry state**
+
+Create starts in `Phase.Idle` with a blank name, fixed catalog type, no item ID, and Save disabled. Rename starts in `Phase.Loading`, then `Phase.Idle` with the complete current name and archived state; Save remains disabled until the trimmed name is valid and differs under the visible value comparison. Inline create records the exact parent picker as its return context. Management create/rename records its catalog list or Project detail/list context.
+
+**Fields**
+
+The only editable MVP catalog field is Name. Category has no parent/category-path field. Tag has no endpoint setting. Project has no tag, attachment, or arbitrary relation field.
+
+**Validation**
+
+After trimming, Name must contain 1–40 Unicode code points. Within the fixed catalog type, the case-insensitive Unicode-normalized comparison key owned by the [domain model](../architecture/domain-model.md) must be unique across active and archived items. Rename excludes only the current item's own ID from this comparison. A collision with an archived item keeps the form in a validation state and offers navigation to that item for Restore; it never creates a duplicate. A collision with an active item identifies the existing item and requires a different name.
+
+**Confirm**
+
+A valid Create or Rename enters `Phase.Saving`. `Phase.Completed` is reached only after the one catalog change is durably committed. Rename then returns to the launching management context and every historical reference renders the new name. Inline Create follows the picker auto-select behavior above; management Create returns to the active list with the new item visible.
+
+**Cancel/Back**
+
+Outside `Phase.Saving`, pristine Cancel/Back returns to the exact picker, catalog list, or Project context without a write. A dirty form uses the shared continue-editing/discard choice. Discard changes neither catalog nor parent draft. During `Phase.Saving`, the shared navigation lock applies.
+
+**Failure/retry**
+
+Validation failure changes no saved catalog state and retains the name form. Storage failure enters the applicable failure phase, shows no success, leaves the prior catalog and every historical reference unchanged, and retains the form plus parent draft for Retry. An inline failure remains scoped to the child form; it cannot clear or partially mutate the parent picker selection.
+
+### Archive confirmation
+
+**Entry state and fields**
+
+Archive is available only for an active item from Category/Tag management or Projects. `CatalogArchiveConfirm` starts in `Phase.Loading`, then `Phase.Idle` with Confirm Archive disabled until the current item, name, type, state, and type-specific historical-impact summary are loaded. It has no editable field and no destructive-delete wording.
+
+**Validation and confirm**
+
+The item must still be active and its loaded identity must match the requested type. Confirm enters `Phase.Saving` and reports `Phase.Completed` only after the recoverable archive state is durable. Category archive prevents new allocations but retains named historical allocations/statistics. Tag archive prevents new assignments but retains historical `EntityTag` links. Project archive maps to the domain soft-delete/recoverable state, prevents new primary assignment, retains existing primary assignments, and returns to the Projects active list with the item absent there and present under Archived.
+
+**Cancel/Back and failure**
+
+Before `Phase.Saving`, Cancel/Back closes confirmation and changes nothing. During Saving, navigation is locked. Validation or storage failure leaves the item active, changes no allocation/association/assignment, retains the confirmation state with a safe Retry when applicable, and shows no success.
+
+### Restore
+
+**Entry state and validation**
+
+Restore is available from the archived Category/Tag management list, the Projects archived list, or the archived-name collision path. The action loads the exact archived item before enabling Restore. The item must still be archived, and its normalized name must still satisfy the catalog-wide uniqueness invariant; because active and archived names share one namespace, an inconsistent collision is blocking and cannot be resolved by creating another item.
+
+**Confirm and result**
+
+Explicit Restore enters `Phase.Saving` and reaches `Phase.Completed` only after the item is durably active. It returns to the launching list or collision flow with the restored item active. When Restore was launched to resolve a picker collision, return to that same picker and select the restored item while preserving the parent draft. Existing historical references are unchanged because restore changes availability, not identity.
+
+**Cancel/Back and failure/retry**
+
+Cancel/Back before Saving returns to the archived list or collision form without change. Storage failure leaves the item archived, retains the originating form and parent draft, and offers Retry without claiming that selection is available. Restoring never creates a second catalog item.
+
 ## Transaction–note linking from either side
 
 **Entry point**
@@ -313,14 +391,14 @@ Before any `Phase.Saving`, Cancel or Back discards only the subflow's proposed c
 
 **Fields and selections**
 
-- zero or more active shared tags;
-- zero or one active primary project.
+- zero or more active shared tags, with inline Create Tag when the active catalog is empty or lacks the needed item;
+- zero or one active primary project, with inline Create Project and the same parent-draft preservation rule.
 
 Tags apply only to Transaction and Note endpoints. A project itself cannot receive MVP tags or attachments. The project selection is a primary context, not an arbitrary relation.
 
 **Validation**
 
-Every selected tag and the optional project must still exist and be available at confirmation. More than one project cannot be selected. The owning entity must be a Transaction or Note.
+Every newly selected tag and optional project must still exist and be active at confirmation. More than one project cannot be selected. The owning entity must be a Transaction or Note. An archived assignment already present on the saved owner may remain unchanged and visible as archived, but it cannot be newly selected or re-added after removal without Restore.
 
 ### Saved Detail assignment context
 
@@ -334,7 +412,7 @@ Confirm enters `Phase.Saving` and replaces the saved source's requested tag set 
 
 **Failure/retry**
 
-Validation or save failure leaves the entire prior saved tag/project assignment unchanged. The applicable failure phase retains the proposed selections for correction or Retry, with unavailable choices marked rather than silently removed.
+Validation or save failure leaves the entire prior saved tag/project assignment unchanged. The applicable failure phase retains the proposed selections for correction or Retry, with unavailable or newly archived choices marked rather than silently removed. A newly archived choice requires Reselect or Restore; an unchanged historical archived assignment may remain.
 
 ### Any Editor assignment context
 
@@ -348,7 +426,7 @@ Done performs no durable save. It returns the validated tag set and zero-or-one 
 
 **Failure/retry**
 
-Selection validation failure remains in the selector and does not change the parent draft. If parent Save fails, no requested owner edit, tag change, or project change becomes visible; the complete parent draft and selections remain available for Retry. Discarding an existing-record Editor leaves all prior saved assignments unchanged. Discarding a new Editor makes neither owner nor assignments visible.
+Selection validation failure remains in the selector and does not change the parent draft. If a newly selected item becomes archived, the parent draft retains it as an invalid marked selection until Reselect or Restore. If parent Save fails, no requested owner edit, tag change, or project change becomes visible; the complete parent draft and selections remain available for Retry. Discarding an existing-record Editor leaves all prior saved assignments unchanged. Discarding a new Editor makes neither owner nor assignments visible.
 
 **Cancel/Back**
 
@@ -838,6 +916,8 @@ Future ViewModel and Compose tests must cover at least:
 - **Saved Detail relationships:** from a saved Detail, replace transaction–note links and tag/project assignments independently. Assert each complete requested set becomes visible together only after `Phase.Completed`, returns to the same Detail, and leaves the prior set unchanged on validation/save failure.
 - **Existing-record Editor relationships:** from an Editor for a saved record, change links, tags, and project, then Done. Assert only the parent draft changes and no relationship read view changes before parent Save. Assert parent Save makes the owner edit and complete relationship set visible together; failure retains the complete draft/selections; Discard leaves all prior saved relationships unchanged.
 - **New Editor relationships:** choose links, tags, and project for a new Transaction or Note. Assert only the parent draft changes before Save. Parent Save must make owner and every requested relationship visible together; failure or Discard must make neither owner nor relationship visible while failure retains the complete draft for Retry.
+- **Empty catalog inline creation:** for empty Category, Tag, and Project selectors, open the typed Create form, save one valid item, and assert durable completion returns to the same picker with that item selected while every unrelated parent field remains unchanged. Parent Save then commits the owner/reference atomically. Repeat Create failure and Cancel/Back and assert no catalog item or parent mutation.
+- **Catalog name and lifecycle:** for each catalog, cover 1/40-code-point names, 0/41 rejection, case/Unicode-normalized duplicates against active and archived items, rename reflected through historical reads, Archive confirmation, archived selection rejection, unchanged historical reference visibility, Restore, and every storage-failure boundary. Category remains first-level, Tag endpoints remain Transaction/Note only, and Project remains untaggable/unattachable with existing primary assignments preserved across archive.
 - **Saving navigation lock:** for every editor, dispatch app-bar Back, system Back, predictive-back gesture, Cancel, Discard, and duplicate Confirm during `Phase.Saving`. Assert that all remain on the same editor, do not request cancellation, and produce exactly one result: `Phase.Completed` or a declared failure phase with the complete draft restored. No event sequence may show Cancelled and later show Success.
 - **CSV modal progress:** assert that entering `CsvExportProgress` in `Phase.Running` hides/disables bottom navigation and rejects app-bar/system/predictive Back and outside dismissal. Explicit Cancel must enter `Phase.Cancelling` without claiming cancellation; confirmed cancellation must enter `Phase.Cancelled` and return to Settings → Export with Cancelled, while a completion that wins the race returns Success. Failure returns Failed, and no incomplete file is offered as complete.
 - **Backup modal progress:** run the same navigation-lock, cancellation acknowledgement, and completion-race cases on `BackupExportProgress`. Success/Cancelled/Failed must return to Settings → Backup; Failed exposes deterministic Retry and requests destination reselection only when required; no incomplete result is restorable.
@@ -858,6 +938,7 @@ Future ViewModel and Compose tests must cover at least:
 | Opening balance | Account and matching opening-balance history both exist with the first-confirmation time | Neither appears after failed save; Retry retains fields and captured time |
 | Transaction–note linking | Saved Detail set replaces independently; any Editor set becomes visible only with parent Save | Saved set unchanged or Editor changes remain draft-only; selections remain available after failure |
 | Tags / project | Saved Detail assignments replace independently; any Editor assignments become visible only with parent Save | Saved assignments unchanged or Editor changes remain draft-only; failure retains selections |
+| Category/Tag/Project catalog | Empty state can create; rename updates historical display; archive blocks new use but preserves history; restore re-enables the same identity | Duplicate/invalid/storage failure changes no saved catalog; form and parent draft remain; Cancel/Back writes nothing |
 | Image import | Confirmed owner and image remain available offline | No visible link to missing content; draft retained |
 | Share text/image | Only an unsaved typed draft exists before confirm | Leaving saves nothing; no orphan image |
 | Search/filter | Only the current request revision can render All/Transaction/Note results and dispatch to source | Stale/invalidated results and errors are ignored; current query/filter remains editable |

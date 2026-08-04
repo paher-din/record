@@ -28,17 +28,17 @@ The shell does not offer a generic **Entry**, **Record**, or **Create anything**
 | Destination or screen family | Owning feature | Responsibility and write boundary |
 |---|---|---|
 | Timeline | `:feature:timeline` | Default home and mixed day read model for transactions and notes. It reads projections and never writes source facts. |
-| Finance | `:feature:finance` | Accounts, account history, transaction details and editors, categories, balances, monthly income/expense totals, and category statistics. |
-| Notes | `:feature:notes` | Note list, Markdown note details and editor, confirmed note images, and note-side transaction linking. |
-| Projects | `:feature:timeline` | Project list/detail and aggregation of transactions and notes by their one optional primary project. It is a context read surface, not a generic relation editor. |
+| Finance | `:feature:finance` | Accounts, account history, transaction details and editors, first-level Category catalog lifecycle, balances, monthly income/expense totals, and category statistics. |
+| Notes | `:feature:notes` | Note list, Markdown note details and editor, confirmed note images, note-side transaction linking, and shared Tag catalog lifecycle. |
+| Projects | `:feature:timeline` | Active/archived Project lists, Project create/rename/archive/restore, Project detail, and aggregation of transactions and notes by their one optional primary project. It never edits transaction/note facts or acts as a generic relation editor. |
 | Unified Search | `:feature:timeline` | Rebuildable mixed result projection with transaction/note type filtering. It dispatches selection to the owning detail screen. |
 | Global create and application navigation | `:app` | Dispatches the selected typed creation route; it does not implement finance or note writes. |
-| Settings, export, backup, and restore entry | `:app`, delegating data work to `:core:data` | Owns application-level data controls and routes into typed progress or restore-wizard states. |
+| Settings and data controls | `:app`, delegating domain/data work to the owning feature or `:core:data` | Owns application-level routing, including Settings → Categories, Settings → Tags, export, backup, and restore; it does not implement catalog or record writes. |
 | Privacy & Security and App Lock | `:app` | Owns the setting, platform-authentication route, secure-window boundary, and shell access decision; it does not own database recovery. |
 | Diagnostics and diagnostic export | `:app`, delegating the redacted ring buffer/export to `:core:data` | Shows only a non-sensitive envelope and routes an explicit export through a modal progress flow; it never opens or uploads user records. |
 | Attachment preview | Owning editor/detail feature | Displays a selected or confirmed image without exposing its physical path. |
 
-Finance and Notes own all edits to their facts. Timeline, Projects, and Search may display a transaction or note card, but selecting that card opens the source entity's Finance-owned transaction detail or Notes-owned note detail. Any subsequent edit starts from that owning detail screen.
+Finance and Notes own edits to their transaction/note facts and their Category/Tag catalogs. Projects owns only Project catalog lifecycle and Project aggregation/detail. Timeline, Projects, and Search may display a transaction or note card, but selecting that card opens the source entity's Finance-owned transaction detail or Notes-owned note detail. Any subsequent transaction/note edit starts from that owning detail screen.
 
 ## Navigation graph
 
@@ -62,6 +62,8 @@ flowchart TD
     SETTINGS_EXPORT["Settings > Export"]
     SETTINGS_BACKUP["Settings > Backup"]
     SETTINGS_RESTORE["Settings > Restore"]
+    SETTINGS_CATEGORIES["Settings > Categories"]
+    SETTINGS_TAGS["Settings > Tags"]
     SETTINGS_PRIVACY["Settings > Privacy & Security"]
     SETTINGS_DIAGNOSTICS["Settings > Diagnostics"]
     DIAGNOSTIC_PROGRESS["Diagnostic export modal progress"]
@@ -83,6 +85,13 @@ flowchart TD
     TRANSFER_EDIT["Transfer editor"]
     NOTE_EDIT["Note editor"]
     ACCOUNT_EDIT["Account and opening-balance editor"]
+    CATEGORY_PICKER["Category picker"]
+    TAG_PICKER["Tag picker"]
+    PROJECT_PICKER["Project picker"]
+    CATEGORY_EDITOR["Category catalog editor"]
+    TAG_EDITOR["Tag catalog editor"]
+    PROJECT_EDITOR["Project catalog editor"]
+    CATALOG_ARCHIVE["Catalog archive confirmation"]
     ATTACHMENT_PREVIEW["Attachment preview"]
     CSV_PROGRESS["CSV export modal progress"]
     BACKUP_PROGRESS["Backup export modal progress"]
@@ -123,8 +132,12 @@ flowchart TD
     FI_HOME --> ACCOUNT_EDIT
     NO_HOME --> NOTE_DETAIL
     PR_HOME --> PROJECT_DETAIL
+    PR_HOME --> PROJECT_EDITOR
+    PR_HOME --> CATALOG_ARCHIVE
     PROJECT_DETAIL --> TX_DETAIL
     PROJECT_DETAIL --> NOTE_DETAIL
+    PROJECT_DETAIL --> PROJECT_EDITOR
+    PROJECT_DETAIL --> CATALOG_ARCHIVE
 
     TX_DETAIL --> EXPENSE_EDIT
     TX_DETAIL --> INCOME_EDIT
@@ -136,6 +149,19 @@ flowchart TD
     INCOME_EDIT --> ATTACHMENT_PREVIEW
     TRANSFER_EDIT --> ATTACHMENT_PREVIEW
     NOTE_EDIT --> ATTACHMENT_PREVIEW
+    EXPENSE_EDIT --> CATEGORY_PICKER
+    INCOME_EDIT --> CATEGORY_PICKER
+    EXPENSE_EDIT --> TAG_PICKER
+    INCOME_EDIT --> TAG_PICKER
+    TRANSFER_EDIT --> TAG_PICKER
+    NOTE_EDIT --> TAG_PICKER
+    EXPENSE_EDIT --> PROJECT_PICKER
+    INCOME_EDIT --> PROJECT_PICKER
+    TRANSFER_EDIT --> PROJECT_PICKER
+    NOTE_EDIT --> PROJECT_PICKER
+    CATEGORY_PICKER --> CATEGORY_EDITOR
+    TAG_PICKER --> TAG_EDITOR
+    PROJECT_PICKER --> PROJECT_EDITOR
 
     SETTINGS --> SETTINGS_EXPORT
     SETTINGS_EXPORT --> CSV_PROGRESS
@@ -145,6 +171,12 @@ flowchart TD
     BACKUP_PROGRESS -- "Success / Cancelled / Failed" --> SETTINGS_BACKUP
     SETTINGS --> SETTINGS_RESTORE
     SETTINGS_RESTORE --> RESTORE
+    SETTINGS --> SETTINGS_CATEGORIES
+    SETTINGS --> SETTINGS_TAGS
+    SETTINGS_CATEGORIES --> CATEGORY_EDITOR
+    SETTINGS_CATEGORIES --> CATALOG_ARCHIVE
+    SETTINGS_TAGS --> TAG_EDITOR
+    SETTINGS_TAGS --> CATALOG_ARCHIVE
     SETTINGS --> SETTINGS_PRIVACY
     SETTINGS --> SETTINGS_DIAGNOSTICS
     SETTINGS_DIAGNOSTICS --> DIAGNOSTIC_PROGRESS
@@ -170,10 +202,18 @@ Typed route keys are stable screen contracts for future Compose implementation. 
 | `LockedRecoverySurface` | Generic recovery-in-progress/blocked status with no user data, diagnostics, terminal details, counts, or paths | Cannot enter shell; authentication opens the detailed recovery route, while Back only backgrounds/exits the app |
 | `DiagnosticsSettings` | Redacted envelope containing time range, event count, estimated size, and latest terminal export result | Settings |
 | `DiagnosticExportProgress` | Confirmed SAF destination and modal progress state; no diagnostic event payload is a route argument | No Back while Running/Cancelling; terminal Success/Cancelled/Failed returns to `DiagnosticsSettings` |
+| `CategoryCatalog` | Active/archived mode, list position, and latest lifecycle result | Settings |
+| `TagCatalog` | Active/archived mode, list position, and latest lifecycle result | Settings |
+| `CategoryPicker` | Parent Expense/Income draft identity plus its current allocations | Same parent editor with every field retained |
+| `TagPicker` | Parent Transaction/Note draft or saved-Detail context plus current tag selection | Same parent editor/detail with its state retained |
+| `ProjectPicker` | Parent Transaction/Note draft or saved-Detail context plus current primary-project selection | Same parent editor/detail with its state retained |
+| `CategoryEditor` / `TagEditor` | Catalog type, create-or-rename mode, and item ID only for rename | Launching catalog, or the same picker for inline create |
+| `ProjectEditor` | Create-or-rename mode and item ID only for rename | Projects retained list/detail, or the same picker for inline create |
+| `CatalogArchiveConfirm` | Catalog type, item ID, and exact launching context; current name/state and impact summary are loaded rather than trusted as route arguments | Launching Category/Tag catalog or Projects state |
 | `TransactionDetail` | `transactionId` plus optional origin context | The exact originating Timeline, Finance, Project, or Search state |
 | `NoteDetail` | `noteId` plus optional origin context | The exact originating Timeline, Notes, Project, or Search state |
 | `AccountDetail` | `accountId` | Prior Finance state |
-| `ProjectDetail` | `projectId` | Prior Projects state |
+| `ProjectDetail` | `projectId`, including archived-state display when referenced historically | Prior Projects state |
 | `ExpenseEditor` / `IncomeEditor` / `TransferEditor` | New typed draft or an existing `transactionId` | Launching detail or top-level state |
 | `NoteEditor` | New note draft or existing `noteId` | Launching detail or top-level state |
 | `AccountOpeningEditor` | New account draft | Prior Finance state |
@@ -194,11 +234,12 @@ An origin context is navigation-only state needed to return to the previous scro
 
 | Route or context | Phase | Bottom navigation | App/system/predictive Back | Explicit Cancel and terminal route |
 |---|---|---|---|---|
-| Top-level homes and browse/details | Any stable browse phase | Visible | Normal route behavior | Not applicable |
-| Unified Search, Settings, `SettingsExport`, `SettingsBackup`, `SettingsRestore` | Stable browse/result state | Visible | Returns to retained origin | Not applicable |
+| Top-level homes and browse/details, including active/archived `ProjectsHome` | Any stable browse phase | Visible | Normal route behavior | Project lifecycle actions launch the modal routes below |
+| Unified Search, Settings, `CategoryCatalog`, `TagCatalog`, `SettingsExport`, `SettingsBackup`, `SettingsRestore` | Stable browse/result state | Visible | Returns to retained origin | Catalog lists retain active/archived mode and list position |
 | `PrivacySecuritySettings`, `DiagnosticsSettings` | Stable browse/result state | Visible | Returns to Settings | Authentication prompts and export selection follow [interaction rules](interaction-rules.md) |
 | `AppLockRoute`, `LockedRecoverySurface` | `Phase.Checking`, `Phase.RecoverableFailure`, `Phase.BlockingFailure`, or transient `Phase.Completed` | Not constructed | Cannot enter the shell before Completed routing; Back only backgrounds/exits the app | Authentication success routes according to the already-evaluated recovery gate; failure/cancel remains locked |
-| Any transaction, note, account, tag, or project Editor; attachment preview | Any | Hidden | Draft/preview rule in [interaction rules](interaction-rules.md) | Editor `Phase.Saving` blocks Cancel/Discard until Completed or Failure |
+| Any transaction, note, account, Category, Tag, or Project Editor; catalog archive confirmation; attachment preview | Any | Hidden | Draft/confirmation/preview rule in [interaction rules](interaction-rules.md) | Editor or lifecycle `Phase.Saving` blocks Cancel/Discard until Completed or Failure |
+| `CategoryPicker`, `TagPicker`, `ProjectPicker` | `Phase.Idle` or selection failure | Hidden | Returns to the same parent without writing | Inline create returns here only after durable success and auto-selects the new item |
 | Saved Detail relationship/assignment subflow | Before `Phase.Saving` | Hidden | Returns to the same Detail without writing | Confirm enters locked `Phase.Saving`; terminal returns to same Detail |
 | Editor relationship/assignment subflow | `Phase.Idle` | Hidden | Returns to the same parent draft without writing | Done updates only parent draft; parent Save owns visibility |
 | `CsvExportProgress` | `Phase.Running` / `Phase.Cancelling` | Hidden or disabled | Blocked; cannot leave modal | Only explicit Cancel; terminal returns Success/Cancelled/Failed to `SettingsExport` |
@@ -220,7 +261,7 @@ Each top-level destination owns an independent navigation back stack and a retai
 | Timeline | Mixed-card list position and offset | Active timeline filters, if any | Selected day |
 | Finance | Active account/statistics list position and offset | Selected account/category/type filters | Selected statistics month or transaction-history date range |
 | Notes | Note-list position and offset | Active note/tag/project filters | Selected note-date filter or date anchor |
-| Projects | Project-list or current project-feed position and offset | Active project/entity-type filters | Selected project-feed date filter or date anchor |
+| Projects | Project-list or current project-feed position and offset | Active/archived list mode plus project/entity-type filters | Selected project-feed date filter or date anchor |
 
 Retention is required for tab switching, source-detail round trips, Search round trips, and configuration recreation while the task remains in the running app. Unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss is outside the MVP promise, consistent with the cross-cutting acceptance rule.
 
@@ -231,7 +272,7 @@ Compose implementation must hoist these values out of disposable list items and 
 1. Timeline is the default launch destination and a read-only mixed projection.
 2. A transaction card from Timeline, Projects, or Search opens `TransactionDetail`; a note card opens `NoteDetail`.
 3. Back from the source detail returns to the exact origin with its scroll position, filters, query, and selected date intact.
-4. Editing is dispatched by source type. Timeline, Projects, and Search never host a generic editor and never mutate a projection.
+4. Editing is dispatched by source type. Timeline and Search never host a generic editor and never mutate a projection. Projects may create, rename, archive, or restore Project facts, but it never edits transaction/note facts or writes an aggregation projection.
 5. Transaction-to-note and note-to-transaction links open the linked source detail in the owning feature. Back returns to the originating detail.
 6. A primary-project chip or assignment may open `ProjectDetail`; this navigation does not change the fact's assignment.
 7. Missing or soft-deleted targets render an unavailable state and a safe Back action; they do not redirect to an unrelated record.
@@ -240,6 +281,8 @@ Compose implementation must hoist these values out of disposable list items and 
 10. App startup evaluates the restore/migration recovery gate before Room and before the shell. When App Lock is enabled and authentication has not succeeded, pending recovery may show only `LockedRecoverySurface`; detailed status, diagnostics, terminal outcomes, counts, and user data remain hidden. Authentication then routes to the detailed recovery state. Replacement verification leads to terminal success, verified rollback leads to terminal failure with access to the original data, and unresolved recovery never enters the shell.
 11. App Lock is immediate on every cold start and background-to-foreground transition when enabled. The secure-window boundary prevents recent-task previews and pre-authentication frames from revealing the prior screen.
 12. Diagnostic export is reachable only after shell authentication or an authenticated detailed recovery route. It never becomes a route around App Lock or unresolved recovery.
+13. Category, Tag, and Project selectors show only active items for new selection, while an existing archived historical reference remains visibly marked. Inline Create opens the typed catalog editor; durable success returns to the same picker, auto-selects the new item, and preserves every other parent-draft field.
+14. Settings → Categories and Settings → Tags own active/archived catalog browsing and lifecycle entry. Projects owns the equivalent active/archived list and lifecycle entry for Project. Archive confirmation and all catalog editors are modal; Cancel/Back changes no catalog fact.
 
 ## Navigation acceptance checks
 
@@ -254,6 +297,9 @@ Future Compose navigation and UI tests must demonstrate:
 - cards from Timeline and Search dispatch to the correct source detail and Back restores origin state;
 - new finance/account success routes and edit/subflow returns follow the deterministic destinations above;
 - relationship and assignment subflows choose save behavior from saved Detail versus any Editor context; an existing-record Editor never uses the independent Detail save path;
+- empty Category/Tag/Project lists expose type-appropriate Create, inline create returns to the same picker with the new item selected, and the parent draft otherwise remains byte-for-byte equivalent at the UI-state boundary;
+- Settings → Categories and Settings → Tags retain active/archived list state; Projects defaults to active, can switch to archived, and Restore returns the item to active selection without changing existing historical references;
+- Category/Tag/Project editors and archive confirmation hide bottom navigation, preserve their form on failure, and return to the exact catalog or picker context on Cancel, Back, or durable completion;
 - `CsvExportProgress` is modal full-screen: Running/Cancelling blocks bottom navigation and every Back path, explicit Cancel waits for acknowledgement, and Success/Cancelled/Failed returns to `SettingsExport` with the actual status;
 - `BackupExportProgress` obeys the same modal lock and cancellation acknowledgement, returning Success/Cancelled/Failed to `SettingsBackup` with a deterministic Retry path;
 - Restore preflight can reach Cancelled and return to `SettingsRestore`; final Confirm removes every Cancel/Back/bottom-navigation path until startup validation reaches complete success or failure/rollback;

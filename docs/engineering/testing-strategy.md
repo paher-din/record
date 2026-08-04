@@ -22,6 +22,7 @@ When Gradle is introduced, the active slice plan records the exact Gradle tasks 
 | Risk | Required test and fixture | Pass condition | Gate |
 |---|---|---|---|
 | Invalid money or relationship facts | Unit tests for integer minor units, signs, allocation totals, transfer cardinality, opening balance, endpoint whitelist, XOR identity, soft delete, purge, and projection write bans | Every invariant accepts valid boundaries and rejects invalid boundaries without partial state | Every domain change |
+| Catalog lifecycle corruption or unreachable first use | Domain/property, Room, ViewModel, and Compose tests start with empty Category/Tag/Project catalogs and exercise create, normalized uniqueness, rename, archive, historical reference rendering, restore, and injected failure | Empty → inline create → auto-select → parent save succeeds offline; archived items cannot be newly referenced; existing references and current names survive; every failed lifecycle write leaves catalog and parent draft unchanged | M2 Category, M3 Tag, M4 Project, M5 archived rendering/aggregation, every catalog change, MVP release |
 | Balance drift across arbitrary history | Property tests generate valid random income, expense, transfer, opening, and soft-delete sequences with fixed seeds recorded on failure | For every prefix and final state, each balance equals the sum of effective `AccountEntry` values; transfer sum remains zero | Every finance change and PoC P2 |
 | Partial or racing persistence | Instrumented Room integration tests cover repository transactions, foreign keys, cascades, concurrent owner writes, relation replacement, attachment metadata/link commit, and projection update | Observers can see only the old complete state or new complete state; never a partial aggregate, one-sided relation, or source/projection mismatch | Every repository/schema change |
 | Upgrade data loss | Room migration tests upgrade version N-1 and N-2 fixtures to N, including old WAL checkpoint/snapshot preparation and domain validation | Schema opens without destructive fallback; all fixture facts, relations, balances, and attachment metadata remain valid | Every schema change and MVP release |
@@ -47,11 +48,11 @@ When Gradle is introduced, the active slice plan records the exact Gradle tasks 
 
 ### Unit and property coverage
 
-Boundary examples include zero, one minor unit, maximum supported minor amount, allocation rounding edges, same-account transfer, different-currency transfer, archived references, duplicate relations, unavailable targets, and soft-deleted owners. Property failures persist the seed and minimal counterexample in test output; rerunning that seed is mandatory before a fix is accepted.
+Boundary examples include zero, one minor unit, maximum supported minor amount, allocation rounding edges, same-account transfer, different-currency transfer, archived references, duplicate relations, unavailable targets, and soft-deleted owners. Catalog coverage generates trimmed names at 0, 1, 40, and 41 Unicode code points; case variants; canonically and compatibility-equivalent Unicode; active/archived `NFKC_Casefold` collisions; and random create/rename/archive/restore sequences. It asserts uniqueness within each catalog across both states, first-level-only Category, Transaction/Note-only Tag endpoints, Project no-tag/no-attachment, and availability of only active items for new references while unchanged historical references remain valid. Property failures persist the seed and minimal counterexample in test output; rerunning that seed is mandatory before a fix is accepted.
 
 ### Room transaction coverage
 
-Use a real Room database in instrumented tests, with foreign keys enabled and the same transaction entry points as production. For each write boundary, inject failure before the transaction, between each logical child write, before commit, and immediately after commit response handling. Assert both stored facts and observable projection state. Fakes are suitable for ViewModel tests but cannot prove Room atomicity.
+Use a real Room database in instrumented tests, with foreign keys enabled and the same transaction entry points as production. For each write boundary, inject failure before the transaction, between each logical child write, before commit, and immediately after commit response handling. Assert both stored facts and observable projection state. Catalog transaction tests prove create/rename/archive/restore are individually atomic; a normalized duplicate is rejected against active and archived rows; rename is reflected through historical allocations/associations/assignments; archive blocks a new reference without deleting an old one; restore re-enables selection; and Project archive preserves every primary assignment. Fakes are suitable for ViewModel tests but cannot prove Room atomicity.
 
 ### Migration coverage
 
@@ -71,7 +72,7 @@ No spec may replace the 300 ms default with “record a budget later.” Changin
 
 ## Backup, restore, and fault injection
 
-The canonical round-trip fixture contains every MVP entity type, each transaction type, multi-allocation income/expense, bidirectional transaction-note associations, shared tags, zero/one project assignments, duplicate-content attachments, soft-deleted facts, archived account/category history, Unicode text, and boundary timestamps.
+The canonical round-trip fixture contains every MVP entity type, each transaction type, multi-allocation income/expense, bidirectional transaction-note associations, active and archived Category/Tag/Project items with their current names and retained historical references, zero/one project assignments, duplicate-content attachments, soft-deleted facts, archived account history, Unicode text, and boundary timestamps.
 
 Comparison ignores representation-only ordering where the format declares it irrelevant, but compares stable IDs and every logical field, relation endpoint, derived balance, record count, attachment ownership, size, and hash. The procedure is:
 
@@ -123,6 +124,10 @@ Each editor and operation tests its declared entry state, valid and invalid prim
 - App Lock defaults off; enable/disable requires platform authentication; enabled cold start and every foreground return lock immediately; cancel/failure/Back stays locked; generic recovery hides details until authentication;
 - diagnostic export exposes only its envelope, uses the Running/Cancelling modal lock, and returns truthful terminal state without changing the vault or automatically sharing/uploading;
 - saved-Detail relation edits commit independently, while Editor relation edits stay draft-only until owner save;
+- empty Category/Tag/Project selectors expose typed inline Create; durable child success returns to the same picker, auto-selects the new item, and preserves every unrelated parent-draft field;
+- catalog create/rename/archive/restore keeps its form and parent draft on validation/storage failure, reports success only after durable completion, and never turns Cancel/Back into a write;
+- normalized active/archived duplicate names remain validation failures, archived-name collision routes to Restore, and a successful Restore makes the same identity selectable again;
+- an item archived after draft selection is retained as an invalid marked choice requiring Reselect/Restore, while unchanged historical archived references remain visible and valid;
 - success navigation occurs only after `Phase.Completed`.
 
 ## Five critical Compose UI flows
@@ -138,6 +143,8 @@ These are exactly the five release-critical UI flows from the approved design:
 CSV's separate interoperability test remains mandatory even though it is not a sixth critical Compose flow.
 
 App Lock, locked recovery, and Diagnostic Export are additional mandatory Privacy/Diagnostics slice UI suites. They do not replace or renumber the five approved critical flows.
+
+Catalog lifecycle is an additional mandatory cross-slice Compose suite and likewise does not become a sixth critical flow. It covers, for each type where applicable: first-install empty list/picker → inline Create → durable auto-select → parent Save; management Create/Rename; archived-name duplicate rejection and Restore; archive confirmation; archived historical rendering; cancellation; storage failure; and airplane/network-isolated execution. Category is exercised in M2 Expense/Income allocation, Tag in M3 Transaction/Note selectors, Project in M4 assignment plus the Projects active/archived lists, and M5 verifies archived Category aggregation and archived Tag/Project rendering in retrieval surfaces.
 
 ## Performance benchmarks
 
@@ -171,6 +178,7 @@ Release is blocked by any of the following:
 - data loss, a balance that cannot be recomputed, an orphan/one-sided relation, a committed attachment link to missing content, or a backup that cannot fully restore;
 - any N-1 or N-2 migration failure, pending migration recovery that can open ordinary Room/UI, or destructive migration fallback;
 - any missing/failed malicious-ZIP limit case, Android system-backup/device-transfer exclusion check, source/merged/final artifact network-policy check, or airplane/network-isolated Journeys 1–13 run;
+- any missing/failed offline catalog lifecycle evidence for Category, Tag, or Project, including empty-state reachability, normalized-name uniqueness across active/archived items, atomic failure retention, historical-reference preservation, or restore;
 - failure of the Timeline, thumbnail, aggregation, or startup benchmark at its owning slice/relevant change/release gate;
 - failure of App Lock/locked-recovery access control, secure-window/task-preview protection, diagnostic three-field event allowlist, UTC-day segment seven-day/1-MiB retention boundary, or Diagnostic Export modal/no-upload behavior;
 - failure or missing evidence for any five critical Compose flows, required ViewModel state case, fault-injection suite, or approved performance budget; the mandatory fault suite includes `ATTACHMENT_SOURCE_COPY`, `ATTACHMENT_CONTENT_COMMIT`, `BACKUP_STREAM_AND_PUBLISH`, `BACKUP_SAF_COPY`, `RESTORE_ACTIVATION`, and `MIGRATION_RECOVERY`;

@@ -30,11 +30,11 @@ If the save cannot complete, the app shows no success state and leaves no partia
 
 ### Preconditions
 
-At least one account and one first-level category are available.
+At least one account is available. The first-level category catalog may be empty on a first install; the category picker must provide an inline create entry, and categories can also be managed from Settings → Categories.
 
 ### User action
 
-The user chooses income or expense, enters an amount and details, distributes the amount across one or more categories, and confirms the transaction.
+The user chooses income or expense, enters an amount and details, selects one or more available first-level categories or creates one inline, distributes the amount across those categories, and confirms the transaction.
 
 ### Success state
 
@@ -42,7 +42,7 @@ After durable save, the transaction appears in account history and the timeline.
 
 ### Validation failure
 
-If the amount is missing, zero, or not a valid amount in the selected account's currency, if no category is selected, or if allocation totals do not equal the transaction amount's magnitude, the app explains the issue and saves neither the transaction nor any allocation. The cross-cutting draft-preservation rule applies.
+If the amount is missing, zero, or not a valid amount in the selected account's currency, if no available category is selected, or if allocation totals do not equal the transaction amount's magnitude, the app explains the issue and saves neither the transaction nor any allocation. If a newly selected category becomes archived before confirmation, the parent draft remains intact and requires the user to reselect an active category or restore the archived category. The cross-cutting draft-preservation rule applies.
 
 ### Infrastructure failure
 
@@ -118,11 +118,11 @@ If the requested links cannot all be saved, the app shows no success, saves none
 
 ### Preconditions
 
-A transaction or note is open for editing, and the app presents the currently available shared tags and projects.
+A transaction or note is open for editing. The shared tag and project catalogs may both be empty on a first install; their selectors provide inline create entries, while tags can also be managed from Settings → Tags and projects from the Projects tab.
 
 ### User action
 
-The user assigns any number of shared tags and optionally chooses one primary project, then confirms the change.
+The user selects available shared tags and optionally one available primary project, creating a tag or project inline when needed, then confirms the change.
 
 ### Success state
 
@@ -130,7 +130,7 @@ After durable save, all selected tags and zero or one selected primary project a
 
 ### Validation failure
 
-Every selected tag must still exist and be available. The user may select at most one project, and that project must still exist and be available. If any requested assignment fails these rules, none of the requested tag or project changes are saved and the prior saved assignments remain unchanged.
+Every newly selected tag and project must still exist and be active when the user confirms. The user may select at most one project. If a newly selected item becomes archived, the parent draft and proposed assignments remain available and require reselect or restore; none of the requested assignment changes are saved and the prior saved assignments remain unchanged. An archived item already referenced by the saved record may remain as unchanged history, but it cannot be newly assigned.
 
 ### Infrastructure failure
 
@@ -214,7 +214,7 @@ The user opens statistics and selects a month.
 
 ### Success state
 
-The app shows that month's income total, expense total, and category breakdown based on saved transactions and their allocations. A month without applicable activity is shown as a valid zero or empty state.
+The app shows that month's income total, expense total, and category breakdown based on saved transactions and their allocations. Historical allocations to an archived category remain included and display that category's current name and archived status. A month without applicable activity is shown as a valid zero or empty state.
 
 ### Validation failure
 
@@ -236,7 +236,7 @@ The user exports a logical ZIP, then verifies the required round trip by intenti
 
 ### Success state
 
-The export → wipe or overwrite → restore round trip succeeds only when every account, transaction, note, category, tag, project, image, and resulting account balance matches the exported state. Each category allocation remains on the same transaction; each applied tag remains on the same transaction or note; each primary project assignment remains on the same transaction or note; each transaction-note association remains between the same records; and each image remains attached to the same confirmed owning transaction or note. Restore validates the entire ZIP before asking for confirmation and replaces current data only as one complete operation.
+The export → wipe or overwrite → restore round trip succeeds only when every account, transaction, note, category, tag, project, image, and resulting account balance matches the exported state. Category, Tag, and Project current names and active/archived states also match. Each category allocation remains on the same transaction; each applied tag remains on the same transaction or note; each primary project assignment remains on the same transaction or note, including references to archived catalog items; each transaction-note association remains between the same records; and each image remains attached to the same confirmed owning transaction or note. Restore validates the entire ZIP before asking for confirmation and replaces current data only as one complete operation.
 
 ### Validation failure
 
@@ -290,10 +290,25 @@ If shared text is empty after trimming and no shared image can be opened, the ap
 
 If the draft cannot be saved completely, the app shows no success and creates no partial record or orphan image. The cross-cutting draft-preservation rule applies.
 
+## Cross-cutting catalog lifecycle
+
+Category, Tag, and Project catalogs are empty-capable. A first install does not seed personalized categories, tags, or projects. Every empty catalog state provides the type-appropriate create entry, and all catalog lifecycle operations work offline.
+
+All three catalog types use the same name rule: after trimming, a name contains 1–40 Unicode code points and is unique within its catalog under case-insensitive Unicode normalization across both active and archived items. A collision with an archived item offers Restore instead of creating a duplicate. Catalog names are ordinary user content, not secrets, but they never enter diagnostic logs.
+
+- **Category:** first-level only, with no parent/child hierarchy in MVP. It can be created inline from an Expense/Income category picker or managed from Settings → Categories. The user can create, rename, archive, and restore it; MVP exposes no hard delete. An archived category cannot receive a new allocation. Existing allocations and statistics remain intact and show its current name and archived status.
+- **Tag:** it can be created inline from a tag selector or managed from Settings → Tags. The user can create, rename, archive, and restore it; MVP exposes no hard delete. An archived tag cannot receive a new assignment. Existing tag assignments remain intact and display the tag's current name and archived status. Tags still apply only to Transaction and Note.
+- **Project:** it can be created inline from a project selector or from the Projects tab's empty/list action. The user can create, rename, archive, and restore it. The user-visible Archive action is recoverable and never a physical purge. An archived project cannot receive a new primary assignment; existing primary assignments remain intact and show the project's current name and archived status in historical details. Projects defaults to the active list, can switch to archived items for Restore, exposes no hard-purge action in MVP, and still cannot receive tags or attachments.
+
+Create, rename, archive, and restore report success only after the complete catalog change is durably saved. Validation or storage failure leaves the saved catalog unchanged and retains the catalog form plus any parent record draft for correction or Retry. Cancelling or navigating Back before durable completion creates or changes nothing.
+
+Successful inline creation returns to the same picker, automatically selects the new item, and preserves every other parent-draft field and selection. The parent record is still unsaved until its own confirmation succeeds. If an inline create fails or is cancelled, the parent draft remains unchanged and no catalog item is created.
+
 ## Cross-cutting acceptance
 
 - 30 consecutive days dogfood.
 - Journeys 1–13 pass in airplane mode or an otherwise network-isolated environment. Source manifest, merged manifest, and final APK inspection show no `INTERNET` permission, unexpected network component, or related network permission.
+- Empty-state create, inline create and auto-select, rename, archive, archived-history rendering, restore, duplicate-name rejection, cancellation, and storage-failure retention pass offline for Category, Tag, and Project without adding another numbered journey.
 - The app database, attachments, diagnostics, preferences containing user state, and every other item of user data are excluded from Android cloud backup and system device-to-device transfer. The only supported migration path is an explicit complete logical backup and overwrite restore through a user-selected Storage Access Framework destination.
 - Recoverable operation failures that return control to the running app preserve all entered fields and selected media for retry. The MVP does not promise unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss.
 - no ads, analytics, or closed-source tracking SDK in release.
