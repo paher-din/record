@@ -26,9 +26,9 @@ The operation phase is one of these exact tokens. There are no implicit aliases 
 | Phase token | Testable meaning | Primary-action rule | Allowed next phases |
 |---|---|---|---|
 | `Phase.Loading` | The flow is obtaining an existing record or incoming content required to construct a complete initial state. Partial content is not editable. | Disabled. | `Phase.Idle`, `Phase.Selecting`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
-| `Phase.Idle` | Complete stable state is available and no selection, check, validation, save, or long operation is active. | Determined by current validation and dirty-state rules. | `Phase.Selecting`, `Phase.Checking`, `Phase.Validating`, `Phase.Saving`, `Phase.Running` |
-| `Phase.Selecting` | The flow is waiting for an explicit user or system selection, such as a destination, candidate, image, or typed share target. | Disabled until the required selection is valid; the selection-specific Continue action may then start the listed next phase. | `Phase.Idle`, `Phase.Checking`, `Phase.Validating`, `Phase.Running`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
-| `Phase.Checking` | The app is performing non-mutating prerequisite, compatibility, or preflight checks. | Disabled. | `Phase.Idle`, `Phase.Selecting`, `Phase.Validating`, `Phase.Running`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.Idle` | Complete stable state is available and no selection, check, validation, save, or long operation is active. | Determined by current validation and dirty-state rules. | `Phase.Selecting`, `Phase.Checking`, `Phase.Validating`, `Phase.Saving`, `Phase.Running`, or flow-defined `Phase.Cancelled` |
+| `Phase.Selecting` | The flow is waiting for an explicit user or system selection, such as a destination, candidate, image, or typed share target. | Disabled until the required selection is valid; the selection-specific Continue action may then start the listed next phase. | `Phase.Idle`, `Phase.Checking`, `Phase.Validating`, `Phase.Running`, `Phase.Cancelled`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.Checking` | The app is performing non-mutating prerequisite, compatibility, or preflight checks. | Disabled except for a flow-defined explicit Cancel. | `Phase.Idle`, `Phase.Selecting`, `Phase.Validating`, `Phase.Running`, `Phase.Cancelling`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
 | `Phase.Validating` | The app is validating current draft input or selected media before it can be accepted or saved. | Disabled. | `Phase.Idle`, `Phase.Saving`, `Phase.Running`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
 | `Phase.Saving` | A bounded all-or-nothing record change is being durably saved. | Save/Confirm, Cancel, Discard, app-bar Back, system Back, and predictive-back gesture are disabled or intercepted without navigation. | Exactly one terminal result for the attempt: `Phase.Completed`, `Phase.RecoverableFailure`, or `Phase.BlockingFailure` |
 | `Phase.Running` | A search, export, backup, or restore operation is actively progressing after its required input was accepted. | Start/Confirm is disabled; editing or Cancel is available only where a flow explicitly permits it. | `Phase.Running` for a superseding search revision, `Phase.Idle` for a completed repeatable read, otherwise `Phase.Cancelling`, `Phase.Completed`, `Phase.Recovering`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
@@ -87,7 +87,7 @@ The global `+` chooser and feature-local typed actions all dispatch to one of fo
 
 ### Deterministic finance post-save navigation
 
-The following outcomes apply only after `Phase.Completed`. A relation, assignment, image, picker, or other subflow never applies this table; it always returns to its parent draft with that draft's navigation context intact.
+The following outcomes apply only after `Phase.Completed`. An Editor-context relation, assignment, image, picker, or other child subflow never applies this table; it returns to its parent draft with that draft's navigation context intact. A saved Detail relationship subflow may complete independently but returns to that same Detail.
 
 | Successful operation | Required destination | Back behavior |
 |---|---|---|
@@ -97,7 +97,7 @@ The following outcomes apply only after `Phase.Completed`. A relation, assignmen
 | Edit Expense, Income, or Transfer | The source Finance-owned `TransactionDetail` | Preserve that detail's existing origin so its subsequent Back remains deterministic |
 | Create Account with opening balance | Finance-owned `AccountDetail` for the new account | Return to the exact Finance launch context with its retained state |
 
-Navigation must not occur before durable success. A failed save remains in the editor with its complete draft, and returning from a child subflow must not jump to a top-level destination or a newly synthesized detail route.
+Navigation must not occur before durable success. A failed save remains in the editor with its complete draft. Returning from an Editor child subflow must not jump to a top-level destination or a newly synthesized detail route; a saved Detail relationship subflow returns only to its source Detail.
 
 ### Expense and income creation
 
@@ -259,60 +259,57 @@ Any failure leaves no partial account or opening transaction and shows no succes
 
 **Entry point**
 
-- A saved Transaction detail/editor → link notes, or a saved Note detail/editor → link transactions: **persisted-owner mode**.
-- A new unsaved Transaction editor → select notes, or a new unsaved Note editor → select transactions: **unsaved-owner-draft mode**.
+- A saved Transaction or Note **Detail** → edit links: **saved Detail context**.
+- Any Transaction or Note **Editor**, whether editing an existing record or creating a new one → edit the parent draft's links: **Editor context**.
 
 Both entry points edit the same typed transaction–note link; neither creates a generic relation or relation type.
 
 **Fields and selections**
 
-The owner mode and source type are fixed for the subflow. The user selects zero or more active saved records of the opposite type. In persisted-owner mode, existing saved links are shown distinctly from proposed additions/removals. In unsaved-owner-draft mode, the starting set is the parent draft's current selection.
+The interaction context and source type are fixed for the subflow. The user selects zero or more active saved records of the opposite type. Saved Detail context starts from the complete saved link set; Editor context starts from the parent draft's current link selection.
 
 **Validation**
 
-At confirmation, every selected target must still exist and match the expected Transaction/Note endpoint type. A persisted owner must also still exist. Duplicate pairs collapse to one link. If any requested endpoint is unavailable, the whole proposed link set is invalid.
+At confirmation, every selected target must still exist and match the expected Transaction/Note endpoint type. A saved Detail source must also still exist. Duplicate pairs collapse to one link. If any requested endpoint is unavailable, the whole proposed link set is invalid.
 
-### Persisted-owner linking
+### Saved Detail context
 
 **Entry state**
 
-Start in `Phase.Loading` with Confirm disabled while loading the fixed saved owner and its complete saved link set. Enter `Phase.Idle` only after both are known. Confirm remains disabled until the proposed set differs from the saved set and every target is valid. A load failure enters the applicable failure phase and never presents an empty set as though all links were removed.
+Start in `Phase.Loading` with Confirm disabled while loading the fixed saved source and its complete saved link set. Enter `Phase.Idle` only after both are known. Confirm remains disabled until the proposed set differs from the saved set and every target is valid. A load failure enters the applicable failure phase and never presents an empty set as though all links were removed.
 
 **Confirm**
 
-Confirm enters `Phase.Saving` and atomically replaces the persisted owner's complete transaction–note link set. `Phase.Completed` is reached only after the replacement is durably saved and visible from both sides. The subflow then returns to the exact source detail or parent editor; if it returns to an editor, all unrelated parent-draft fields remain intact and the saved link set becomes that draft's current baseline. It never jumps to a top-level destination.
+Confirm enters `Phase.Saving` and replaces the saved source's complete transaction–note link set as one all-or-nothing change. `Phase.Completed` is reached only after every requested link is visible from both sides. The subflow returns to the exact saved Detail and never jumps to an Editor or top-level destination.
 
 **Failure/retry**
 
 Validation or save failure leaves the entire prior saved link set unchanged and creates no orphan or one-sided association. The applicable failure phase retains the proposed selection for correction or Retry, except unavailable targets are clearly marked and must be resolved first.
 
-### Unsaved-owner-draft linking
+### Any Editor context
 
 **Entry state**
 
-Start in `Phase.Idle` from the parent draft's current selected opposite records. The unsaved owner has no persisted owner identity or `EntityRef`, and opening this selector creates neither one. Done is enabled only when every selected target is valid and the proposed set differs from the parent draft's starting set.
+Start in `Phase.Idle` from the parent draft's current selected opposite records. An existing-record Editor has already loaded its complete saved links into that draft; a new Editor starts from its new-draft selection. Opening the selector writes no relationship. Done is enabled only when every selected target is valid and the proposed set differs from the parent draft's starting set.
 
 **Confirm**
 
-Done performs no durable save. It returns the validated selection to the existing parent draft and preserves every other parent field and media selection. The eventual owner Save creates the owner, its `EntityRef`, the selected transaction–note links, and all other requested relationships as one all-or-nothing operation. Only that owner save may reach `Phase.Completed` and make links visible from both sides.
+Done performs no durable save. It returns the validated selection to the same parent Editor and preserves every other parent field and media selection. For an existing-record Editor, parent Save makes the edited owner and its complete requested relationship set visible together. For a new Editor, parent Save makes the new owner and its complete requested relationship set visible together. The internal identity and relationship invariants remain owned by the [domain model](../architecture/domain-model.md) and [data and storage](../architecture/data-and-storage.md).
 
 **Failure/retry**
 
-Selection validation failure remains in the selector with the parent draft unchanged. If the eventual owner Save fails, no owner, `EntityRef`, or link is created; the complete parent draft and selected records return in the applicable failure phase for Retry. Discarding the parent draft discards these unsaved selections.
+Selection validation failure remains in the selector with the parent draft unchanged. If parent Save fails, no requested owner edit or relationship change becomes visible; the complete parent draft and selected records return in the applicable failure phase for Retry. Discarding an existing-record Editor leaves the prior saved owner and links unchanged. Discarding a new Editor makes neither owner nor links visible.
 
 **Cancel/Back**
 
-Before any `Phase.Saving`, Cancel or Back discards only the subflow's proposed changes and returns to the exact parent. Persisted links remain unchanged; an unsaved parent draft regains its starting selection and all other draft fields. The `Phase.Saving` Back/Cancel prohibition applies to persisted-owner confirmation.
+Before any `Phase.Saving`, Cancel or Back discards only the subflow's proposed changes and returns to the exact parent context. Saved Detail links remain unchanged; an Editor regains its starting draft selection and all other draft fields. The `Phase.Saving` Back/Cancel prohibition applies only after saved Detail confirmation or parent Save has begun.
 
 ## Shared tags and primary project assignment
 
 **Entry point**
 
-A saved or draft Transaction or Note opens its assignment control from the owning detail/editor.
-
-**Entry-state override**
-
-For a saved owner, start in `Phase.Loading` with Confirm disabled until the complete saved tag set, primary project, and available choices are loaded, then enter `Phase.Idle`. For an unsaved owner, start in `Phase.Idle` from the parent draft's current assignments. Confirm is disabled until the proposed assignments are valid and differ from the starting set. Load failure enters the applicable failure phase, retains the prior known assignments, and never renders them as unassigned.
+- A saved Transaction or Note **Detail** → edit tags/project: **saved Detail context**.
+- Any Transaction or Note **Editor**, including an existing-record Editor and a new Editor → edit the parent draft's tags/project: **Editor context**.
 
 **Fields and selections**
 
@@ -325,17 +322,37 @@ Tags apply only to Transaction and Note endpoints. A project itself cannot recei
 
 Every selected tag and the optional project must still exist and be available at confirmation. More than one project cannot be selected. The owning entity must be a Transaction or Note.
 
-**Save/confirm**
+### Saved Detail assignment context
 
-For a saved owner, confirm replaces the requested tag set and primary-project assignment as one all-or-nothing change. For a new owner, the assignments are part of that owner's all-or-nothing save. Only saved selections appear on detail, project aggregation, timeline, or search results.
+**Entry state**
 
-**Cancel/Back**
+Start in `Phase.Loading` with Confirm disabled until the fixed saved source, complete saved tag set, saved primary project, and available choices are loaded. Then enter `Phase.Idle`; Confirm remains disabled until the proposed assignments are valid and differ from the saved set. Load failure retains the last known assignments and never renders them as unassigned.
 
-Cancellation restores the prior saved selections, or the prior draft selections when launched inside an unsaved editor.
+**Confirm**
+
+Confirm enters `Phase.Saving` and replaces the saved source's requested tag set and primary-project assignment as one all-or-nothing change. `Phase.Completed` is reached only when every selected tag and the zero-or-one selected project are visible together on the saved Detail and relevant read views. The subflow returns to that same Detail.
 
 **Failure/retry**
 
-If any selection is invalid or the full assignment cannot be saved, none of the requested tag/project changes are saved. Prior saved assignments remain unchanged, the proposed selections remain visible for correction, and no success is shown.
+Validation or save failure leaves the entire prior saved tag/project assignment unchanged. The applicable failure phase retains the proposed selections for correction or Retry, with unavailable choices marked rather than silently removed.
+
+### Any Editor assignment context
+
+**Entry state**
+
+Start in `Phase.Idle` from the parent draft's current tags and primary project. An existing-record Editor has already loaded its complete saved assignments into that draft; a new Editor starts from its new-draft assignments. Opening the selector writes no assignment.
+
+**Confirm**
+
+Done performs no durable save. It returns the validated tag set and zero-or-one project to the same parent Editor with every other field, link, and media selection intact. For an existing-record Editor, parent Save makes the edited owner and all requested assignment/link changes visible together. For a new Editor, parent Save makes the new owner and all requested assignments/links visible together. The internal relationship invariants remain owned by the [domain model](../architecture/domain-model.md) and [data and storage](../architecture/data-and-storage.md).
+
+**Failure/retry**
+
+Selection validation failure remains in the selector and does not change the parent draft. If parent Save fails, no requested owner edit, tag change, or project change becomes visible; the complete parent draft and selections remain available for Retry. Discarding an existing-record Editor leaves all prior saved assignments unchanged. Discarding a new Editor makes neither owner nor assignments visible.
+
+**Cancel/Back**
+
+Before `Phase.Saving`, Cancel or Back restores the saved Detail's prior assignments or the Editor's prior draft selections and returns to that exact context. During saved Detail confirmation or parent Save, the shared `Phase.Saving` navigation lock applies.
 
 ## Image attachment import
 
@@ -357,7 +374,7 @@ No picker result means no attachment change. A selected item must be readable, s
 
 **Save/confirm**
 
-Confirming the preview only adds the image to the unsaved owner draft; it does not save an independent attachment. The image becomes durably visible only when the complete owning Transaction or Note saves successfully. The required storage reliability behavior is defined by [data and storage](../architecture/data-and-storage.md).
+Confirming the preview only adds the image to the parent Editor draft; it does not save an independent attachment. The image becomes durably visible only when the complete owning Transaction or Note saves successfully. The required storage reliability behavior is defined by [data and storage](../architecture/data-and-storage.md).
 
 **Cancel/Back**
 
@@ -365,7 +382,7 @@ Back from the picker or pending preview leaves the owner draft unchanged unless 
 
 **Failure/retry**
 
-Unreadable or invalid content adds no image and leaves the rest of the draft intact. Import or owner-save failure shows no success, leaves a saved owner unchanged, exposes no missing image as an attachment, and preserves the owner draft for Retry or Reselect.
+Unreadable or invalid content adds no image and leaves the rest of the draft intact. Import or parent-save failure shows no success, leaves the prior saved record unchanged, exposes no missing image as an attachment, and preserves the parent draft for Retry or Reselect.
 
 ## System share drafts
 
@@ -419,7 +436,7 @@ The image becomes saved only as part of the confirmed owner's complete all-or-no
 
 **Cancel/Back**
 
-Discard removes the unsaved owner draft and leaves no visible image record.
+Discard removes the new parent draft and leaves no visible image record.
 
 **Failure/retry**
 
@@ -492,11 +509,11 @@ Permission loss, space exhaustion, destination failure, or validation failure sh
 
 **Entry point**
 
-Settings → Data → Create complete backup → Android Storage Access Framework destination confirmation.
+Settings → Backup → Create complete backup → Android Storage Access Framework destination confirmation.
 
 **Entry-state override**
 
-Entry starts in `Phase.Checking` with Complete Backup fixed as the operation kind, no destination, no progress, and Create Backup disabled. It moves to `Phase.Selecting` only when backup prerequisites are available, and the primary action becomes enabled only after a writable destination is confirmed. Starting backup enters `Phase.Running`. Returning from destination selection restores the operation kind but not an unconfirmed destination. Retry preserves the user's place in the backup flow and requests a new destination only when required.
+Entry starts in `Phase.Checking` with Complete Backup fixed as the operation kind, no destination, no progress, and Create Backup disabled. It moves to `Phase.Selecting` only when backup prerequisites are available, and the primary action becomes enabled only after a writable destination is confirmed. Starting backup opens the modal full-screen `BackupExportProgress` route in `Phase.Running`. Returning from destination selection restores the operation kind but not an unconfirmed destination.
 
 **Fields and selections**
 
@@ -508,15 +525,15 @@ The destination must be writable, enough working space must be available, and th
 
 **Save/confirm**
 
-Progress identifies user-meaningful phases such as collecting records and images, validating the backup, and writing the selected destination. Report success only when the complete backup is verified and available at the selected destination.
+The modal progress route identifies user-meaningful phases such as collecting records and images, validating the backup, and writing the selected destination. `Phase.Completed` is reached only when the complete backup is verified and available at the selected destination. Completion closes the modal and returns to Settings → Backup with a clear Success result and the completed destination.
 
 **Cancel/Back**
 
-Cancel requests cancellation at the next safe boundary. Until cancellation is acknowledged, the screen does not claim completion. Any incomplete result is never offered as restorable. Cancellation does not change current app data.
+Before backup starts, cancellation returns to Settings → Backup. In `Phase.Running`, bottom navigation is hidden or disabled, app-bar Back, system Back, predictive-back gesture, and outside/modal dismissal cannot leave the progress route; explicit Cancel is the only exit request. Pressing Cancel enters `Phase.Cancelling`, disables Cancel, and waits for the operation's actual terminal acknowledgement. Confirmed cancellation enters `Phase.Cancelled`, offers no restorable backup, closes the modal, and returns to Settings → Backup with a clear Cancelled result. If completion won the race before cancellation was acknowledged, the actual result is `Phase.Completed` and Settings → Backup shows Success; the UI never claims cancellation early.
 
 **Failure/retry**
 
-Any read, write, space, permission, destination, or verification failure shows no success and leaves current app data unchanged. An incomplete result cannot be selected from the app's restorable-backup list. Retry may require destination reselection.
+Any read, write, space, permission, destination, or verification failure shows no success and leaves current app data unchanged. After the terminal failure is known, close the modal and return to Settings → Backup with a clear Failed result and Retry. Retry keeps Complete Backup as the operation kind, reruns prerequisites, and requires destination reselection only when the prior destination is no longer writable. An incomplete result cannot be selected from the app's restorable-backup list.
 
 ## Overwrite restore wizard
 
@@ -562,7 +579,7 @@ Retry continues only the architecture-approved verification/recovery path. Repea
 
 **Entry point**
 
-Settings → Data → Restore complete backup opens the Restore Wizard, then Android Storage Access Framework selects a candidate ZIP.
+Settings → Restore → Select complete backup opens the Restore Wizard, then Android Storage Access Framework selects a candidate ZIP.
 
 **Fields and selections**
 
@@ -578,7 +595,7 @@ Preflight does not change current data. Only a fully valid candidate enables Con
 
 **Cancel/Back**
 
-Cancel closes the wizard, releases the candidate selection, and returns to Settings with current data unchanged.
+Before preflight starts in `Phase.Selecting`, explicit Cancel enters `Phase.Cancelled` and returns to Settings → Restore with a clear Cancelled result. During `Phase.Checking`, explicit Cancel enters `Phase.Cancelling`; Back, gestures, and bottom navigation do not leave while the check acknowledges cancellation. Confirmed cancellation enters `Phase.Cancelled` and returns to Settings → Restore. Current data remains unchanged, and no restore confirmation is shown after cancellation was accepted.
 
 **Failure/retry**
 
@@ -592,7 +609,7 @@ Only successful preflight enters confirmation.
 
 **Entry-state override**
 
-The confirmation screen starts in `Phase.Idle` with Confirm Restore disabled until the complete validated summary is present and the user acknowledges that all current data will be replaced. If validation is no longer current, the flow returns to `Phase.Checking` and disables confirmation until preflight succeeds again.
+The confirmation screen starts in `Phase.Idle` with Confirm Restore disabled until the complete validated summary is present and the user acknowledges that all current data will be replaced. If validation is no longer current, the flow returns to `Phase.Checking` and disables confirmation until preflight succeeds again. This screen is the final cancellable point.
 
 **Fields and selections**
 
@@ -604,11 +621,11 @@ Confirmation remains disabled if the candidate changed or its prior validation i
 
 **Save/confirm**
 
-One explicit confirmation begins the complete restore operation. Confirmation is not restore success.
+One explicit final Confirm enters `Phase.Running` and begins the complete restore commit/recovery gate. Confirmation is not restore success, but from this event onward the operation is non-cancellable until startup validation produces complete success or complete failure/rollback.
 
 **Cancel/Back**
 
-Cancel returns to candidate selection or Settings without changing current data.
+Before final Confirm, explicit Cancel enters `Phase.Cancelled` and returns to Settings → Restore with a clear Cancelled result and current data unchanged. After final Confirm, this rule no longer applies.
 
 **Failure/retry**
 
@@ -622,7 +639,7 @@ Explicit overwrite confirmation.
 
 **Entry-state override**
 
-Progress starts in `Phase.Running` at the first truthful restore phase, with duplicate confirmation disabled and no success state. Cancel is enabled only while the operation can still honor cancellation without exposing a replacement. If interruption requires safety recovery, the operation enters `Phase.Recovering`. Once safe cancellation is no longer available, Cancel becomes disabled and the screen explains that validation or recovery must finish.
+Progress starts in `Phase.Running` immediately after final Confirm, with duplicate confirmation disabled and no success state. Cancel is absent/disabled from the first progress frame. App-bar Back, system Back, predictive-back gesture, bottom navigation, and outside dismissal cannot leave the flow. If startup or interruption requires the blocked recovery route, the operation enters `Phase.Recovering` there. The lock remains until startup validation produces `Phase.Completed` or a verified failure/rollback outcome.
 
 **Fields and selections**
 
@@ -644,7 +661,7 @@ The internal generation-activation and migration-recovery protocols are owned ex
 
 **Cancel/Back**
 
-Cancellation is accepted only before complete replacement begins and leaves current data unchanged. After that boundary, Back/Cancel cannot claim cancellation; the flow must finish validation or recovery. The screen explains that recovery is finishing and prevents duplicate restore starts.
+No cancellation is accepted after final Confirm. Back/Cancel cannot claim cancellation or return to Settings; bottom navigation remains unavailable. The flow must finish startup validation or recovery and then route to terminal success or terminal failure/rollback. The screen explains that verification/recovery is required and prevents duplicate restore starts.
 
 **Failure/retry**
 
@@ -654,7 +671,7 @@ Cancellation is accepted only before complete replacement begins and leaves curr
 - While safe recovery is unresolved, normal data navigation and new restore attempts remain blocked rather than opening uncertain data.
 - Cleanup or diagnostics never become a user-visible success substitute.
 
-None of these failures may be described as partial restore success. Retry starts from a fresh preflight only after the original vault or completed replacement is verified safe.
+None of these failures may be described as cancellation or partial restore success. Retry starts from Settings → Restore with a fresh preflight only after the original vault or completed replacement is verified safe.
 
 ### 4. Terminal success
 
@@ -710,7 +727,7 @@ After a verified return to the original vault, Continue opens that unchanged vau
 
 **Cancel/Back**
 
-Back cannot bypass an unresolved migration-recovery gate. After the original vault is verified safe, Back may return to Settings.
+Back cannot bypass an unresolved migration-recovery gate. After the original vault is verified safe, Back may return to Settings → Restore.
 
 **Failure/retry**
 
@@ -722,14 +739,17 @@ Future ViewModel and Compose tests must cover at least:
 
 ### Required state and navigation acceptance points
 
-- **Persisted-owner linking:** begin with a saved link set, propose additions/removals, confirm, and observe the complete replacement from both sides only after `Phase.Completed`. Inject validation and save failures and assert that the prior saved set remains intact while the proposed selection remains available for correction.
-- **Unsaved-owner-draft linking:** choose links for a new Transaction or Note, return to the parent editor, and assert that no owner or link is yet visible anywhere else. Confirm the parent and observe owner, `EntityRef`, all selected links, and other requested relationships together. Inject owner-save failure and assert that none becomes visible while every parent field and selected link remains in the draft.
+- **Saved Detail relationships:** from a saved Detail, replace transaction–note links and tag/project assignments independently. Assert each complete requested set becomes visible together only after `Phase.Completed`, returns to the same Detail, and leaves the prior set unchanged on validation/save failure.
+- **Existing-record Editor relationships:** from an Editor for a saved record, change links, tags, and project, then Done. Assert only the parent draft changes and no relationship read view changes before parent Save. Assert parent Save makes the owner edit and complete relationship set visible together; failure retains the complete draft/selections; Discard leaves all prior saved relationships unchanged.
+- **New Editor relationships:** choose links, tags, and project for a new Transaction or Note. Assert only the parent draft changes before Save. Parent Save must make owner and every requested relationship visible together; failure or Discard must make neither owner nor relationship visible while failure retains the complete draft for Retry.
 - **Saving navigation lock:** for every editor, dispatch app-bar Back, system Back, predictive-back gesture, Cancel, Discard, and duplicate Confirm during `Phase.Saving`. Assert that all remain on the same editor, do not request cancellation, and produce exactly one result: `Phase.Completed` or a declared failure phase with the complete draft restored. No event sequence may show Cancelled and later show Success.
 - **CSV modal progress:** assert that entering `CsvExportProgress` in `Phase.Running` hides/disables bottom navigation and rejects app-bar/system/predictive Back and outside dismissal. Explicit Cancel must enter `Phase.Cancelling` without claiming cancellation; confirmed cancellation must enter `Phase.Cancelled` and return to Settings → Export with Cancelled, while a completion that wins the race returns Success. Failure returns Failed, and no incomplete file is offered as complete.
+- **Backup modal progress:** run the same navigation-lock, cancellation acknowledgement, and completion-race cases on `BackupExportProgress`. Success/Cancelled/Failed must return to Settings → Backup; Failed exposes deterministic Retry and requests destination reselection only when required; no incomplete result is restorable.
 - **Search revision ordering:** start revision A, edit query/filter to start revision B while A runs, then complete A after B. Assert that only B may update visible results/error/phase. Repeat with a stale A error. Clear or leave Search while a revision runs and assert that later completion changes no visible Search state; opening a current completed result still restores that completed revision on Back.
 - **App-start restore routing:** with no pending work, startup may enter the shell. With pending replacement verification or migration/restore recovery, assert that startup enters `RestoreRecoveryRoute` before the shell. Verified replacement must reach terminal success; verified rollback must reach terminal failure and enable the original data; unresolved/repeated failure must keep shell navigation blocked while exposing only safe Retry and sanitized diagnostics.
+- **Restore cancellation boundary:** Cancel in candidate selection enters `Phase.Cancelled`; Cancel during `Phase.Checking` enters `Phase.Cancelling` and waits before reaching `Phase.Cancelled`; both return to Settings → Restore unchanged. After final Confirm enters `Phase.Running`, assert Cancel is absent and every Back/bottom-navigation path is blocked through `Phase.Recovering` until startup validation reaches `Phase.Completed` or verified Failure/Rollback.
 - **Opening time:** use a controlled device clock. Assert that the opening date/time field is absent, the first valid Create press captures the clock once, a failed save plus Retry reuses that captured time even after the clock advances, and Discard followed by a fresh draft captures the new clock value.
-- **Finance destination table:** assert new Expense/Income/Transfer → Finance-owned transaction detail, new Account → account detail, edit → source detail, and child subflow → parent draft. In every case Back restores the exact retained launch state and no navigation occurs before `Phase.Completed`.
+- **Finance destination table:** assert new Expense/Income/Transfer → Finance-owned transaction detail, new Account → account detail, and owner edit → source detail. An Editor child subflow returns to its parent draft without independent save; a saved Detail relationship subflow returns to that Detail after its own success. Back restores the exact retained launch state and no owner-save navigation occurs before `Phase.Completed`.
 
 | Interaction | Success assertion | Required failure assertion |
 |---|---|---|
@@ -737,11 +757,11 @@ Future ViewModel and Compose tests must cover at least:
 | Transfer | Two distinct same-currency account effects sum to zero | Neither account changes on any failure |
 | Note | Body or confirmed image is sufficient; no title required | Prior saved revision unchanged; draft retained |
 | Opening balance | Account and matching opening-balance history both exist with the first-confirmation time | Neither appears after failed save; Retry retains fields and captured time |
-| Transaction–note linking | Persisted set replaces atomically; unsaved selection becomes visible only with owner save | Persisted set unchanged or unsaved owner absent; selected links remain in the applicable draft |
-| Tags / project | Many tags and at most one project save together | Prior assignments unchanged |
+| Transaction–note linking | Saved Detail set replaces independently; any Editor set becomes visible only with parent Save | Saved set unchanged or Editor changes remain draft-only; selections remain available after failure |
+| Tags / project | Saved Detail assignments replace independently; any Editor assignments become visible only with parent Save | Saved assignments unchanged or Editor changes remain draft-only; failure retains selections |
 | Image import | Confirmed owner and image remain available offline | No visible link to missing content; draft retained |
 | Share text/image | Only an unsaved typed draft exists before confirm | Leaving saves nothing; no orphan image |
 | Search/filter | Only the current request revision can render All/Transaction/Note results and dispatch to source | Stale/invalidated results and errors are ignored; current query/filter remains editable |
 | CSV export | Complete verified CSV, all transactions exactly once, returns Success to Settings → Export | Modal navigation lock holds; Cancel waits for confirmation; incomplete output is never complete |
-| Logical backup | Complete verified ZIP without CSV | Incomplete output is not restorable |
-| Restore | Complete replacement passes startup verification, including blocked cross-start routing when required | Original vault remains/returns usable or shell stays blocked; no partial-success wording; migration gate cannot be bypassed |
+| Logical backup | Complete verified ZIP without CSV returns Success to Settings → Backup | Modal lock holds; Cancel waits for confirmation; Failed supports Retry; incomplete output is not restorable |
+| Restore | Preflight cancellation reaches Cancelled; final Confirm can succeed only after startup verification and blocked cross-start routing when required | After final Confirm no cancellation/navigation escape; original vault returns usable or shell stays blocked; migration gate cannot be bypassed |

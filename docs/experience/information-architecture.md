@@ -54,6 +54,8 @@ flowchart TD
     SEARCH["Unified search"]
     SETTINGS["Settings"]
     SETTINGS_EXPORT["Settings > Export"]
+    SETTINGS_BACKUP["Settings > Backup"]
+    SETTINGS_RESTORE["Settings > Restore"]
 
     subgraph TOP["Persistent bottom navigation"]
         TL_HOME["Timeline home"]
@@ -74,7 +76,7 @@ flowchart TD
     ACCOUNT_EDIT["Account and opening-balance editor"]
     ATTACHMENT_PREVIEW["Attachment preview"]
     CSV_PROGRESS["CSV export modal progress"]
-    BACKUP_PROGRESS["Backup export progress"]
+    BACKUP_PROGRESS["Backup export modal progress"]
     RESTORE["Restore wizard"]
 
     APP_START --> RECOVERY_GATE
@@ -121,8 +123,14 @@ flowchart TD
 
     SETTINGS --> SETTINGS_EXPORT
     SETTINGS_EXPORT --> CSV_PROGRESS
-    SETTINGS_EXPORT --> BACKUP_PROGRESS
-    SETTINGS --> RESTORE
+    CSV_PROGRESS -- "Success / Cancelled / Failed" --> SETTINGS_EXPORT
+    SETTINGS --> SETTINGS_BACKUP
+    SETTINGS_BACKUP --> BACKUP_PROGRESS
+    BACKUP_PROGRESS -- "Success / Cancelled / Failed" --> SETTINGS_BACKUP
+    SETTINGS --> SETTINGS_RESTORE
+    SETTINGS_RESTORE --> RESTORE
+    RESTORE -- "Cancelled before final Confirm" --> SETTINGS_RESTORE
+    RESTORE -- "Final Confirm: verification / recovery" --> RESTORE_RECOVERY
 ```
 
 ### Typed route contract
@@ -147,8 +155,10 @@ Typed route keys are stable screen contracts for future Compose implementation. 
 | `AttachmentPreview` | In-memory pending-media handle or persisted attachment ID | Owning editor/detail with its state intact |
 | `SettingsExport` | Export operation kind and latest terminal result | Settings or the retained top-level launch context |
 | `CsvExportProgress` | Confirmed CSV destination and modal progress state | No Back while Running/Cancelling; every confirmed terminal outcome returns to `SettingsExport` with Success, Cancelled, or Failed status |
-| `BackupExportProgress` | Confirmed logical-backup destination and progress state | `SettingsExport` after its terminal state or allowed cancellation |
-| `RestoreWizard` | No implicit candidate; the user selects one inside the wizard | Settings after cancellation or terminal state |
+| `SettingsBackup` | Backup prerequisites, destination selection, and latest terminal result | Settings or the retained top-level launch context |
+| `BackupExportProgress` | Confirmed logical-backup destination and modal progress state | No Back while Running/Cancelling; every confirmed terminal outcome returns to `SettingsBackup` with Success, Cancelled, or Failed status |
+| `SettingsRestore` | Restore candidate entry and latest pre-commit Cancelled/terminal result | Settings or the retained top-level launch context |
+| `RestoreWizard` | No implicit candidate; the user selects one inside the wizard | Before final Confirm, Cancelled returns to `SettingsRestore`; after final Confirm there is no Back/Cancel route until terminal success/failure |
 | `RestoreRecoveryRoute` | Architecture-verified pending restore/migration recovery status; no domain or file-path argument | No shell destination while unresolved; verified replacement goes to restore success, verified rollback goes to restore failure |
 | `RestoreTerminalSuccess` | Complete replacement verified safe | Continue into Timeline using restored data |
 | `RestoreTerminalFailure` | Restore failed and original vault verified safe | Continue into the original data or return to Settings; unresolved recovery never enters this route |
@@ -157,19 +167,19 @@ An origin context is navigation-only state needed to return to the previous scro
 
 ## Bottom-navigation visibility
 
-Bottom navigation is visible on:
-
-- all four top-level homes;
-- their browse/detail surfaces, including account, transaction, note, and project details;
-- Unified Search, Settings, `SettingsExport`, and non-destructive `BackupExportProgress` surfaces.
-
-Bottom navigation is hidden for focused or destructive flows:
-
-- every transaction, note, account, tag, or project editor;
-- attachment preview, whether launched from a draft or saved detail;
-- `CsvExportProgress` throughout `Phase.Running` and `Phase.Cancelling`; app/system Back and gestures are also disabled until the actual terminal result returns to `SettingsExport`;
-- the complete Restore Wizard from candidate selection through its terminal result;
-- `RestoreRecoveryRoute`, which appears before the shell and therefore exposes no bottom navigation while verification or recovery is unresolved.
+| Route or context | Phase | Bottom navigation | App/system/predictive Back | Explicit Cancel and terminal route |
+|---|---|---|---|---|
+| Top-level homes and browse/details | Any stable browse phase | Visible | Normal route behavior | Not applicable |
+| Unified Search, Settings, `SettingsExport`, `SettingsBackup`, `SettingsRestore` | Stable browse/result state | Visible | Returns to retained origin | Not applicable |
+| Any transaction, note, account, tag, or project Editor; attachment preview | Any | Hidden | Draft/preview rule in [interaction rules](interaction-rules.md) | Editor `Phase.Saving` blocks Cancel/Discard until Completed or Failure |
+| Saved Detail relationship/assignment subflow | Before `Phase.Saving` | Hidden | Returns to the same Detail without writing | Confirm enters locked `Phase.Saving`; terminal returns to same Detail |
+| Editor relationship/assignment subflow | `Phase.Idle` | Hidden | Returns to the same parent draft without writing | Done updates only parent draft; parent Save owns visibility |
+| `CsvExportProgress` | `Phase.Running` / `Phase.Cancelling` | Hidden or disabled | Blocked; cannot leave modal | Only explicit Cancel; terminal returns Success/Cancelled/Failed to `SettingsExport` |
+| `BackupExportProgress` | `Phase.Running` / `Phase.Cancelling` | Hidden or disabled | Blocked; cannot leave modal | Only explicit Cancel; terminal returns Success/Cancelled/Failed to `SettingsBackup` |
+| `RestoreWizard` candidate/confirmation | `Phase.Selecting` / `Phase.Idle` | Hidden | Exits only through the defined pre-commit cancellation result | Cancel → `Phase.Cancelled` → `SettingsRestore` |
+| `RestoreWizard` preflight | `Phase.Checking` / `Phase.Cancelling` | Hidden | Blocked while checking/cancelling | Explicit Cancel waits for confirmation, then `Phase.Cancelled` → `SettingsRestore` |
+| Restore after final Confirm | `Phase.Running` / `Phase.Recovering` | Hidden | Blocked until verified terminal outcome | Cancel unavailable; startup validation routes only to Completed or Failure/Rollback |
+| `RestoreRecoveryRoute` | `Phase.Recovering` / `Phase.BlockingFailure` | Not constructed | Cannot enter shell | Safe Retry/diagnostics only until a complete vault is verified |
 
 Hiding bottom navigation does not discard the selected tab or its back stack. Back or a terminal action restores the same shell context. System Back from a dirty editor follows the discard rule in [interaction rules](interaction-rules.md); it must not silently destroy a draft.
 
@@ -197,7 +207,7 @@ Compose implementation must hoist these values out of disposable list items and 
 5. Transaction-to-note and note-to-transaction links open the linked source detail in the owning feature. Back returns to the originating detail.
 6. A primary-project chip or assignment may open `ProjectDetail`; this navigation does not change the fact's assignment.
 7. Missing or soft-deleted targets render an unavailable state and a safe Back action; they do not redirect to an unrelated record.
-8. Successful creation of an Expense, Income, or Transfer opens its Finance-owned `TransactionDetail`; successful account creation opens `AccountDetail`. Back restores the exact retained launch context. Successful edit returns to its source detail. Returning from a link, assignment, image, or picker subflow restores the parent draft and never applies a top-level success route.
+8. Successful creation of an Expense, Income, or Transfer opens its Finance-owned `TransactionDetail`; successful account creation opens `AccountDetail`. Back restores the exact retained launch context. Successful edit returns to its source detail. A relationship/assignment action launched from a saved Detail may save independently and returns to that Detail; the same action launched from any Editor only updates and returns to the parent draft. Image/picker subflows also return to the parent draft. None applies a top-level success route.
 9. Search result and error updates are scoped to the current query/filter request revision. Clearing, closing, or leaving Search invalidates pending updates, except that opening a current result preserves the completed Search state for Back.
 10. App startup must resolve the restore/migration recovery gate before the shell: replacement verification leads to terminal success, verified rollback leads to terminal failure with access to the original data, and unresolved recovery remains blocked with Retry/diagnostics only.
 
@@ -213,7 +223,10 @@ Future Compose navigation and UI tests must demonstrate:
 - editors, attachment preview, and Restore Wizard hide bottom navigation and restore the prior context on return;
 - cards from Timeline and Search dispatch to the correct source detail and Back restores origin state;
 - new finance/account success routes and edit/subflow returns follow the deterministic destinations above;
+- relationship and assignment subflows choose save behavior from saved Detail versus any Editor context; an existing-record Editor never uses the independent Detail save path;
 - `CsvExportProgress` is modal full-screen: Running/Cancelling blocks bottom navigation and every Back path, explicit Cancel waits for acknowledgement, and Success/Cancelled/Failed returns to `SettingsExport` with the actual status;
+- `BackupExportProgress` obeys the same modal lock and cancellation acknowledgement, returning Success/Cancelled/Failed to `SettingsBackup` with a deterministic Retry path;
+- Restore preflight can reach Cancelled and return to `SettingsRestore`; final Confirm removes every Cancel/Back/bottom-navigation path until startup validation reaches complete success or failure/rollback;
 - a pending app-start recovery shows `RestoreRecoveryRoute` before the shell and cannot be bypassed into ordinary navigation;
 - stale or invalidated Search revisions cannot update visible results or errors;
 - no screen, route key, button, or domain type named generic Entry is introduced.
