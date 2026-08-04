@@ -62,6 +62,7 @@ Typed errors contain safe categories and retry capabilities, not user content or
 - Validation failures, corrupt data, incompatible backup formats, permission denial, and storage exhaustion are never automatically retried.
 - A migration recovery pending state and a generation restore pending state are startup safety gates, not generic retry loops. Their coordinator must run before Room initialization and before the application shell, follow [data and storage](../architecture/data-and-storage.md), and expose normal use only after one complete vault is verified.
 - Recovery transitions, sidecar isolation, activation validation, rollback, quarantine, and cleanup handlers are idempotent and fault-injection tested. No implementation may infer recovery success from file presence or an old UI progress state.
+- Restore readers enforce the exact entry, UTF-8 path, per-entry size, aggregate uncompressed-size, staging-reserve, compression-ratio, and streaming limits in [data and storage](../architecture/data-and-storage.md). Manifest values are untrusted declarations; actual streamed counters independently stop at the first excess without changing the current vault.
 
 ## Module and platform boundaries
 
@@ -70,6 +71,21 @@ Typed errors contain safe categories and retry capabilities, not user content or
 - Repository APIs expose domain/application models, typed outcomes, and stable IDs. They do not expose Room entities, cursors, provider URIs as durable identities, or implementation paths.
 - `:feature:timeline` cannot mutate source facts. Rebuildable projections never become write authorities.
 - Add a module only when the four split thresholds in the [architecture overview](../architecture/overview.md) all hold. Empty modules and speculative interfaces are forbidden.
+- App Lock uses only Android `BiometricPrompt`/device credential capability and never an app-owned password. The technical recovery coordinator still runs before Room, while the UI applies secure-window protection before any pre-authentication frame and reveals only the generic locked recovery surface until authentication.
+
+## Platform backup and offline policy
+
+- MVP app data never enters Android cloud backup or system device-to-device transfer. The database, attachments, activation/recovery state, diagnostics, preferences containing user state, and every other user-data domain are excluded.
+- When Android sources exist, configure API 34 `android:dataExtractionRules`, compatible `android:fullBackupContent` exclusion rules, and manifest backup policy as one defense-in-depth contract. Set `android:allowBackup="false"` for baseline denial, while explicit cloud-backup and device-transfer exclusions cover every applicable app-managed domain; do not assume `allowBackup` alone controls all OEM transfer behavior.
+- Release verification inspects the source manifest, merged release manifest, and final APK. Any path that admits app user data into system backup or transfer is blocking. The only supported migration path is the in-app logical backup/restore flow through a user-selected SAF destination.
+- Offline verification does not attempt to “deny” a normal Android permission at runtime. Source manifest, merged manifest, and final APK must contain no `INTERNET` permission, unexpected network component, or related network permission, and Journeys 1–13 run in airplane mode or an otherwise network-isolated environment.
+
+## Diagnostic event boundary
+
+- Application-authored retained/exportable diagnostic events have exactly four allowed fields: an event timestamp, stable error category, non-sensitive operation stage, and anonymous operation ID.
+- The timestamp comes from an injected UTC clock as epoch milliseconds or an equivalent UTC instant. It contains no time-zone, locale, content, domain identity, device identity, or path information.
+- The anonymous operation ID is random and cannot be derived from a record, device, path, user value, or timestamp. Error category and stage are closed application enums, never raw exception text.
+- The app-private ring buffer enforces both limits independently: retain no event older than 7 days and never exceed 1 MiB after serialization. Boundary tests cover exact-limit inclusion, one-unit/time-step overflow, rotation, restart, clear, and export.
 
 ## Dependencies and build configuration
 
@@ -81,6 +97,6 @@ Typed errors contain safe categories and retry capabilities, not user content or
 
 ## Documentation-first changes
 
-Before code changes a stable product, experience, architecture, persistence, compatibility, recovery, security, or engineering decision, update its owning core document. Add or supersede an ADR when the decision changes architecture or durable compatibility, then update the active spec and plan before implementation. Code and tests cannot silently redefine a core decision.
+Before code changes a stable product, experience, architecture, persistence, compatibility, recovery, security, or engineering decision, update its owning core document. Add or supersede an ADR when the decision changes architecture or durable compatibility, then update the active spec and plan before implementation. Code and tests cannot silently redefine a core decision. Current numeric budgets and limits in core documents are binding MVP defaults; a later spec cannot silently defer or loosen them, and any stable change requires explicit approval plus an ADR where persistence, compatibility, recovery, or security is affected.
 
 Every completed change records the actual verification commands, environment, results, and remaining risk according to the [testing strategy](testing-strategy.md).

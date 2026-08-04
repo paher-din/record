@@ -2,7 +2,7 @@
 
 This document is the source of truth for user-visible interaction state, confirmation, cancellation, and failure behavior. Journey outcomes and acceptance criteria remain owned by the [MVP requirements](../product/mvp-requirements.md). Domain invariants are owned by the [domain model](../architecture/domain-model.md), and storage, attachment, backup, migration, and generation-activation protocols are owned by [data and storage](../architecture/data-and-storage.md).
 
-The MVP is a local-first, single-user Android 14+ application. Every interaction below must work with Android network permission denied.
+The MVP is a local-first, single-user Android 14+ application. Every interaction below must work in airplane mode or an otherwise network-isolated environment.
 
 ## Shared interaction contract
 
@@ -442,6 +442,72 @@ Discard removes the new parent draft and leaves no visible image record.
 
 URI permission or read failure keeps any other draft values, identifies the media problem, and offers Reselect when possible. Owner-save failure shows no success and creates neither a partial owner nor a visible orphan image.
 
+## App Lock
+
+App Lock is optional UI access control and defaults to off. It uses Android `BiometricPrompt` with the device's supported biometric or device credential capability; the app never creates, stores, resets, or recovers its own password. App Lock does not claim database or backup encryption.
+
+### Privacy & Security setting
+
+**Entry point**
+
+Settings → Privacy & Security.
+
+**Entry-state override**
+
+The screen starts in `Phase.Loading` with the toggle disabled while reading the enabled state and platform-authentication capability. It enters `Phase.Idle` with App Lock off for a fresh installation. No enable/disable success is shown until the platform authentication result is known.
+
+**Fields and selections**
+
+One App Lock toggle plus a non-sensitive capability/status explanation. There is no password, PIN, grace-period, timeout, or custom recovery field.
+
+**Validation**
+
+Enable is available only when Android reports an eligible biometric or device credential authenticator. Enabling or disabling requires a fresh platform-authentication result; a cached app session cannot silently change the setting.
+
+**Save/confirm**
+
+Changing the toggle enters `Phase.Checking` and invokes the platform prompt. Successful authentication durably changes the setting and returns to `Phase.Idle` with the actual enabled state. Enabling immediately activates secure-window protection and the next required lock boundary. Disabling removes App Lock only after successful authentication; it does not alter the vault, backups, diagnostics, or system recovery state.
+
+**Cancel/Back**
+
+Cancelling or dismissing the platform prompt enters `Phase.RecoverableFailure`, preserves the prior enabled state, and offers Retry or return to `Phase.Idle`. Back outside a prompt returns to Settings without changing the setting.
+
+**Failure/retry**
+
+Authentication failure preserves the prior setting and stays in `Phase.RecoverableFailure`; platform lockout or loss of an eligible authenticator is `Phase.BlockingFailure` with only the platform remediation and Retry actions. The app never offers a bypass or custom-password fallback.
+
+### Lock and unlock route
+
+**Entry point**
+
+When App Lock is enabled, every cold start and every background-to-foreground transition immediately enters `AppLockRoute`. There is no grace period. Before the prior activity frame can be displayed, the application applies reliable secure-window protection so screen content and the recent-task preview cannot reveal user data.
+
+The technical migration/restore recovery gate is evaluated before Room initialization. If it is pending while authentication is absent, the app may render only `LockedRecoverySurface`: a generic, data-free statement that protected recovery is in progress or requires attention. It cannot show record counts, filenames, paths, diagnostics, failure details, terminal outcomes, or any previous user-data frame.
+
+**Entry-state override**
+
+The route starts in `Phase.Checking` while requesting Android authentication. It contains no draft, vault data, diagnostic envelope, navigation state, or prior-screen preview. If a generic recovery condition exists, only its boolean presence affects the generic surface.
+
+**Fields and selections**
+
+There are no app-owned credential fields. The only actions are the platform authentication prompt and Retry when allowed.
+
+**Validation**
+
+Only a current successful `BiometricPrompt`/device-credential result authenticates the foreground session. A stale success from a prior foreground session is invalid after any background transition.
+
+**Save/confirm**
+
+Authentication success enters `Phase.Completed`. If the already-evaluated recovery gate is healthy, continue to the shell. If recovery is pending or has a protected terminal outcome, continue to the authenticated detailed recovery route; unresolved recovery still cannot enter the shell.
+
+**Cancel/Back**
+
+Prompt cancellation or authentication failure enters `Phase.RecoverableFailure` and remains on the lock route with Retry. App-bar Back is absent; system/predictive Back may only background or exit the app and can never reveal the shell or prior frame.
+
+**Failure/retry**
+
+Platform lockout or unavailable credentials enter `Phase.BlockingFailure`. Retry is enabled only when the platform permits another authentication attempt. No diagnostic export, restore detail, user data, Settings route, or “continue anyway” action is available before authentication.
+
 ## Unified search and type filtering
 
 **Entry point**
@@ -535,6 +601,36 @@ Before backup starts, cancellation returns to Settings → Backup. In `Phase.Run
 
 Any read, write, space, permission, destination, or verification failure shows no success and leaves current app data unchanged. After the terminal failure is known, close the modal and return to Settings → Backup with a clear Failed result and Retry. Retry keeps Complete Backup as the operation kind, reruns prerequisites, and requires destination reselection only when the prior destination is no longer writable. An incomplete result cannot be selected from the app's restorable-backup list.
 
+## Diagnostic export
+
+**Entry point**
+
+Settings → Diagnostics. The route is available only after App Lock authentication when App Lock is enabled. An authenticated detailed recovery route may expose the same action when safe; `LockedRecoverySurface` cannot.
+
+**Entry-state override**
+
+Diagnostics starts in `Phase.Loading` while reading the redacted ring-buffer envelope, then enters `Phase.Idle`. The stable screen shows only time range, event count, estimated size, retention rule, and the latest terminal export result. It never renders event payload, user content, identifiers, paths, or raw exception text. Export starts disabled until the envelope is available and non-empty.
+
+**Fields and selections**
+
+The user may clear diagnostics or choose **Export diagnostics**. Export enters `Phase.Selecting` and uses Android Storage Access Framework to choose one destination. The selected artifact is only the sanitized diagnostic envelope and allowed redacted events; the user cannot add the vault, database, attachments, backup, CSV, screenshots, or arbitrary files.
+
+**Validation**
+
+The current diagnostics set must be non-empty, the destination must be writable, and the export must pass the security-owned redaction/allowlist check before it can complete. Summary values remain non-sensitive and do not expose individual events.
+
+**Save/confirm**
+
+After explicit destination confirmation, open full-screen modal `DiagnosticExportProgress` in `Phase.Running`. Progress is truthful and contains no event payload. `Phase.Completed` is reached only after the complete sanitized artifact is verified at the destination, then the modal returns Success to Diagnostics. Export never modifies the vault and never automatically shares or uploads the artifact.
+
+**Cancel/Back**
+
+Before export starts, Back or Cancel returns to Diagnostics unchanged. During `Phase.Running`, bottom navigation, app-bar/system/predictive Back, and outside dismissal are blocked. Explicit Cancel enters `Phase.Cancelling` and waits for the actual terminal result. Confirmed cancellation enters `Phase.Cancelled` and returns Cancelled to Diagnostics; if completion wins the race, the actual result is Success.
+
+**Failure/retry**
+
+Permission, space, destination, write, or redaction verification failure returns Failed to Diagnostics, leaves the vault and retained ring buffer unchanged, exposes no incomplete artifact as complete, and offers Retry. Destination reselection is required only when the previous destination is unusable. Retry never uploads or shares automatically.
+
 ## Overwrite restore wizard
 
 Restore is one focused flow with bottom navigation hidden. The UI must never use “partially restored,” “some data restored,” or equivalent success wording. The only successful outcome is a complete replacement that passes every preflight, activation, recovery, and post-restart validation gate defined by [data and storage](../architecture/data-and-storage.md).
@@ -547,15 +643,15 @@ A new user-initiated restore starts in `Phase.Selecting` with no candidate, no s
 
 **Entry point**
 
-Every app startup evaluates the architecture-owned migration-recovery gate first and then any generation-activation verification or restore recovery required by [data and storage](../architecture/data-and-storage.md). If none is pending, the normal application shell may open. If any is pending or unresolved, navigation enters `RestoreRecoveryRoute` before constructing or displaying the normal shell.
+Every app startup evaluates the architecture-owned migration-recovery gate first and then any generation-activation verification or restore recovery required by [data and storage](../architecture/data-and-storage.md), all before Room initialization. If none is pending, the App Lock access decision runs before the normal shell may open. If recovery is pending and App Lock is off or already authenticated, navigation enters `RestoreRecoveryRoute`. If App Lock is enabled and unauthenticated, the app renders only `LockedRecoverySurface` until authentication; the technical recovery coordinator may continue safely, but protected details and terminal routing wait behind authentication.
 
 **Entry state**
 
-`RestoreRecoveryRoute` starts in `Phase.Recovering` while safe verification or recovery is progressing, or `Phase.BlockingFailure` when progress requires explicit user action. Bottom navigation and all normal shell destinations are absent. The screen exposes only a non-sensitive status, the current user-meaningful phase, and actions that are safe for that verified state.
+After any required App Lock authentication, `RestoreRecoveryRoute` starts in `Phase.Recovering` while safe verification or recovery is progressing, or `Phase.BlockingFailure` when progress requires explicit user action. Bottom navigation and all normal shell destinations are absent. The screen exposes only a non-sensitive status, the current user-meaningful phase, and actions that are safe for that verified state. Before authentication, only the generic locked recovery surface is allowed.
 
 **Fields and selections**
 
-There are no editable restore fields and no candidate picker. The only optional user choices are an enabled Retry action and an explicit, user-initiated export of a sanitized diagnostic report when the failure state permits it.
+There are no editable restore fields and no candidate picker. After authentication, the only optional user choices are an enabled Retry action and an explicit, user-initiated export of a sanitized diagnostic report when the failure state permits it. Before authentication, neither diagnostics nor terminal details are available.
 
 **Validation**
 
@@ -569,7 +665,7 @@ The route cannot infer success from a previous progress screen or partially comp
 
 **Cancel/Back**
 
-Back, predictive Back, and app-bar navigation cannot bypass this route into the shell. They may only leave/background the app according to platform behavior. A new restore, global create, Search, Settings, and bottom navigation remain unavailable until one complete vault is verified safe.
+Back, predictive Back, and app-bar navigation cannot bypass this route into the shell. They may only leave/background the app according to platform behavior, which immediately requires App Lock again when enabled. A new restore, global create, Search, Settings, and bottom navigation remain unavailable until one complete vault is verified safe.
 
 **Failure/retry**
 
@@ -746,7 +842,10 @@ Future ViewModel and Compose tests must cover at least:
 - **CSV modal progress:** assert that entering `CsvExportProgress` in `Phase.Running` hides/disables bottom navigation and rejects app-bar/system/predictive Back and outside dismissal. Explicit Cancel must enter `Phase.Cancelling` without claiming cancellation; confirmed cancellation must enter `Phase.Cancelled` and return to Settings → Export with Cancelled, while a completion that wins the race returns Success. Failure returns Failed, and no incomplete file is offered as complete.
 - **Backup modal progress:** run the same navigation-lock, cancellation acknowledgement, and completion-race cases on `BackupExportProgress`. Success/Cancelled/Failed must return to Settings → Backup; Failed exposes deterministic Retry and requests destination reselection only when required; no incomplete result is restorable.
 - **Search revision ordering:** start revision A, edit query/filter to start revision B while A runs, then complete A after B. Assert that only B may update visible results/error/phase. Repeat with a stale A error. Clear or leave Search while a revision runs and assert that later completion changes no visible Search state; opening a current completed result still restores that completed revision on Back.
-- **App-start restore routing:** with no pending work, startup may enter the shell. With pending replacement verification or migration/restore recovery, assert that startup enters `RestoreRecoveryRoute` before the shell. Verified replacement must reach terminal success; verified rollback must reach terminal failure and enable the original data; unresolved/repeated failure must keep shell navigation blocked while exposing only safe Retry and sanitized diagnostics.
+- **App-start restore routing:** with no pending work, startup may enter the access gate and then the shell only when App Lock permits it. With pending replacement verification or migration/restore recovery, assert that startup enters authenticated `RestoreRecoveryRoute` or unauthenticated `LockedRecoverySurface` before the shell. Verified replacement reaches terminal success only after authentication when lock is enabled; verified rollback reaches terminal failure and enables the original data only after authentication; unresolved/repeated failure keeps shell navigation blocked and exposes Retry/diagnostics only on the authenticated detailed route.
+- **App Lock lifecycle:** assert default off; successful platform-authenticated enable/disable; failed/cancelled prompts preserve the prior setting; enabled cold start and every background-to-foreground transition immediately show a secure lock surface; recent-task preview and the first pre-auth frame expose no prior content; success routes to the shell only when recovery is healthy; cancel, Back, failure, and platform lockout never bypass the route.
+- **Locked recovery ordering:** assert the technical recovery gate executes before Room; an enabled unauthenticated lock exposes only the generic recovery surface; detailed status, diagnostics, user data, counts, and terminal outcomes remain hidden until authentication; authentication routes to detailed recovery, and unresolved recovery still cannot enter the shell.
+- **Diagnostic export modal:** assert Diagnostics shows only time range, event count, estimated size, and retention rule; SAF selection requires explicit confirmation; Running/Cancelling blocks every navigation escape; cancellation waits for acknowledgement; Success/Cancelled/Failed returns to Diagnostics; failures preserve the vault and ring buffer; no path automatically shares or uploads.
 - **Restore cancellation boundary:** Cancel in candidate selection enters `Phase.Cancelled`; Cancel during `Phase.Checking` enters `Phase.Cancelling` and waits before reaching `Phase.Cancelled`; both return to Settings → Restore unchanged. After final Confirm enters `Phase.Running`, assert Cancel is absent and every Back/bottom-navigation path is blocked through `Phase.Recovering` until startup validation reaches `Phase.Completed` or verified Failure/Rollback.
 - **Opening time:** use a controlled device clock. Assert that the opening date/time field is absent, the first valid Create press captures the clock once, a failed save plus Retry reuses that captured time even after the clock advances, and Discard followed by a fresh draft captures the new clock value.
 - **Finance destination table:** assert new Expense/Income/Transfer → Finance-owned transaction detail, new Account → account detail, and owner edit → source detail. An Editor child subflow returns to its parent draft without independent save; a saved Detail relationship subflow returns to that Detail after its own success. Back restores the exact retained launch state and no owner-save navigation occurs before `Phase.Completed`.
@@ -764,4 +863,6 @@ Future ViewModel and Compose tests must cover at least:
 | Search/filter | Only the current request revision can render All/Transaction/Note results and dispatch to source | Stale/invalidated results and errors are ignored; current query/filter remains editable |
 | CSV export | Complete verified CSV, all transactions exactly once, returns Success to Settings → Export | Modal navigation lock holds; Cancel waits for confirmation; incomplete output is never complete |
 | Logical backup | Complete verified ZIP without CSV returns Success to Settings → Backup | Modal lock holds; Cancel waits for confirmation; Failed supports Retry; incomplete output is not restorable |
+| App Lock | Platform-authenticated enable/disable and unlock follow the recovery-aware route with secure-window protection | Failure/cancel/Back stays locked or preserves the prior setting; no shell, previous frame, diagnostics, or recovery detail leaks before authentication |
+| Diagnostic export | Complete verified redacted artifact returns Success to Settings → Diagnostics | Modal lock holds; Cancel waits; failure changes no vault/ring-buffer data and never auto-shares/uploads |
 | Restore | Preflight cancellation reaches Cancelled; final Confirm can succeed only after startup verification and blocked cross-start routing when required | After final Confirm no cancellation/navigation escape; original vault returns usable or shell stays blocked; migration gate cannot be bypassed |

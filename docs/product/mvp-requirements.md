@@ -293,7 +293,8 @@ If the draft cannot be saved completely, the app shows no success and creates no
 ## Cross-cutting acceptance
 
 - 30 consecutive days dogfood.
-- Journeys 1–13 work with Android network permission denied.
+- Journeys 1–13 pass in airplane mode or an otherwise network-isolated environment. Source manifest, merged manifest, and final APK inspection show no `INTERNET` permission, unexpected network component, or related network permission.
+- The app database, attachments, diagnostics, preferences containing user state, and every other item of user data are excluded from Android cloud backup and system device-to-device transfer. The only supported migration path is an explicit complete logical backup and overwrite restore through a user-selected Storage Access Framework destination.
 - Recoverable operation failures that return control to the running app preserve all entered fields and selected media for retry. The MVP does not promise unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss.
 - no ads, analytics, or closed-source tracking SDK in release.
 - release blockers: any data loss, non-recomputable balance, orphan relation, or backup that cannot restore.

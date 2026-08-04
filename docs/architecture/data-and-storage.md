@@ -84,12 +84,12 @@ A domain write and its projection update occur in the same Room transaction. The
 The technical proof of concept compares FTS4 with the `unicode61` tokenizer against normalized, paged `LIKE` under a reproducible gate:
 
 - Use a versioned corpus of exactly 10,000 mixed Chinese and English records and a fixed, versioned Chinese, English, and mixed-language query manifest. Every query declares the exact expected entity-ID set and order.
-- Record one Android 14 reference device and software configuration with the results. This is the reference configuration, and both candidates run on that same device and configuration.
+- Before any measured run, the P4 spec records and freezes the actual reference device or AVD profile, API 34 system build, CPU and RAM, and, when an AVD is used, host CPU and RAM. Missing or changed reference configuration makes the run invalid and fails P4 until the spec records a new approved baseline.
 - Use a fixed page size of 50. For every query and candidate, run 5 warmups followed by 30 measured runs.
 - Record p50, p95, and coefficient of variation (`CV`) for response time.
-- Correctness is required first. If exactly one candidate satisfies every expected result, choose it. In particular, if FTS4 Chinese correctness is inadequate and paged `LIKE` is correct, choose paged `LIKE` for MVP regardless of timing.
-- If both candidates fail correctness, the proof of concept fails and no implementation candidate is selected.
-- If both FTS4 unicode61 and normalized paged LIKE satisfy correctness, choose the option with more stable response time. Stability is decided by choosing the lower `CV` when the absolute `CV` difference is at least 0.05. Otherwise choose the lower p95 when the relative difference is at least 10%. If still tied, choose paged `LIKE` for lower infrastructure complexity.
+- A candidate is eligible only when it returns 100% of every fixed expected entity-ID set in the exact expected order and its measured first-page query p95 is at most 300 ms. Correctness and the absolute p95 budget are both hard gates; a candidate that fails either cannot be selected.
+- If neither candidate is eligible, P4 fails and no implementation candidate is selected. If exactly one candidate is eligible, select it. This includes the case where FTS4 Chinese correctness is inadequate but paged `LIKE` is 100% correct and meets the 300 ms budget.
+- If both candidates pass the absolute gates, choose the option with more stable response time. Stability is decided by choosing the lower `CV` when the absolute `CV` difference is at least 0.05. Otherwise choose the lower p95 when the relative difference is at least 10%. If still tied, choose paged `LIKE` for lower infrastructure complexity.
 
 The project will not add a server or migrate to Room 3 solely for search. A later ADR records the corpus and query-manifest versions, reference configuration, complete measurements, and final choice.
 
@@ -117,7 +117,28 @@ For a Storage Access Framework destination, first build and validate the complet
 
 An incomplete temporary package is never listed as restorable. Before import, the app validates `formatVersion`, normalized relative paths with no traversal, duplicate normalized paths, duplicate `logicalType`/`path` pairs, duplicate singleton JSONL `logicalType` values, declared and actual size limits, SHA-256 values, and JSONL record counts.
 
+### Restore preflight resource limits
+
+The following are binding MVP input limits. They protect the current vault from malicious or malformed ZIP files and are not deferred to a future restore spec:
+
+- at most 100,000 ZIP entries, including `manifest.json`;
+- each normalized relative path is at most 240 bytes in UTF-8 and must be relative; reject absolute paths, traversal segments, duplicate normalized paths, and duplicate normalized `logicalType`/`path` pairs;
+- each attachment payload is at most 512 MiB uncompressed;
+- each structured-data entry, including JSONL, is at most 1 GiB uncompressed;
+- total uncompressed bytes across all ZIP entries, including `manifest.json`, are at most `min(20 GiB, available app-private staging space - 1 GiB safety reserve)`; if the space-derived value is zero or negative, preflight rejects the backup before import;
+- each non-empty entry and the non-empty archive as a whole have an uncompressed-to-compressed ratio of at most 200:1. A zero-uncompressed-byte entry has ratio zero and is allowed when otherwise valid. A non-empty payload with a zero compressed-byte denominator is rejected; an archive containing only zero-byte payloads has ratio zero.
+
+Preflight enforces these limits twice. The declaration pass combines the manifest descriptors with ZIP-directory metadata: it counts declared entries and normalized UTF-8 path bytes, uses manifest `size` plus ZIP-declared uncompressed/compressed sizes, and checks per-entry ratios and aggregate values before staging. Streaming import independently counts actual entry count and actual compressed and uncompressed bytes without trusting manifest or ZIP headers. Actual streamed bytes may never exceed the manifest or ZIP-declared size, the per-entry limit, the aggregate limit, or the available-space budget; crossing any limit fails immediately, closes the stream, leaves the current vault unchanged, reports no restore success, and leaves temporary staging content identifiable for safe cleanup. A declared value below actual bytes is corruption, not a reason to expand the budget.
+
 The restore process does not use `databaseSchemaVersion` as a compatibility gate and does not accept any path, payload, or count that fails validation.
+
+## Android system backup exclusion
+
+MVP excludes the app database, attachment content, activation and migration-recovery state, diagnostics, preferences containing user state, and all other user data from Android cloud backup and system device-to-device transfer. Android system backup is neither a fallback nor a secondary migration path.
+
+When Android code exists, the application must configure API 34 `android:dataExtractionRules`, compatible `android:fullBackupContent` exclusion rules, and manifest backup policy together. The manifest sets `android:allowBackup="false"` as the baseline denial, while both rule files explicitly exclude every applicable app-managed domain from cloud backup and device transfer; the implementation must not rely on `allowBackup` alone where platform or OEM transfer behavior can differ. Source manifest, merged manifest, and final APK policy verification are release requirements.
+
+The only supported user migration path is the app's explicit complete logical backup and overwrite restore through a user-selected Storage Access Framework destination. CSV, Android cloud backup, system transfer, and copying live SQLite/WAL files are not supported restore paths.
 
 ## Generation-based overwrite restore
 
@@ -173,7 +194,7 @@ For every migration-recovery fault injection, the expected result is the same: s
 ## Explicit exclusions
 
 - No syncing or replacement of a live SQLite database or WAL files.
-- Android Auto Backup is not the product's primary backup promise.
+- Android cloud backup and system device-to-device transfer are disabled for all app user data; the app does not participate in either as a migration path.
 - SQLCipher is not enabled by default in MVP.
 - There is no cloud sync or record sync.
 - Production destructive migration fallback is forbidden.

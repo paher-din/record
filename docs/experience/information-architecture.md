@@ -4,7 +4,7 @@ This document is the source of truth for application destinations, screen owners
 
 ## Platform and shell boundary
 
-The MVP is a local-first, single-user native Android application with `minSdk 34`. Journeys 1–13 and every destination in this document must remain usable with Android network permission denied.
+The MVP is a local-first, single-user native Android application with `minSdk 34`. Journeys 1–13 and every destination in this document must remain usable in airplane mode or an otherwise network-isolated environment.
 
 The application shell has four persistent bottom-navigation destinations in this exact order:
 
@@ -34,6 +34,8 @@ The shell does not offer a generic **Entry**, **Record**, or **Create anything**
 | Unified Search | `:feature:timeline` | Rebuildable mixed result projection with transaction/note type filtering. It dispatches selection to the owning detail screen. |
 | Global create and application navigation | `:app` | Dispatches the selected typed creation route; it does not implement finance or note writes. |
 | Settings, export, backup, and restore entry | `:app`, delegating data work to `:core:data` | Owns application-level data controls and routes into typed progress or restore-wizard states. |
+| Privacy & Security and App Lock | `:app` | Owns the setting, platform-authentication route, secure-window boundary, and shell access decision; it does not own database recovery. |
+| Diagnostics and diagnostic export | `:app`, delegating the redacted ring buffer/export to `:core:data` | Shows only a non-sensitive envelope and routes an explicit export through a modal progress flow; it never opens or uploads user records. |
 | Attachment preview | Owning editor/detail feature | Displays a selected or confirmed image without exposing its physical path. |
 
 Finance and Notes own all edits to their facts. Timeline, Projects, and Search may display a transaction or note card, but selecting that card opens the source entity's Finance-owned transaction detail or Notes-owned note detail. Any subsequent edit starts from that owning detail screen.
@@ -46,6 +48,10 @@ The identifiers such as `TL_HOME` below are diagram node IDs only. Labels such a
 flowchart TD
     APP_START["App start"]
     RECOVERY_GATE{"Pending restore verification or recovery?"}
+    ACCESS_GATE{"App Lock enabled and authenticated?"}
+    RECOVERY_ACCESS_GATE{"Recovery detail access authenticated?"}
+    APP_LOCK["App Lock route"]
+    LOCKED_RECOVERY["Generic locked recovery surface"]
     RESTORE_RECOVERY["Blocked restore recovery route"]
     RESTORE_SUCCESS["Restore terminal success"]
     RESTORE_FAILURE["Restore terminal failure with verified original"]
@@ -56,6 +62,9 @@ flowchart TD
     SETTINGS_EXPORT["Settings > Export"]
     SETTINGS_BACKUP["Settings > Backup"]
     SETTINGS_RESTORE["Settings > Restore"]
+    SETTINGS_PRIVACY["Settings > Privacy & Security"]
+    SETTINGS_DIAGNOSTICS["Settings > Diagnostics"]
+    DIAGNOSTIC_PROGRESS["Diagnostic export modal progress"]
 
     subgraph TOP["Persistent bottom navigation"]
         TL_HOME["Timeline home"]
@@ -80,8 +89,15 @@ flowchart TD
     RESTORE["Restore wizard"]
 
     APP_START --> RECOVERY_GATE
-    RECOVERY_GATE -- "No pending work" --> SHELL
-    RECOVERY_GATE -- "Pending verification or recovery" --> RESTORE_RECOVERY
+    RECOVERY_GATE -- "No pending work" --> ACCESS_GATE
+    ACCESS_GATE -- "Lock off or authenticated" --> SHELL
+    ACCESS_GATE -- "Lock enabled, unauthenticated" --> APP_LOCK
+    APP_LOCK -- "Authenticated; no pending recovery" --> SHELL
+    RECOVERY_GATE -- "Pending verification or recovery" --> RECOVERY_ACCESS_GATE
+    RECOVERY_ACCESS_GATE -- "Lock off or authenticated" --> RESTORE_RECOVERY
+    RECOVERY_ACCESS_GATE -- "Lock enabled, unauthenticated" --> LOCKED_RECOVERY
+    LOCKED_RECOVERY --> APP_LOCK
+    APP_LOCK -- "Authenticated; recovery pending" --> RESTORE_RECOVERY
     RESTORE_RECOVERY -- "Replacement verified" --> RESTORE_SUCCESS
     RESTORE_RECOVERY -- "Original vault restored" --> RESTORE_FAILURE
     RESTORE_RECOVERY -- "Unresolved: retry or diagnostics" --> RESTORE_RECOVERY
@@ -129,6 +145,10 @@ flowchart TD
     BACKUP_PROGRESS -- "Success / Cancelled / Failed" --> SETTINGS_BACKUP
     SETTINGS --> SETTINGS_RESTORE
     SETTINGS_RESTORE --> RESTORE
+    SETTINGS --> SETTINGS_PRIVACY
+    SETTINGS --> SETTINGS_DIAGNOSTICS
+    SETTINGS_DIAGNOSTICS --> DIAGNOSTIC_PROGRESS
+    DIAGNOSTIC_PROGRESS -- "Success / Cancelled / Failed" --> SETTINGS_DIAGNOSTICS
     RESTORE -- "Cancelled before final Confirm" --> SETTINGS_RESTORE
     RESTORE -- "Final Confirm: verification / recovery" --> RESTORE_RECOVERY
 ```
@@ -145,6 +165,11 @@ Typed route keys are stable screen contracts for future Compose implementation. 
 | `ProjectsHome` | Retained projects tab state | Prior task or app exit from the root |
 | `UnifiedSearch` | Query and type-filter state | The exact top-level destination that launched Search |
 | `Settings` | Selected top-level destination as return context | The exact top-level destination that launched Settings |
+| `PrivacySecuritySettings` | Current App Lock enabled state and platform-authentication capability status | Settings |
+| `AppLockRoute` | No user data; launch reason is cold start or foreground return, plus only a boolean that generic recovery is pending | Back backgrounds/exits the app; success continues to the recovery route or shell selected by the startup gate |
+| `LockedRecoverySurface` | Generic recovery-in-progress/blocked status with no user data, diagnostics, terminal details, counts, or paths | Cannot enter shell; authentication opens the detailed recovery route, while Back only backgrounds/exits the app |
+| `DiagnosticsSettings` | Redacted envelope containing time range, event count, estimated size, and latest terminal export result | Settings |
+| `DiagnosticExportProgress` | Confirmed SAF destination and modal progress state; no diagnostic event payload is a route argument | No Back while Running/Cancelling; terminal Success/Cancelled/Failed returns to `DiagnosticsSettings` |
 | `TransactionDetail` | `transactionId` plus optional origin context | The exact originating Timeline, Finance, Project, or Search state |
 | `NoteDetail` | `noteId` plus optional origin context | The exact originating Timeline, Notes, Project, or Search state |
 | `AccountDetail` | `accountId` | Prior Finance state |
@@ -171,11 +196,14 @@ An origin context is navigation-only state needed to return to the previous scro
 |---|---|---|---|---|
 | Top-level homes and browse/details | Any stable browse phase | Visible | Normal route behavior | Not applicable |
 | Unified Search, Settings, `SettingsExport`, `SettingsBackup`, `SettingsRestore` | Stable browse/result state | Visible | Returns to retained origin | Not applicable |
+| `PrivacySecuritySettings`, `DiagnosticsSettings` | Stable browse/result state | Visible | Returns to Settings | Authentication prompts and export selection follow [interaction rules](interaction-rules.md) |
+| `AppLockRoute`, `LockedRecoverySurface` | `Phase.Checking`, `Phase.RecoverableFailure`, `Phase.BlockingFailure`, or transient `Phase.Completed` | Not constructed | Cannot enter the shell before Completed routing; Back only backgrounds/exits the app | Authentication success routes according to the already-evaluated recovery gate; failure/cancel remains locked |
 | Any transaction, note, account, tag, or project Editor; attachment preview | Any | Hidden | Draft/preview rule in [interaction rules](interaction-rules.md) | Editor `Phase.Saving` blocks Cancel/Discard until Completed or Failure |
 | Saved Detail relationship/assignment subflow | Before `Phase.Saving` | Hidden | Returns to the same Detail without writing | Confirm enters locked `Phase.Saving`; terminal returns to same Detail |
 | Editor relationship/assignment subflow | `Phase.Idle` | Hidden | Returns to the same parent draft without writing | Done updates only parent draft; parent Save owns visibility |
 | `CsvExportProgress` | `Phase.Running` / `Phase.Cancelling` | Hidden or disabled | Blocked; cannot leave modal | Only explicit Cancel; terminal returns Success/Cancelled/Failed to `SettingsExport` |
 | `BackupExportProgress` | `Phase.Running` / `Phase.Cancelling` | Hidden or disabled | Blocked; cannot leave modal | Only explicit Cancel; terminal returns Success/Cancelled/Failed to `SettingsBackup` |
+| `DiagnosticExportProgress` | `Phase.Running` / `Phase.Cancelling` | Hidden or disabled | Blocked; cannot leave modal | Only explicit Cancel; terminal returns Success/Cancelled/Failed to `DiagnosticsSettings` |
 | `RestoreWizard` candidate/confirmation | `Phase.Selecting` / `Phase.Idle` | Hidden | Exits only through the defined pre-commit cancellation result | Cancel → `Phase.Cancelled` → `SettingsRestore` |
 | `RestoreWizard` preflight | `Phase.Checking` / `Phase.Cancelling` | Hidden | Blocked while checking/cancelling | Explicit Cancel waits for confirmation, then `Phase.Cancelled` → `SettingsRestore` |
 | Restore after final Confirm | `Phase.Running` / `Phase.Recovering` | Hidden | Blocked until verified terminal outcome | Cancel unavailable; startup validation routes only to Completed or Failure/Rollback |
@@ -209,7 +237,9 @@ Compose implementation must hoist these values out of disposable list items and 
 7. Missing or soft-deleted targets render an unavailable state and a safe Back action; they do not redirect to an unrelated record.
 8. Successful creation of an Expense, Income, or Transfer opens its Finance-owned `TransactionDetail`; successful account creation opens `AccountDetail`. Back restores the exact retained launch context. Successful edit returns to its source detail. A relationship/assignment action launched from a saved Detail may save independently and returns to that Detail; the same action launched from any Editor only updates and returns to the parent draft. Image/picker subflows also return to the parent draft. None applies a top-level success route.
 9. Search result and error updates are scoped to the current query/filter request revision. Clearing, closing, or leaving Search invalidates pending updates, except that opening a current result preserves the completed Search state for Back.
-10. App startup must resolve the restore/migration recovery gate before the shell: replacement verification leads to terminal success, verified rollback leads to terminal failure with access to the original data, and unresolved recovery remains blocked with Retry/diagnostics only.
+10. App startup evaluates the restore/migration recovery gate before Room and before the shell. When App Lock is enabled and authentication has not succeeded, pending recovery may show only `LockedRecoverySurface`; detailed status, diagnostics, terminal outcomes, counts, and user data remain hidden. Authentication then routes to the detailed recovery state. Replacement verification leads to terminal success, verified rollback leads to terminal failure with access to the original data, and unresolved recovery never enters the shell.
+11. App Lock is immediate on every cold start and background-to-foreground transition when enabled. The secure-window boundary prevents recent-task previews and pre-authentication frames from revealing the prior screen.
+12. Diagnostic export is reachable only after shell authentication or an authenticated detailed recovery route. It never becomes a route around App Lock or unresolved recovery.
 
 ## Navigation acceptance checks
 
@@ -227,6 +257,10 @@ Future Compose navigation and UI tests must demonstrate:
 - `CsvExportProgress` is modal full-screen: Running/Cancelling blocks bottom navigation and every Back path, explicit Cancel waits for acknowledgement, and Success/Cancelled/Failed returns to `SettingsExport` with the actual status;
 - `BackupExportProgress` obeys the same modal lock and cancellation acknowledgement, returning Success/Cancelled/Failed to `SettingsBackup` with a deterministic Retry path;
 - Restore preflight can reach Cancelled and return to `SettingsRestore`; final Confirm removes every Cancel/Back/bottom-navigation path until startup validation reaches complete success or failure/rollback;
-- a pending app-start recovery shows `RestoreRecoveryRoute` before the shell and cannot be bypassed into ordinary navigation;
+- a pending app-start recovery shows authenticated `RestoreRecoveryRoute` or unauthenticated `LockedRecoverySurface` before the shell and cannot be bypassed into ordinary navigation;
+- App Lock defaults off; when enabled, cold start and every background-to-foreground transition show a secure lock route before any prior user-data frame, and only platform authentication can continue;
+- pending recovery is evaluated before Room, but an unauthenticated user sees only the generic locked recovery surface; recovery details, diagnostics, and terminal results remain inaccessible until authentication, and unresolved recovery remains unable to open the shell;
+- Privacy & Security exposes the App Lock setting, while Diagnostics exposes only time range, event count, estimated size, and a user-initiated export;
+- `DiagnosticExportProgress` uses the same modal navigation lock and cancellation acknowledgement as the other exports and returns only Success/Cancelled/Failed to Diagnostics;
 - stale or invalidated Search revisions cannot update visible results or errors;
 - no screen, route key, button, or domain type named generic Entry is introduced.

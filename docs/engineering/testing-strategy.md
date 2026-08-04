@@ -26,16 +26,22 @@ When Gradle is introduced, the active slice plan records the exact Gradle tasks 
 | Partial or racing persistence | Instrumented Room integration tests cover repository transactions, foreign keys, cascades, concurrent owner writes, relation replacement, attachment metadata/link commit, and projection update | Observers can see only the old complete state or new complete state; never a partial aggregate, one-sided relation, or source/projection mismatch | Every repository/schema change |
 | Upgrade data loss | Room migration tests upgrade version N-1 and N-2 fixtures to N, including old WAL checkpoint/snapshot preparation and domain validation | Schema opens without destructive fallback; all fixture facts, relations, balances, and attachment metadata remain valid | Every schema change and MVP release |
 | Backup cannot restore | Automated logical-backup round trip exports a ZIP, verifies it, wipes/overwrites the test vault, restores it, crosses the startup gate, then compares normalized logical state | Every entity, relationship, assignment, allocation, balance, attachment ownership, attachment byte size, and SHA-256 matches; no CSV is used as restore input | Every backup/restore change, PoC P5, every release |
+| Malicious ZIP resource exhaustion | Generate declared and streamed boundary/overflow archives for entry count, normalized UTF-8 paths, per-entry sizes, aggregate staging budget, and compression ratios | Every over-limit or mismatched archive fails immediately with current vault unchanged, no success, and deterministic temporary cleanup; every exact-limit valid fixture proceeds to the remaining validation gates | Every restore-reader change, PoC P5, MVP release |
 | CSV interoperability regression | Separate CSV contract test exports all saved transactions from the same fixture | Exactly one row per saved transaction; one header; consistent columns; UTF-8 and declared machine-readable values match transaction detail | Every CSV change; not accepted as restore evidence |
 | Interrupted attachment source copy | Fault injection before private temporary-file creation, during the first/middle/final copy chunks, after the final write but before close, after close but before validation/hash, and on source read or destination flush failure | No visible `AttachmentLink` exists and no success is reported; the original owner remains completely unchanged; partial temporary/orphan state is deterministically classified for safe cleanup or retry under [data and storage](../architecture/data-and-storage.md) | PoC P3, every attachment/import change, and MVP release |
 | Attachment loss or orphan visibility | Fault injection at validation/hash, atomic move, owner transaction, `DELETE_PENDING`, physical delete, and metadata cleanup; include concurrent link/cleanup and duplicate hash | No committed link points to missing/unverified bytes; a failed owner is invisible; retries are idempotent; zero-reference cleanup never deletes newly linked content | PoC P3 and every attachment change |
 | Interrupted logical-backup publication | Fault injection during each JSONL/attachment streaming write, before/during/after manifest write, before/after private atomic publication, and during SAF create/copy/flush/close/verify/rename or incomplete-marker clearing | An incomplete package is never listed as restorable and never reported as success; private temporary packages and SAF incomplete-marked residues are deterministically identifiable for safe cleanup or retry; only a complete package whose payload and manifest validation passes becomes visible as a backup | PoC P5, every backup/export change, and MVP release |
 | Unsafe migration recovery | Fault injection after `MIGRATION_RECOVERY_PENDING`, before/after snapshot replacement, during failed database/WAL/SHM sidecar isolation, restore-copy validation, main replacement, and repeated startup | No empty database or mixed sidecar set opens; published snapshot stays unchanged; restart resumes idempotently; ordinary Room/shell access remains blocked until verified recovery | Every migration/recovery change and MVP release |
 | Partial restore activation | Fault injection before activation, after pending activation, during startup validation, rollback-record write, quarantine, and cleanup | Old or candidate generation is complete; failed candidate rolls back; pending work resumes; referenced generations are never deleted; no partial success UI | PoC P5 and every restore change |
-| Incorrect or unstable Chinese search | Run the fixed 10,000-record Chinese/English corpus and query manifest protocol from [data and storage](../architecture/data-and-storage.md) | Exact expected IDs and order pass before timing; 5 warmups/30 runs/page 50 produce p50, p95, CV; selection follows the documented correctness/stability tie-break | PoC P4 and any search/index change |
+| Incorrect, slow, or unstable Chinese search | Run the fixed 10,000-record Chinese/English corpus and query manifest protocol from [data and storage](../architecture/data-and-storage.md) on the frozen P4 reference configuration | Candidate correctness is 100% for expected IDs/order and measured first-page p95 is at most 300 ms after 5 warmups/30 measured runs/page 50; only candidates passing both absolute gates enter the CV/p95 tie-break | PoC P4 and any search/index change |
 | UI state race or draft loss | ViewModel tests use controlled dispatchers, clock, IDs, and fake typed outcomes | All declared phases and only legal transitions occur; recoverable failures retain complete drafts; Saving locks exit; stale search is ignored; success waits for durable boundary | Every ViewModel change |
 | Journey/navigation regression | Five critical Compose flows below run with success, validation, infrastructure failure, Back, and recreation cases | Every required assertion passes with correct source-detail routing and retained context | Related slice and MVP release |
-| Performance degradation | Reproducible timeline, thumbnail, aggregation, and startup benchmarks below on the recorded Android 14 reference configuration | No ANR/OOM/corrupt output; metrics meet the numeric budget approved in the active PoC spec and remain within its regression allowance | PoC P6, performance change, MVP release |
+| Mixed Timeline performance degradation | Reproducible mixed-card Timeline benchmark on the recorded Android 14 reference configuration | No ANR/OOM/corrupt output; metrics meet the approved Timeline budget and regression allowance | PoC P6, Timeline MVP slice, related change, MVP release |
+| Thumbnail performance degradation | Reproducible repeated/unique image benchmark | No ANR/OOM/content leak; metrics meet the Notes/image slice budget and regression allowance | Notes/image MVP slice, related change, MVP release; never PoC P6 |
+| Aggregation performance degradation | Reproducible monthly/category aggregation benchmark with reference-result comparison | Results match the pure calculation and metrics meet the statistics slice budget/regression allowance | Statistics MVP slice, related change, MVP release; never PoC P6 |
+| Startup or recovery-gate performance degradation | Reproducible startup benchmark for healthy and pending states | Correct safe route appears without ANR/OOM and meets the owning shell/recovery slice budget; shell never wins by bypassing recovery/App Lock | App Shell slice and each restore/migration/App Lock slice, related change, MVP release; never PoC P6 |
+| Android system backup or network policy drift | Inspect source manifest, merged release manifest, final APK, API 34 data-extraction rules, compatible rules, and dependencies; run offline journeys | No `INTERNET`/unexpected network component or related permission; all app user-data domains excluded from cloud backup/device transfer; Journeys 1–13 pass in airplane/network isolation | App Shell slice, every manifest/dependency change, MVP release |
+| Diagnostic or access-control privacy regression | Boundary/unit tests plus Compose/instrumented lifecycle tests for ring buffer, App Lock, locked recovery, and diagnostic export | Four-field allowlist only; exact 7-day/1-MiB rotation; secure previews; no auth/recovery bypass; modal export cannot leak, auto-share, or modify vault | Owning Privacy/Diagnostics slice, related change, MVP release |
 
 ## Domain and persistence suites
 
@@ -50,6 +56,18 @@ Use a real Room database in instrumented tests, with foreign keys enabled and th
 ### Migration coverage
 
 Keep versioned N-1 and N-2 database fixtures and exported Room schema JSON in version control after Room exists. Each migration test verifies SQLite integrity, foreign keys, the applicable domain invariant matrix, projection rebuildability, and post-open queries. Tests also cover interrupted recoverable snapshots and the migration startup gate. `fallbackToDestructiveMigration` is prohibited and can never be used to make a migration test pass.
+
+## Search PoC P4 absolute gate
+
+P4 uses the binding protocol in [data and storage](../architecture/data-and-storage.md), not a relative-only benchmark:
+
+1. Before test execution, the P4 spec records and freezes the actual reference device or AVD profile, API 34 build, CPU and RAM, and host CPU/RAM when an AVD is used. Missing, incomplete, or changed configuration invalidates the run and fails P4.
+2. Both candidates use the same versioned 10,000-record mixed Chinese/English corpus, fixed query manifest with exact expected IDs/order, and page size 50.
+3. Each query/candidate runs 5 warmups and 30 measured first-page runs; evidence records correctness, p50, p95, and CV.
+4. A candidate must achieve 100% correctness for every expected ID set/order and measured first-page p95 at most 300 ms. A candidate failing either absolute gate is ineligible. If both are ineligible, P4 fails.
+5. If one candidate is eligible, select it. If both are eligible, apply the existing absolute-CV-difference 0.05 rule, then relative-p95-difference 10% rule, then paged `LIKE` complexity tie-break.
+
+No spec may replace the 300 ms default with “record a budget later.” Changing the stable absolute budget or protocol requires explicit approval and documentation-first architecture/ADR review.
 
 ## Backup, restore, and fault injection
 
@@ -77,6 +95,19 @@ The fault suite uses these explicit gate mappings:
 
 The named mappings are cumulative. PoC P3 does not pass without both attachment mappings; PoC P5 does not pass without backup stream/publication, SAF copy, restore activation, and migration-recovery evidence applicable to that slice.
 
+### Malicious ZIP preflight matrix
+
+Tests enforce every binding limit in [data and storage](../architecture/data-and-storage.md) at both declared-manifest and actual-stream layers:
+
+- entry counts of exactly 100,000 and 100,001, plus a stream whose actual entry count exceeds its declaration;
+- normalized UTF-8 relative paths of exactly 240 bytes and 241 bytes; absolute paths; `..` traversal before/after normalization; duplicate normalized paths; duplicate normalized `logicalType`/`path` pairs;
+- attachments at exactly 512 MiB and one byte over, and structured-data entries at exactly 1 GiB and one byte over, using sparse/generated streams rather than repository fixtures of that physical size where practical;
+- total uncompressed bytes exactly at and one byte over `min(20 GiB, available app-private staging space - 1 GiB)`, including available space equal to and below the 1 GiB reserve;
+- per-entry and whole-archive compression ratio exactly 200:1 and above 200:1; zero-uncompressed-byte entries/archive; non-empty payload with zero compressed-byte denominator;
+- declared sizes under actual streamed bytes, actual bytes crossing each per-entry/aggregate limit mid-stream, stream exhaustion, short read, low-space change during staging, and cleanup/retry after each failure.
+
+Every rejection must occur without changing the current vault, exposing a success or confirmation state, or retaining an ambiguous restorable package. Temporary content remains identifiable and safely cleanable/retryable. Exact-limit fixtures still must pass format, hash, relationship, balance, and attachment validation; reaching a resource limit is not restore success.
+
 ## ViewModel state tests
 
 Each editor and operation tests its declared entry state, valid and invalid primary-action enablement, all legal transitions, and rejection of illegal events. Required shared cases are:
@@ -89,6 +120,8 @@ Each editor and operation tests its declared entry state, valid and invalid prim
 - export cancellation waits in `Phase.Cancelling` for its real terminal outcome;
 - restore cannot cancel after final Confirm and cannot bypass `Phase.Recovering`;
 - migration recovery pending and restore activation pending enter the app-start gate before Room-backed UI;
+- App Lock defaults off; enable/disable requires platform authentication; enabled cold start and every foreground return lock immediately; cancel/failure/Back stays locked; generic recovery hides details until authentication;
+- diagnostic export exposes only its envelope, uses the Running/Cancelling modal lock, and returns truthful terminal state without changing the vault or automatically sharing/uploading;
 - saved-Detail relation edits commit independently, while Editor relation edits stay draft-only until owner save;
 - success navigation occurs only after `Phase.Completed`.
 
@@ -104,16 +137,18 @@ These are exactly the five release-critical UI flows from the approved design:
 
 CSV's separate interoperability test remains mandatory even though it is not a sixth critical Compose flow.
 
+App Lock, locked recovery, and Diagnostic Export are additional mandatory Privacy/Diagnostics slice UI suites. They do not replace or renumber the five approved critical flows.
+
 ## Performance benchmarks
 
-Each benchmark records dataset generator/version, app build, Android 14 reference device model, OS build, power/thermal setup, run count, warmups, metric definitions, p50/p95, and variability. The active Tech PoC spec must approve numeric budgets before benchmark implementation; a missing budget is a failed entry condition, not permission to report “looks fast.”
+Each benchmark records dataset generator/version, app build, Android 14 reference device model, OS build, power/thermal setup, run count, warmups, metric definitions, p50/p95, and variability. Each owning slice records its numeric performance budget before benchmark implementation; a missing budget is a failed slice entry condition, not permission to defer the benchmark or report “looks fast.” The P4 search budget is already fixed above and is not governed by this paragraph.
 
-- **Long timeline:** mixed transaction/note fixture, cold first load plus sustained date/list scrolling; measure query-to-render latency, frame timing, memory peak, and dropped-frame/jank metric.
-- **Image thumbnails:** repeated and unique image fixture while timeline/note lists scroll; measure decode/load p95, frame timing, memory peak, and cache behavior without exposing full-size images unnecessarily.
-- **Aggregation:** fixed high-volume finance fixture covering monthly income, expense, and categories; compare result correctness to a pure reference calculation and measure query p50/p95.
-- **Startup:** empty, typical, and high-volume vaults in healthy, pending activation, and pending migration-recovery states; measure time to first safe interactive frame or recovery gate. A fast shell that bypasses recovery is an automatic failure.
+- **Long timeline — PoC P6 and Timeline MVP slice:** mixed transaction/note fixture, cold first load plus sustained date/list scrolling; measure query-to-render latency, frame timing, memory peak, and dropped-frame/jank metric. This is the only P6 benchmark.
+- **Image thumbnails — Notes/image MVP slice:** repeated and unique image fixture while timeline/note lists scroll; measure decode/load p95, frame timing, memory peak, and cache behavior without exposing full-size images unnecessarily. Rerun for related image/list changes and before release; it is not part of P6.
+- **Aggregation — statistics MVP slice:** fixed high-volume finance fixture covering monthly income, expense, and categories; compare result correctness to a pure reference calculation and measure query p50/p95. Rerun for related query/model changes and before release; it is not part of P6.
+- **Startup — App Shell and owning recovery/App Lock slices:** empty, typical, and high-volume vaults in healthy, pending activation, pending migration-recovery, locked, and locked-recovery states; measure time to first safe interactive frame or recovery/lock gate. A fast shell that bypasses recovery or App Lock is an automatic failure. Rerun for related startup/recovery/security changes and before release; it is not part of P6.
 
-PoC P6 and the MVP release are blocked when a required benchmark lacks its approved fixture/budget, exceeds that budget, produces wrong output, or encounters ANR/OOM. Performance changes rerun the affected benchmark on the same reference configuration; non-comparable environments are reported as new baselines, not silently combined.
+PoC P6 is blocked only by the mixed-card Timeline benchmark. The owning MVP slice for each of Timeline, thumbnails, aggregation, and startup is blocked by its own missing/failed benchmark; every one of the four is also an MVP release blocker. Related performance changes rerun only the affected benchmark(s) on the same frozen configuration. A missing fixture/budget, exceeded budget, wrong output, ANR/OOM, or non-comparable result without an explicitly approved new baseline is failure.
 
 ## Stage gates and release blockers
 
@@ -122,10 +157,10 @@ PoC P6 and the MVP release are blocked when a required benchmark lacks its appro
 MVP work cannot begin until evidence passes all five architecture-risk proofs:
 
 - atomic transfer and financial invariants;
-- Chinese search correctness and documented candidate selection;
+- Chinese search 100% correctness, measured first-page p95 at most 300 ms, frozen reference configuration, and documented eligible-candidate selection;
 - attachment fault recovery, deduplication, and orphan cleanup, explicitly including the `ATTACHMENT_SOURCE_COPY` and `ATTACHMENT_CONTENT_COMMIT` mappings;
 - logical export → wipe/overwrite → complete restore comparison, explicitly including `BACKUP_STREAM_AND_PUBLISH`, `BACKUP_SAF_COPY`, pending activation, rollback, and applicable migration recovery;
-- mixed timeline performance on the approved benchmark fixture.
+- mixed-card Timeline performance on the approved P6 benchmark fixture; P6 contains no thumbnail, aggregation, or startup benchmark.
 
 Failure changes the owning architecture source and ADR/spec as required; it cannot be waived by a passing UI demo or build.
 
@@ -135,6 +170,9 @@ Release is blocked by any of the following:
 
 - data loss, a balance that cannot be recomputed, an orphan/one-sided relation, a committed attachment link to missing content, or a backup that cannot fully restore;
 - any N-1 or N-2 migration failure, pending migration recovery that can open ordinary Room/UI, or destructive migration fallback;
+- any missing/failed malicious-ZIP limit case, Android system-backup/device-transfer exclusion check, source/merged/final artifact network-policy check, or airplane/network-isolated Journeys 1–13 run;
+- failure of the Timeline, thumbnail, aggregation, or startup benchmark at its owning slice/relevant change/release gate;
+- failure of App Lock/locked-recovery access control, secure-window/task-preview protection, diagnostic four-field allowlist, 7-day/1-MiB retention boundary, or Diagnostic Export modal/no-upload behavior;
 - failure or missing evidence for any five critical Compose flows, required ViewModel state case, fault-injection suite, or approved performance budget; the mandatory fault suite includes `ATTACHMENT_SOURCE_COPY`, `ATTACHMENT_CONTENT_COMMIT`, `BACKUP_STREAM_AND_PUBLISH`, `BACKUP_SAF_COPY`, `RESTORE_ACTIVATION`, and `MIGRATION_RECOVERY`;
 - incomplete 30-day real-use dogfood or unresolved data-integrity issue found during it;
 - ads, commercial analytics, crash-reporting, or closed-source tracking SDK in the release dependency graph.
@@ -145,9 +183,9 @@ Every PoC, slice, fix, and release candidate stores a verification record with t
 
 ```text
 Command: exact command, test selector, and arguments
-Environment: commit, build variant, device/emulator model, Android/OS build, fixture version, relevant configuration
+Environment: commit, build variant, device/emulator model/profile, Android/API build, CPU/RAM, host CPU/RAM for AVD, fixture version, relevant configuration
 Result: PASS/FAIL plus test count and measured values or artifact hashes
 Remaining risk: untested boundary, environmental limitation, flaky signal, or "none known" with rationale
 ```
 
-Evidence must name the specific required gate it satisfies and link generated reports when available. Fault-injection evidence places every required mapping and fail-point ID in `Result`, with the injected boundary, observed durable state, visibility/success assertion, residue classification, restart/retry outcome, and cleanup outcome. In particular, PoC P3 evidence must enumerate both attachment mappings, and PoC P5 evidence must enumerate both backup mappings plus restore activation and applicable migration recovery; a summary such as “fault tests passed” is insufficient. “Build passed,” screenshots without assertions, omitted commands, and unrepeatable manual claims are not gate evidence. A PoC, slice, or release remains blocked while any required mapped evidence is missing or failed.
+Evidence must name the specific required gate it satisfies and link generated reports when available. P4 evidence includes the frozen reference profile/API build/CPU/RAM/host fields, per-query expected/actual order, 30 measured first-page samples, correctness percentage, p50/p95/CV, absolute-gate eligibility, and final tie-break. ZIP-limit evidence enumerates every declared/actual boundary and proves unchanged current-vault hash plus temporary cleanup state. System-policy evidence includes source-manifest, merged-manifest, and final-APK inspection results for both network and backup/device-transfer rules. Diagnostic evidence includes exact 7-day/1-MiB boundary measurements and serialized field allowlist; App Lock evidence includes lifecycle, secure-window/task-preview, and recovery-order results. Fault-injection evidence places every required mapping and fail-point ID in `Result`, with the injected boundary, observed durable state, visibility/success assertion, residue classification, restart/retry outcome, and cleanup outcome. In particular, PoC P3 evidence must enumerate both attachment mappings, and PoC P5 evidence must enumerate both backup mappings plus restore activation and applicable migration recovery; a summary such as “fault tests passed” is insufficient. “Build passed,” screenshots without assertions, omitted commands, and unrepeatable manual claims are not gate evidence. A PoC, slice, or release remains blocked while any required mapped evidence is missing or failed.
