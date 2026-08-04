@@ -59,7 +59,9 @@
 
 ## Definition of done
 
-- The active spec acceptance criteria pass.
+- Implementation work with an active spec must pass that unique `in-progress` spec's acceptance criteria.
+- Lifecycle or documentation work, and other authorized work performed while no spec is active, must pass its approved plan or documented acceptance criteria.
+- `none` active never authorizes functional implementation or bypasses the specification lifecycle; work that requires a spec cannot start or be declared done without the required active `in-progress` spec.
 - Required automated checks pass.
 - A verification record contains actual commands and results.
 - Affected core documents and ADRs are synchronized.
