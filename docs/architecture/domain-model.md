@@ -118,7 +118,7 @@ The financial rules in this document refine, but do not duplicate, the user jour
 
 `Attachment` represents attachment metadata and content identity. `AttachmentLink` represents ownership of that attachment through an owner's `EntityRef`. Storage location and file-operation policy are outside this domain model.
 
-`Timeline` and `SearchDocument` are read projections, not facts. They may reference domain IDs and be rebuilt from facts; they never become write authorities. `SearchDocument` storage and indexing details belong to Task 5.
+`Timeline` and `SearchDocument` are rebuildable read projections, never facts. They may reference domain IDs and be rebuilt from facts; they never become write authorities. Their persistence and indexing details belong to the owning data and storage architecture document.
 
 ## Deletion and archive
 
