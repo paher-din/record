@@ -78,7 +78,7 @@ The user can open note creation or an existing note.
 
 ### User action
 
-The user writes or edits a title or basic Markdown body, optionally confirms an image attachment, and confirms the note.
+The user writes or edits a basic Markdown body, optionally confirms an image attachment, and confirms the note.
 
 ### Success state
 
@@ -86,7 +86,7 @@ After durable save, the note opens with the confirmed content and attachments an
 
 ### Validation failure
 
-A note is saveable only when at least one of its title, body, or confirmed image attachments is present. If all three are absent, the app requests content, saves no revision, and applies the cross-cutting draft-preservation rule.
+A note is saveable only when its trimmed Markdown body is non-empty or it has at least one confirmed image attachment. If neither condition is met, the app requests content, saves no revision, and applies the cross-cutting draft-preservation rule.
 
 ### Infrastructure failure
 
@@ -112,7 +112,7 @@ Every selected record must still exist when the user confirms. If any selected r
 
 ### Infrastructure failure
 
-If the requested links cannot all be saved, the app shows no success, saves none of the requested link changes, leaves the prior saved links unchanged, and creates no orphan or one-sided relation.
+If the requested links cannot all be saved, the app shows no success, saves none of the requested link changes, leaves the prior saved links unchanged, and creates no orphan or one-sided association.
 
 ## Journey 6: Assign shared tags and at most one primary project
 
@@ -236,11 +236,11 @@ The user exports a logical ZIP, then verifies the required round trip by intenti
 
 ### Success state
 
-The export → wipe or overwrite → restore round trip succeeds only when every account, transaction, note, category, tag, project, transaction-note relation, attachment link, image, and resulting account balance matches the exported state. Restore validates the entire ZIP before asking for confirmation and replaces current data only as one complete operation.
+The export → wipe or overwrite → restore round trip succeeds only when every account, transaction, note, category, tag, project, image, and resulting account balance matches the exported state. Each category allocation remains on the same transaction; each applied tag remains on the same transaction or note; each primary project assignment remains on the same transaction or note; each transaction-note association remains between the same records; and each image remains attached to the same confirmed owning transaction or note. Restore validates the entire ZIP before asking for confirmation and replaces current data only as one complete operation.
 
 ### Validation failure
 
-Validation succeeds only when the entire ZIP can be read and every contained record, relation, attachment link, and image is complete and mutually consistent. Otherwise, the app rejects the ZIP before asking for confirmation and leaves current data unchanged.
+If the entire ZIP cannot be read or any required content, association, assignment, image ownership, or resulting balance cannot be validated, the app rejects the ZIP before asking for confirmation and leaves current data unchanged.
 
 ### Infrastructure failure
 
@@ -250,19 +250,19 @@ Any failure during export, wipe or overwrite, or restore leaves the data that wa
 
 ### Preconditions
 
-Transactions are available for selection, and the user can choose a destination for a transaction export.
+The user can choose a destination for a transaction export.
 
 ### User action
 
-The user selects transactions, requests their CSV export, and confirms the destination.
+The user requests a CSV export of all saved transactions and confirms the destination.
 
 ### Success state
 
-The CSV contains every selected transaction exactly once. It uses UTF-8, a header row, RFC 4180 quoting, and locale-independent date and decimal representations. Required fields are stable transaction ID, ISO-8601 occurrence time, type, account, source and destination account for transfers, amount, currency, category allocations, payee, memo, project, and tags. The app reports success only after export completes. CSV is for interoperability; the logical ZIP is the complete restore artifact.
+The CSV contains every saved transaction exactly once. For each row, its values match all corresponding user-visible values on that transaction's detail screen. The result opens as a table with one header row and consistent columns in the app's declared supported spreadsheet workflow. The app reports success only after export completes. CSV is for interoperability; the logical ZIP is the complete restore artifact.
 
 ### Validation failure
 
-If no transaction is selected or no writable destination is confirmed, the app explains the issue, produces no CSV, and leaves saved data unchanged.
+If no saved transactions exist or no writable destination is confirmed, the app explains the issue, produces no CSV, and leaves saved data unchanged.
 
 ### Infrastructure failure
 
@@ -288,25 +288,12 @@ If shared text is empty after trimming and no shared image can be opened, the ap
 
 ### Infrastructure failure
 
-If the draft cannot be saved completely, the app shows no success and creates no partial record, attachment link, or orphan image. The cross-cutting draft-preservation rule applies.
+If the draft cannot be saved completely, the app shows no success and creates no partial record or orphan image. The cross-cutting draft-preservation rule applies.
 
 ## Cross-cutting acceptance
 
 - 30 consecutive days dogfood.
-- With Android network permission denied, all journeys work:
-  1. create an account with an opening-balance transaction;
-  2. record income and expense with category allocations;
-  3. transfer between distinct same-currency accounts;
-  4. create and edit a Markdown note;
-  5. link transactions and notes from either side;
-  6. assign shared tags and at most one primary project;
-  7. attach an image through the system picker;
-  8. browse the mixed day timeline through persistent bottom navigation;
-  9. search transactions and notes with type filtering;
-  10. view monthly income, expense, and category statistics;
-  11. export and restore a logical ZIP round trip;
-  12. export transaction CSV;
-  13. receive shared text or image as an unsaved draft.
+- Journeys 1–13 work with Android network permission denied.
 - Recoverable operation failures that return control to the running app preserve all entered fields and selected media for retry. The MVP does not promise unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss.
 - no ads, analytics, or closed-source tracking SDK in release.
 - release blockers: any data loss, non-recomputable balance, orphan relation, or backup that cannot restore.
