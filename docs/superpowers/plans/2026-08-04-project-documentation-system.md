@@ -77,6 +77,7 @@ Use `apply_patch` to create:
 local.properties
 **/build/
 *.iml
+.worktrees/
 ```
 
 - [ ] **Step 4: Verify generated files are ignored and approved inputs remain trackable**
@@ -87,7 +88,7 @@ Run:
 git status --short --ignored
 ```
 
-Expected: `.idea/` and `.superpowers/` appear with `!!`; the research report and `docs/` appear as untracked rather than ignored.
+Expected: `.idea/`, `.superpowers/`, and `.worktrees/` are ignored; `.idea/` and `.superpowers/` appear with `!!`, while `.worktrees/` may not appear until created; the research report and `docs/` appear as untracked rather than ignored.
 
 - [ ] **Step 5: Commit the approved research, design, and implementation plan**
 
