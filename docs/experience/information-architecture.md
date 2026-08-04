@@ -44,10 +44,16 @@ The identifiers such as `TL_HOME` below are diagram node IDs only. Labels such a
 
 ```mermaid
 flowchart TD
+    APP_START["App start"]
+    RECOVERY_GATE{"Pending restore verification or recovery?"}
+    RESTORE_RECOVERY["Blocked restore recovery route"]
+    RESTORE_SUCCESS["Restore terminal success"]
+    RESTORE_FAILURE["Restore terminal failure with verified original"]
     SHELL["Application shell"]
     CREATE["Global create chooser"]
     SEARCH["Unified search"]
     SETTINGS["Settings"]
+    SETTINGS_EXPORT["Settings > Export"]
 
     subgraph TOP["Persistent bottom navigation"]
         TL_HOME["Timeline home"]
@@ -67,8 +73,18 @@ flowchart TD
     NOTE_EDIT["Note editor"]
     ACCOUNT_EDIT["Account and opening-balance editor"]
     ATTACHMENT_PREVIEW["Attachment preview"]
-    DATA_EXPORT["CSV or backup export progress"]
+    CSV_PROGRESS["CSV export modal progress"]
+    BACKUP_PROGRESS["Backup export progress"]
     RESTORE["Restore wizard"]
+
+    APP_START --> RECOVERY_GATE
+    RECOVERY_GATE -- "No pending work" --> SHELL
+    RECOVERY_GATE -- "Pending verification or recovery" --> RESTORE_RECOVERY
+    RESTORE_RECOVERY -- "Replacement verified" --> RESTORE_SUCCESS
+    RESTORE_RECOVERY -- "Original vault restored" --> RESTORE_FAILURE
+    RESTORE_RECOVERY -- "Unresolved: retry or diagnostics" --> RESTORE_RECOVERY
+    RESTORE_SUCCESS --> SHELL
+    RESTORE_FAILURE -- "Continue with verified original" --> SHELL
 
     SHELL --> TOP
     SHELL --> CREATE
@@ -103,7 +119,9 @@ flowchart TD
     TRANSFER_EDIT --> ATTACHMENT_PREVIEW
     NOTE_EDIT --> ATTACHMENT_PREVIEW
 
-    SETTINGS --> DATA_EXPORT
+    SETTINGS --> SETTINGS_EXPORT
+    SETTINGS_EXPORT --> CSV_PROGRESS
+    SETTINGS_EXPORT --> BACKUP_PROGRESS
     SETTINGS --> RESTORE
 ```
 
@@ -127,8 +145,13 @@ Typed route keys are stable screen contracts for future Compose implementation. 
 | `NoteEditor` | New note draft or existing `noteId` | Launching detail or top-level state |
 | `AccountOpeningEditor` | New account draft | Prior Finance state |
 | `AttachmentPreview` | In-memory pending-media handle or persisted attachment ID | Owning editor/detail with its state intact |
-| `DataExportProgress` | Explicit export kind: transaction CSV or logical backup | Settings after terminal state or cancellation |
+| `SettingsExport` | Export operation kind and latest terminal result | Settings or the retained top-level launch context |
+| `CsvExportProgress` | Confirmed CSV destination and modal progress state | No Back while Running/Cancelling; every confirmed terminal outcome returns to `SettingsExport` with Success, Cancelled, or Failed status |
+| `BackupExportProgress` | Confirmed logical-backup destination and progress state | `SettingsExport` after its terminal state or allowed cancellation |
 | `RestoreWizard` | No implicit candidate; the user selects one inside the wizard | Settings after cancellation or terminal state |
+| `RestoreRecoveryRoute` | Architecture-verified pending restore/migration recovery status; no domain or file-path argument | No shell destination while unresolved; verified replacement goes to restore success, verified rollback goes to restore failure |
+| `RestoreTerminalSuccess` | Complete replacement verified safe | Continue into Timeline using restored data |
+| `RestoreTerminalFailure` | Restore failed and original vault verified safe | Continue into the original data or return to Settings; unresolved recovery never enters this route |
 
 An origin context is navigation-only state needed to return to the previous scroll position, filter, query, or date. It is not persisted as a domain relation.
 
@@ -138,13 +161,15 @@ Bottom navigation is visible on:
 
 - all four top-level homes;
 - their browse/detail surfaces, including account, transaction, note, and project details;
-- Unified Search, Settings, and non-destructive export progress.
+- Unified Search, Settings, `SettingsExport`, and non-destructive `BackupExportProgress` surfaces.
 
 Bottom navigation is hidden for focused or destructive flows:
 
 - every transaction, note, account, tag, or project editor;
 - attachment preview, whether launched from a draft or saved detail;
-- the complete Restore Wizard from candidate selection through its terminal result.
+- `CsvExportProgress` throughout `Phase.Running` and `Phase.Cancelling`; app/system Back and gestures are also disabled until the actual terminal result returns to `SettingsExport`;
+- the complete Restore Wizard from candidate selection through its terminal result;
+- `RestoreRecoveryRoute`, which appears before the shell and therefore exposes no bottom navigation while verification or recovery is unresolved.
 
 Hiding bottom navigation does not discard the selected tab or its back stack. Back or a terminal action restores the same shell context. System Back from a dirty editor follows the discard rule in [interaction rules](interaction-rules.md); it must not silently destroy a draft.
 
@@ -172,16 +197,23 @@ Compose implementation must hoist these values out of disposable list items and 
 5. Transaction-to-note and note-to-transaction links open the linked source detail in the owning feature. Back returns to the originating detail.
 6. A primary-project chip or assignment may open `ProjectDetail`; this navigation does not change the fact's assignment.
 7. Missing or soft-deleted targets render an unavailable state and a safe Back action; they do not redirect to an unrelated record.
+8. Successful creation of an Expense, Income, or Transfer opens its Finance-owned `TransactionDetail`; successful account creation opens `AccountDetail`. Back restores the exact retained launch context. Successful edit returns to its source detail. Returning from a link, assignment, image, or picker subflow restores the parent draft and never applies a top-level success route.
+9. Search result and error updates are scoped to the current query/filter request revision. Clearing, closing, or leaving Search invalidates pending updates, except that opening a current result preserves the completed Search state for Back.
+10. App startup must resolve the restore/migration recovery gate before the shell: replacement verification leads to terminal success, verified rollback leads to terminal failure with access to the original data, and unresolved recovery remains blocked with Retry/diagnostics only.
 
 ## Navigation acceptance checks
 
 Future Compose navigation and UI tests must demonstrate:
 
-- launch opens Timeline and the bottom-navigation order is Timeline, Finance, Notes, Projects;
+- launch opens Timeline and the bottom-navigation order is Timeline, Finance, Notes, Projects when no restore/migration recovery is pending;
 - all four tabs retain independent scroll position, filter, and date state across switching;
 - top-level domains cannot be reached by vertically scrolling another domain;
 - global `+` exposes exactly Expense, Income, Transfer, and Note;
 - global Search and Settings are reachable from every top-level app bar;
 - editors, attachment preview, and Restore Wizard hide bottom navigation and restore the prior context on return;
 - cards from Timeline and Search dispatch to the correct source detail and Back restores origin state;
+- new finance/account success routes and edit/subflow returns follow the deterministic destinations above;
+- `CsvExportProgress` is modal full-screen: Running/Cancelling blocks bottom navigation and every Back path, explicit Cancel waits for acknowledgement, and Success/Cancelled/Failed returns to `SettingsExport` with the actual status;
+- a pending app-start recovery shows `RestoreRecoveryRoute` before the shell and cannot be bypassed into ordinary navigation;
+- stale or invalidated Search revisions cannot update visible results or errors;
 - no screen, route key, button, or domain type named generic Entry is introduced.
