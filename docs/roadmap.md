@@ -5,9 +5,9 @@ This roadmap defines the only authorized stage order for one-person, Codex-assis
 ## Current position
 
 - The documentation foundation is complete when its implementation plan and final audit pass.
-- No functional specification is currently `in-progress`.
-- Tech PoC P0 is the next candidate for specification work; it is not authorized implementation merely because it appears first below.
-- A later slice cannot begin early to compensate for a failed gate. A failed PoC first updates the owning core document and, when required, an ADR and a new or revised approved specification.
+- Current active spec: none. No functional specification is currently `in-progress`.
+- Tech PoC P0 is the next candidate for specification work. Like every roadmap item that has not entered the formal lifecycle, it has no implementation authorization merely because it appears below.
+- A failed gate follows the same-slice revision and retry protocol below. The current slice remains the unique `in-progress` slice, and no later slice may start.
 
 ## Stage sequence
 
@@ -55,13 +55,13 @@ Thumbnail performance belongs to M3, aggregation performance to M5, and startup 
 draft → approved → in-progress → completed
 ```
 
-`active` means exactly `in-progress`. An `approved` specification is ready for planning but is not active. Across the entire project, at most one specification may be `in-progress` at a time.
+`active` means exactly the unique `in-progress` specification. An `approved` specification is not active, the project may have no active specification, and across the entire project at most one specification may be `in-progress` at a time.
 
 | State | Meaning and allowed work |
 |---|---|
-| `draft` | Behavior, boundaries, and acceptance are still being clarified. Implementation is forbidden. |
-| `approved` | The user has accepted `spec.md`; `plan.md` may be produced and reviewed, but implementation has not started. |
-| `in-progress` | The slice has an approved `spec.md` and an approved `plan.md`, and it is the project's single executing specification. |
+| `draft` | Behavior, boundaries, and acceptance are still being clarified. Implementation is forbidden. This is the only formal state a roadmap candidate may enter directly. |
+| `approved` | The user has explicitly accepted `spec.md` and that approval is recorded. `plan.md` may be produced and reviewed, but the spec is not active and implementation has not started. |
+| `in-progress` | The user has explicitly approved both `spec.md` and `plan.md`, both approval facts are recorded with date/context, and the slice is the project's single active executing specification. |
 | `completed` | Acceptance and required gates pass, `verification.md` contains repeatable evidence, and no blocker remains. The directory becomes read-only history. |
 
 ### Slice document ownership
@@ -70,8 +70,20 @@ draft → approved → in-progress → completed
 - `plan.md` owns implementation sequence, expected file changes, and planned verification commands.
 - `verification.md` owns commands actually executed, environments, results and measurements, deviations from the plan, and remaining risk.
 
-A slice may move from `approved` to `in-progress` only after both its approved specification and plan exist. It may move to `completed` only when its acceptance criteria and roadmap exit gate have verification evidence and no blocking risk remains. A later correction to completed work uses a new specification; a stable architecture, persistence, compatibility, recovery, or security decision change also adds or supersedes an ADR under the existing documentation-first rules. Completed specifications are never silently rewritten to make history match later code.
+A Codex-generated or reviewed plan is unapproved by default. A slice may move from `approved` to `in-progress` only after the user explicitly approves the plan and the approval date/context is recorded in plan metadata or a shared spec status record. It may move to `completed` only when its acceptance criteria and roadmap exit gate have verification evidence and no blocking risk remains. A later correction to completed work uses a new specification; a stable architecture, persistence, compatibility, recovery, or security decision change also adds or supersedes an ADR under the existing documentation-first rules. Completed specifications are never silently rewritten to make history match later code.
 
-## Candidate boundary after MVP
+### PoC failure, revision, and retry
 
-V1 and V2 ideas are candidates only. Placement in a candidate list does not authorize code, schema fields, interfaces, dependencies, migrations, routes, or empty modules. Examples such as encryption, OCR/AI, recurring finance, arbitrary attachments, sync, multi-device use, collaboration, cross-currency transfer, or another client platform require a new product decision and specification lifecycle; architecture- or compatibility-changing candidates also require an ADR before implementation.
+Failure does not move the current PoC slice backward or permit work to advance around it:
+
+1. Keep the same slice as the project's unique `in-progress` spec. Do not mark it `completed`, move it back to `approved`, introduce a `superseded` state, or start the next slice.
+2. Append the failed command, environment, result, deviation, and remaining risk to that slice's `verification.md`; preserve prior evidence rather than replacing it.
+3. Classify the failure. If a technical assumption or selection conclusion failed, first update the owning architecture facts and create a new ADR containing the failure evidence, rejected option, alternative decision, and impact. If only the test fixture, harness, device setup, or other test infrastructure failed without disproving the technical conclusion, record and repair that infrastructure failure; it is not a failed PoC conclusion and does not by itself change architecture facts or require a decision ADR.
+4. Revise the same `spec.md` and `plan.md`, with an explicit revision identifier and revision record. The user must explicitly reapprove the revised behavior and acceptance criteria and the revised plan. Record each reapproval with date/context in the relevant metadata or shared status record; Codex generation or review is not approval.
+5. Retry through the same `in-progress` slice only after those required approvals and architecture/ADR updates are complete. The next slice remains blocked until the current slice passes its gate and becomes `completed`.
+
+## Candidate boundary
+
+A candidate is a roadmap item or later idea that has not entered the formal lifecycle. It may create only a draft `spec.md`, entering `draft`; it cannot skip directly to `approved` or `in-progress`, and it does not authorize a `plan.md`, code, schema fields, interfaces, dependencies, migrations, routes, or modules. Exploration or evidence-gathering may occur only when the existing facts explicitly permit it and does not count as implementation, approval, or lifecycle progress.
+
+V1 and V2 ideas remain candidates under this same rule. Examples such as encryption, OCR/AI, recurring finance, arbitrary attachments, sync, multi-device use, collaboration, cross-currency transfer, or another client platform require a new product decision and the full specification lifecycle; architecture- or compatibility-changing candidates also require an ADR before implementation.

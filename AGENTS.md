@@ -10,7 +10,7 @@
 
 1. Read this file.
 2. Read docs/index.md.
-3. Read the unique active spec and only the core documents it references.
+3. If an active spec exists, read the unique `in-progress` spec and only the core documents it references. For lifecycle work, read the target draft or approved spec instead.
 4. Read the research report only for evidence or license review.
 
 ## Sources of truth
@@ -19,8 +19,9 @@
 - Architecture and data: docs/architecture/* and accepted ADRs
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
-- Stage order: docs/roadmap.md
-- Current change: one approved spec under docs/specs/*
+- Stage order: [docs/roadmap.md](docs/roadmap.md)
+- Current active spec: none; Tech PoC P0 is only the next candidate and is not authorized implementation
+- Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules
 
@@ -36,7 +37,10 @@
 - Update the owning core document before changing a stable decision.
 - Add an ADR when the decision affects architecture, persistence, compatibility, or recovery.
 - Resolve document conflicts explicitly before implementation.
-- Do not implement without an approved spec and plan.
+- `active` means the unique `in-progress` spec; an `approved` spec is not active, and zero active specs is valid.
+- A roadmap candidate authorizes only creation of a draft `spec.md`, not a plan or implementation work.
+- Do not implement until the user has explicitly approved both the spec and the plan and the approval date/context is recorded in plan metadata or the spec status record.
+- If a PoC technical assumption or selection conclusion fails, keep that slice `in-progress`, update the owning architecture facts, create the required evidence-bearing ADR, revise the same spec and plan, and obtain explicit user reapproval before retrying. A test-infrastructure failure is recorded and repaired without being treated as a PoC conclusion.
 
 ## Engineering discipline
 
