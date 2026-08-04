@@ -123,10 +123,16 @@ The financial rules in this document refine, but do not duplicate, the user jour
 
 - `Transaction`, `Note`, and `Project` use soft delete first: deletion records a deleted timestamp on their `EntityRef` and excludes the fact from effective reads while preserving recoverability and history.
 - An `Account` or `Category` with history is archived, not deleted. Archiving prevents inappropriate new use without altering past entries or allocations.
-- Physically purging a `Transaction` removes its owned `AccountEntry` and `CategoryAllocation` children and its relation records. A referenced `Category` with history remains and is archived rather than deleted.
-- Before physically purging a soft-deleted `Project`, atomically clear every primary-project assignment from referencing transactions and notes, then purge the project. Project purge never cascade-deletes a `Transaction` or `Note` fact.
-- When a `Transaction` or `Note` is physically purged, its `TransactionNoteRelation`, `EntityTag`, and `AttachmentLink` records are removed with it so no relation record is orphaned.
-- Attachment physical content is deleted only after its reference count reaches zero and the cleanup grace period has elapsed. Removing one owner never removes content still referenced by another owner.
+
+### Physical purge invariant
+
+A physical purge is one atomic operation: it deletes the concrete fact (`Transaction`, `Note`, or `Project`), its same-ID `EntityRef`, all owned children, and all applicable relation records. If any required cleanup fails, none of the purge changes is committed. The type-specific cleanup is:
+
+- `Transaction`: delete its `AccountEntry` and `CategoryAllocation` children; delete its `TransactionNoteRelation`, `EntityTag`, and `AttachmentLink` records; then delete the `Transaction` and same-ID `EntityRef`.
+- `Note`: delete its `TransactionNoteRelation`, `EntityTag`, and `AttachmentLink` records; then delete the `Note` and same-ID `EntityRef`.
+- `Project`: first, within the same atomic operation, clear every primary-project assignment on referencing transactions and notes; never delete those `Transaction` or `Note` facts; then delete the `Project` and same-ID `EntityRef`.
+
+Deleting an `AttachmentLink` removes only the ownership relation and never directly deletes attachment physical content. Physical content is deleted only when its reference count is zero and the cleanup grace period has elapsed, so purge cannot bypass the attachment lifecycle rule.
 
 ## Deferred scope
 
