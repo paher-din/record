@@ -46,22 +46,22 @@ Each `SearchDocument` contains enough information to identify and render a searc
 
 A domain write and its projection update occur in the same Room transaction. The projection never writes back to domain facts, and a full rebuild from facts is supported.
 
-The technical proof of concept uses 10,000 mixed Chinese and English records to compare FTS4 with the `unicode61` tokenizer against normalized, paged `LIKE`. The measured rule is correctness first, followed by acceptable paging latency and resource use on the supported device floor. If FTS4 correctness is inadequate, MVP selects paged `LIKE`; the project will not add a server or migrate to Room 3 solely for search. A later ADR records the final choice and its measurements.
+The technical proof of concept uses 10,000 mixed Chinese and English records to compare FTS4 with the `unicode61` tokenizer against normalized, paged `LIKE`. Correctness is the first gate. If both FTS4 unicode61 and normalized paged LIKE satisfy correctness, choose the option with more stable response time. If FTS4 Chinese correctness is inadequate, choose paged `LIKE` for MVP. The project will not add a server or migrate to Room 3 solely for search. A later ADR records the final choice and its measurements.
 
 ## Logical backup
 
 The portable backup is a ZIP with these logical contents:
 
 - `manifest.json`;
-- versioned JSONL for accounts, transactions, account entries, category allocations, notes, projects, tags, entity tags, transaction-note associations, attachments, and attachment ownership;
+- versioned JSONL for entity references (`EntityRef`), accounts, categories (`Category`), transactions, account entries, category allocations, notes, projects, tags, entity tags, transaction-note associations, attachments, and attachment ownership;
 - attachment binaries at `attachments/<sha256>`;
 - `transactions.csv`.
 
-The manifest includes `formatVersion`, `databaseSchemaVersion`, `appVersion`, `createdAt`, `backupId`, and `deviceId`, plus the normalized path, cryptographic hash, and byte size of every packaged file.
+The manifest includes `formatVersion`, `databaseSchemaVersion`, `appVersion`, `createdAt`, `backupId`, and `deviceId`, plus the normalized path, cryptographic hash, and byte size of every payload entry except `manifest.json` itself.
 
 Generation follows one ordered reliability boundary:
 
-consistent logical read → stream JSONL and attachments → hash each output → write the manifest last → atomically publish the final ZIP.
+consistent logical read → stream and hash JSONL, attachments, and `transactions.csv` → write the manifest last → atomically publish the final ZIP.
 
 An incomplete temporary package is never listed as restorable. Before import, the app validates normalized relative paths with no traversal, duplicate entries, size limits, checksums, and format compatibility.
 

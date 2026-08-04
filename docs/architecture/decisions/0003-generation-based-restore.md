@@ -21,7 +21,7 @@ Overwrite restore must replace all current facts, relationships, and attachments
 
 ## Decision
 
-Import the database and attachments into an isolated staging generation and validate the whole generation before switching. Persist the active-generation pointer atomically, and leave the current generation untouched until that pointer changes. Retain the previous generation until the new generation starts successfully and validation passes again.
+Import the database and attachments into an isolated staging generation. Before the active-generation switch or activation, validate both payload checksums and domain invariants across the complete staged generation. Persist the active-generation pointer atomically, and leave the current generation untouched until that pointer changes. Retain the previous generation until the new generation starts successfully and validation passes again.
 
 No failure may expose a partial restore. The restore path does not replace or synchronize a live SQLite database or its WAL files.
 
