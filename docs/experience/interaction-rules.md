@@ -12,21 +12,41 @@ Every editor or operation exposes one immutable UI state containing, as applicab
 
 - draft field values and pending selections;
 - field-level validation messages;
-- operation phase: idle, validating, saving/running, recoverable failure, blocking failure, or completed;
+- exactly one operation phase from the closed set below;
 - one stable application error category rather than a raw infrastructure or platform exception;
 - whether confirmation is currently allowed;
 - progress that is explicitly determinate or indeterminate, never fabricated.
 
 The ViewModel remains the owner of draft state while the flow is in the running app. A recoverable failure preserves every entered field and selected media needed for retry. This does not promise unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss.
 
+### Operation phase model
+
+The operation phase is one of these exact tokens. There are no implicit aliases or unlisted phase substates.
+
+| Phase token | Testable meaning | Primary-action rule | Allowed next phases |
+|---|---|---|---|
+| `Phase.Loading` | The flow is obtaining an existing record or incoming content required to construct a complete initial state. Partial content is not editable. | Disabled. | `Phase.Idle`, `Phase.Selecting`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.Idle` | Complete stable state is available and no selection, check, validation, save, or long operation is active. | Determined by current validation and dirty-state rules. | `Phase.Selecting`, `Phase.Checking`, `Phase.Validating`, `Phase.Saving`, `Phase.Running` |
+| `Phase.Selecting` | The flow is waiting for an explicit user or system selection, such as a destination, candidate, image, or typed share target. | Disabled until the required selection is valid; the selection-specific Continue action may then start the listed next phase. | `Phase.Idle`, `Phase.Checking`, `Phase.Validating`, `Phase.Running`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.Checking` | The app is performing non-mutating prerequisite, compatibility, or preflight checks. | Disabled. | `Phase.Idle`, `Phase.Selecting`, `Phase.Validating`, `Phase.Running`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.Validating` | The app is validating current draft input or selected media before it can be accepted or saved. | Disabled. | `Phase.Idle`, `Phase.Saving`, `Phase.Running`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.Saving` | A bounded all-or-nothing record change is being durably saved. | Disabled; duplicate Save/Confirm is rejected. | `Phase.Completed`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.Running` | A search, export, backup, or restore operation is actively progressing after its required input was accepted. | Start/Confirm is disabled; Cancel is available only at a flow-defined safe boundary. | `Phase.Idle` for a completed repeatable read, otherwise `Phase.Completed`, `Phase.Recovering`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.Recovering` | The app is resolving an interrupted restore or migration condition before data can be opened safely. | New data operations are disabled; only an explicitly offered recovery action is allowed. | `Phase.Completed`, `Phase.RecoverableFailure`, `Phase.BlockingFailure` |
+| `Phase.RecoverableFailure` | The attempt failed, but retained input and verified current data permit correction, Retry, or Reselect. | Enabled only for the explicitly offered safe recovery action. | `Phase.Loading`, `Phase.Idle`, `Phase.Selecting`, `Phase.Checking`, `Phase.Validating`, `Phase.Saving`, `Phase.Running`, `Phase.Recovering` |
+| `Phase.BlockingFailure` | The attempt cannot continue until an external condition is remedied or safety recovery completes. | Disabled until remediation; afterward only the explicitly offered safe retry, Reselect, or recovery action is enabled. | `Phase.Loading`, `Phase.Idle`, `Phase.Selecting`, `Phase.Checking`, `Phase.Validating`, `Phase.Saving`, `Phase.Running`, `Phase.Recovering` |
+| `Phase.Completed` | The requested success has been fully proven at that flow's durable-success boundary. | Only the terminal Continue/Done action is allowed. | None; exit the flow. A new operation starts with its own declared initial phase. |
+
+Cancel or Back may exit a phase only where that flow's cancellation rules allow it; flow exit is not another phase. Every phase change must be caused by a named UI event or completed operation, and tests must reject any transition not listed above. A flow-specific rule may narrow its allowed next phases or actions, but cannot introduce a new token or widen this table.
+
 ### Shared entry state
 
 Unless a flow defines an override below, its initial state is determined as follows:
 
-- **New editor:** start in `idle` with no persisted record identity. Required fields are empty except an occurrence date/time defaulted from an explicit launch context or, when no context supplies one, the current local date/time. Optional text, relations, assignments, and media start empty. A launch context may prefill only fields it owns, such as the selected account or timeline day; state from another abandoned draft is never copied implicitly.
-- **Existing-record editor:** start in `loading` with the primary action disabled. Load the complete last-saved record before presenting an editable `idle` state. A partial load is never rendered as an empty field. Load failure keeps editing disabled and offers Retry or Back.
+- **New editor:** start in `Phase.Idle` with no persisted record identity. Required fields are empty except an occurrence date/time defaulted from an explicit launch context or, when no context supplies one, the current local date/time. Optional text, relations, assignments, and media start empty. A launch context may prefill only fields it owns, such as the selected account or timeline day; state from another abandoned draft is never copied implicitly.
+- **Existing-record editor:** start in `Phase.Loading` with the primary action disabled. Load the complete last-saved record before presenting an editable `Phase.Idle` state. A partial load is never rendered as an empty field. Load failure moves to the applicable failure phase, keeps editing disabled, and offers only its allowed Retry or Back action.
 - **Selection subflow:** start from the parent draft's current selections, not from defaults. Returning from a picker, preview, or linked-record screen restores the unchanged parent draft plus any explicit new selection.
-- **Read or operation flow:** start in `loading`, `checking`, or `selecting` as named by that flow, with no success state and with its primary action disabled until all required input and preconditions are available.
+- **Read or operation flow:** start in `Phase.Loading`, `Phase.Checking`, or `Phase.Selecting` as named by that flow, with no success state and with its primary action disabled until all required input and preconditions are available.
 - **Primary action:** Save, Confirm, Continue, Search, or Export begins disabled while required data is loading, while local validation fails, or while another attempt is running. It becomes enabled only when the current complete input is valid. An edit may additionally keep Save disabled until the draft differs from the last-saved state.
 - **Draft restoration:** navigation within the running flow, configuration recreation, and any recoverable failure restore all entered fields and selected media. Explicit Discard clears that draft. Opening a fresh create route after discard starts from new-editor defaults. Recovery after force-stop, OS process death, uninstall, or device loss is not promised by MVP.
 
@@ -36,6 +56,7 @@ Each per-flow **Entry-state override** below changes only the named defaults. Al
 
 - Trim text for validation without silently replacing the user's visible draft before confirmation.
 - Field and business validation happens before a save attempt and points to the field or selection that needs correction.
+- A valid editor confirmation moves `Phase.Idle` to `Phase.Saving`. Durable success moves to `Phase.Completed`; failure moves to the applicable declared failure phase.
 - While a save is running, duplicate confirmation is disabled. System Back does not turn an in-flight write into a success or start a second write.
 - A financial success state is shown only after the complete financial change is durably saved. No balance, history, timeline, or statistics UI may optimistically claim a successful financial write.
 - A note or link success state is shown only after its complete requested change is durably saved. An edit failure leaves the prior saved version unchanged.
@@ -152,7 +173,7 @@ Any save failure applies neither account effect nor any requested link/assignmen
 
 **Entry-state override**
 
-A new note starts with blank Markdown, no confirmed image, and the launch-context or current date/time; Save is initially disabled. It becomes enabled when occurrence time is valid and either trimmed Markdown is non-empty or at least one image is confirmed. Edit starts in `loading` and does not expose an editable empty note while the saved body, images, assignments, and transaction links are being loaded.
+A new note starts in `Phase.Idle` with blank Markdown, no confirmed image, and the launch-context or current date/time; Save is initially disabled. It becomes enabled when occurrence time is valid and either trimmed Markdown is non-empty or at least one image is confirmed. Edit starts in `Phase.Loading` and does not expose an editable empty note while the saved body, images, assignments, and transaction links are being loaded.
 
 **Fields and selections**
 
@@ -189,7 +210,7 @@ Finance → create account opens one combined account-and-opening-balance editor
 
 **Entry-state override**
 
-The combined editor starts in `idle` with blank account name, no currency, blank opening balance, and the product default opening date if one exists. It never starts from another account's values. Create is initially disabled and becomes enabled only when name, currency, opening balance, and any shown date are valid. Returning from currency selection restores name, balance, and date unchanged.
+The combined editor starts in `Phase.Idle` with blank account name, no currency, blank opening balance, and the product default opening date if one exists. It never starts from another account's values. Create is initially disabled and becomes enabled only when name, currency, opening balance, and any shown date are valid. Returning from currency selection restores name, balance, and date unchanged.
 
 **Fields and selections**
 
@@ -227,7 +248,7 @@ Both entry points edit the same typed transaction–note link; neither creates a
 
 **Entry-state override**
 
-The selector starts in `loading` with Confirm disabled while it loads the fixed source and the complete previously saved link set. It becomes selectable only after that set is known. Confirm remains disabled until the proposed set differs from the saved set and all selected targets are valid. A load failure never presents an empty set as though all links were removed.
+The selector starts in `Phase.Loading` with Confirm disabled while it loads the fixed source and the complete previously saved link set. It becomes `Phase.Idle` and selectable only after that set is known. Confirm remains disabled until the proposed set differs from the saved set and all selected targets are valid. A load failure enters the applicable failure phase and never presents an empty set as though all links were removed.
 
 **Fields and selections**
 
@@ -257,7 +278,7 @@ A saved or draft Transaction or Note opens its assignment control from the ownin
 
 **Entry-state override**
 
-For a saved owner, start in `loading` with Confirm disabled until the complete saved tag set, primary project, and available choices are loaded. For an unsaved owner, start from the parent draft's current assignments. Confirm is disabled until the proposed assignments are valid and differ from the starting set. Load failure retains the prior known assignments and never renders them as unassigned.
+For a saved owner, start in `Phase.Loading` with Confirm disabled until the complete saved tag set, primary project, and available choices are loaded, then enter `Phase.Idle`. For an unsaved owner, start in `Phase.Idle` from the parent draft's current assignments. Confirm is disabled until the proposed assignments are valid and differ from the starting set. Load failure enters the applicable failure phase, retains the prior known assignments, and never renders them as unassigned.
 
 **Fields and selections**
 
@@ -290,7 +311,7 @@ A Transaction or Note editor invokes Android Photo Picker (or the explicitly sup
 
 **Entry-state override**
 
-Entry preserves the complete parent draft and starts in `selecting` with no new image and no attachment success. After a selection, the preview starts in `validating`; Add/Confirm remains disabled until the image is readable and accepted. Returning from preview restores the parent draft and only the explicitly confirmed image. Reopening import after removal starts with no pending selection rather than reviving the removed image.
+Entry preserves the complete parent draft and starts in `Phase.Selecting` with no new image and no attachment success. After a selection, the preview enters `Phase.Validating`; accepted validation returns to `Phase.Idle` with Add/Confirm governed by the draft rules. Returning from preview restores the parent draft and only the explicitly confirmed image. Reopening import after removal starts in `Phase.Selecting` with no pending selection rather than reviving the removed image.
 
 **Fields and selections**
 
@@ -316,7 +337,7 @@ Unreadable or invalid content adds no image and leaves the rest of the draft int
 
 **Shared entry-state override**
 
-The share flow starts in `loading` while the app determines whether the incoming content contains usable text, an image, or both. No saved record, destination type, or success state exists at entry. After readable content is available, the flow enters `selecting` with Note/Expense/Income/Transfer unselected and Continue disabled until the user chooses one. The chosen typed editor then starts as a new draft, prefilled only from the incoming content as defined below; all other fields use that editor's new-entry defaults. Returning from the chosen editor within the running flow restores the share-populated draft. Explicit Discard or an empty-share result leaves nothing to restore.
+The share flow starts in `Phase.Loading` while the app determines whether the incoming content contains usable text, an image, or both. No saved record, destination type, or success state exists at entry. After readable content is available, the flow enters `Phase.Selecting` with Note/Expense/Income/Transfer unselected and Continue disabled until the user chooses one. The chosen typed editor then enters `Phase.Idle` as a new draft, prefilled only from the incoming content as defined below; all other fields use that editor's new-entry defaults. Returning from the chosen editor within the running flow restores the share-populated draft. Explicit Discard or an empty-share result leaves nothing to restore.
 
 ### Shared text
 
@@ -352,7 +373,7 @@ Android Sharesheet → this app → choose Note draft or a typed Transaction dra
 
 **Fields and selections**
 
-The shared image enters as pending media in `validating` and follows the Image attachment import rules. The chosen owner editor supplies all other required fields, and its primary action remains disabled until the image and all owner fields are valid.
+The shared image enters as pending media in `Phase.Validating` and follows the Image attachment import rules. Accepted validation returns to the chosen editor's `Phase.Idle`; its primary action remains disabled until the image and all owner fields are valid.
 
 **Validation**
 
@@ -378,7 +399,7 @@ Search from any top-level app bar opens one Unified Search screen and retains th
 
 **Entry-state override**
 
-A fresh Search screen starts in `idle` with blank query, All selected, no result claim, and the Search trigger disabled. Returning from a source detail restores the prior query, type filter, completed results, and list position. A trimmed non-empty query enables Search; starting it enters `loading` without labelling stale or partial content as the new result. Changing the filter retains the query and follows the same validity rule.
+A fresh Search screen starts in `Phase.Idle` with blank query, All selected, no result claim, and the Search trigger disabled. Returning from a source detail restores the prior query, type filter, completed results, and list position in `Phase.Idle`. A trimmed non-empty query enables Search; starting it enters `Phase.Running` without labelling stale or partial content as the new result. A completed query returns to `Phase.Idle` with its result set; changing the filter retains the query and follows the same validity rule.
 
 **Fields and selections**
 
@@ -411,7 +432,7 @@ Settings → Data → Export transactions as CSV → Android Storage Access Fram
 
 **Entry-state override**
 
-Entry starts in `checking` with CSV fixed as the operation kind, no destination, no progress, and Export disabled. After the app confirms that at least one transaction can be exported, it enters `selecting`; Export becomes enabled only after the user confirms a writable destination. Returning from the destination picker without a selection restores `selecting` and never creates a success state. Retry retains the CSV operation kind but requires reselection when the prior destination is no longer writable.
+Entry starts in `Phase.Checking` with CSV fixed as the operation kind, no destination, no progress, and Export disabled. After the app confirms that at least one transaction can be exported, it enters `Phase.Selecting`; Export becomes enabled only after the user confirms a writable destination. Starting export enters `Phase.Running`. Returning from the destination picker without a selection restores `Phase.Selecting` and never creates a success state. Retry retains the CSV operation kind but requires reselection when the prior destination is no longer writable.
 
 **Fields and selections**
 
@@ -441,7 +462,7 @@ Settings → Data → Create complete backup → Android Storage Access Framewor
 
 **Entry-state override**
 
-Entry starts in `checking` with Complete Backup fixed as the operation kind, no destination, no progress, and Create Backup disabled. It moves to `selecting` only when backup prerequisites are available, and the primary action becomes enabled only after a writable destination is confirmed. Returning from destination selection restores the operation kind but not an unconfirmed destination. Retry preserves the user's place in the backup flow and requests a new destination only when required.
+Entry starts in `Phase.Checking` with Complete Backup fixed as the operation kind, no destination, no progress, and Create Backup disabled. It moves to `Phase.Selecting` only when backup prerequisites are available, and the primary action becomes enabled only after a writable destination is confirmed. Starting backup enters `Phase.Running`. Returning from destination selection restores the operation kind but not an unconfirmed destination. Retry preserves the user's place in the backup flow and requests a new destination only when required.
 
 **Fields and selections**
 
@@ -469,7 +490,7 @@ Restore is one focused flow with bottom navigation hidden. The UI must never use
 
 **Entry-state override**
 
-A new restore flow starts in `selecting` with no candidate, no summary, no progress, no success state, and Continue disabled. Selecting a candidate enters `checking`; overwrite confirmation remains unavailable until complete preflight succeeds. If the app re-enters while an earlier restore or migration recovery still requires resolution, it starts in `recovering` instead of showing a fresh candidate picker. Normal data navigation and a new restore attempt remain disabled until that recovery reaches a verified safe result.
+A new restore flow starts in `Phase.Selecting` with no candidate, no summary, no progress, no success state, and Continue disabled. Selecting a candidate enters `Phase.Checking`; successful preflight returns to `Phase.Idle` with overwrite confirmation governed by the rules below. If the app re-enters while an earlier restore or migration recovery still requires resolution, it starts in `Phase.Recovering` instead of showing a fresh candidate picker. Normal data navigation and a new restore attempt remain disabled until that recovery reaches a verified safe result.
 
 ### 1. Candidate selection and preflight
 
@@ -505,7 +526,7 @@ Only successful preflight enters confirmation.
 
 **Entry-state override**
 
-The confirmation screen starts with Confirm Restore disabled until the complete validated summary is present and the user acknowledges that all current data will be replaced. If validation is no longer current, the flow returns to `checking` and disables confirmation until preflight succeeds again.
+The confirmation screen starts in `Phase.Idle` with Confirm Restore disabled until the complete validated summary is present and the user acknowledges that all current data will be replaced. If validation is no longer current, the flow returns to `Phase.Checking` and disables confirmation until preflight succeeds again.
 
 **Fields and selections**
 
@@ -535,7 +556,7 @@ Explicit overwrite confirmation.
 
 **Entry-state override**
 
-Progress starts in `running` at the first truthful restore phase, with duplicate confirmation disabled and no success state. Cancel is enabled only while the operation can still honor cancellation without exposing a replacement. Once safe cancellation is no longer available, Cancel becomes disabled and the screen explains that validation or recovery must finish.
+Progress starts in `Phase.Running` at the first truthful restore phase, with duplicate confirmation disabled and no success state. Cancel is enabled only while the operation can still honor cancellation without exposing a replacement. If interruption requires safety recovery, the operation enters `Phase.Recovering`. Once safe cancellation is no longer available, Cancel becomes disabled and the screen explains that validation or recovery must finish.
 
 **Fields and selections**
 
@@ -577,7 +598,7 @@ The complete replacement has passed startup revalidation and the app has verifie
 
 **Entry-state override**
 
-This state can only be entered from completed verification. It starts in `completed` with Continue enabled, no Retry action, and no editable restore input. It is never restored from an unverified progress snapshot.
+This state can only be entered from completed verification. It starts in `Phase.Completed` with Continue enabled, no Retry action, and no editable restore input. It is never restored from an unverified progress snapshot.
 
 **Fields and selections**
 
@@ -607,7 +628,7 @@ Pre-replacement failure, verified return to the original vault after replacement
 
 **Entry-state override**
 
-Entry starts in `recoverable failure`, `blocking failure`, or `recovering` according to the verified outcome. Retry is enabled only when current data is known safe and the failed operation is retryable. Back is enabled only when normal navigation is safe. While recovery is unresolved, both a new restore and normal navigation remain disabled; only the explicit recovery action or status is available.
+Entry starts in `Phase.RecoverableFailure`, `Phase.BlockingFailure`, or `Phase.Recovering` according to the verified outcome. Retry is enabled only when current data is known safe and the failed operation is retryable. Back is enabled only when normal navigation is safe. While recovery is unresolved, both a new restore and normal navigation remain disabled; only the explicit recovery action or status is available.
 
 **Fields and selections**
 
