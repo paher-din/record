@@ -12,20 +12,33 @@ Every editor or operation exposes one immutable UI state containing, as applicab
 
 - draft field values and pending selections;
 - field-level validation messages;
-- operation phase: idle, validating, committing/running, recoverable failure, blocking failure, or completed;
-- one stable application error category rather than a raw Room, file, ZIP, permission, or platform exception;
+- operation phase: idle, validating, saving/running, recoverable failure, blocking failure, or completed;
+- one stable application error category rather than a raw infrastructure or platform exception;
 - whether confirmation is currently allowed;
 - progress that is explicitly determinate or indeterminate, never fabricated.
 
 The ViewModel remains the owner of draft state while the flow is in the running app. A recoverable failure preserves every entered field and selected media needed for retry. This does not promise unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss.
 
-### Validation and commit boundary
+### Shared entry state
+
+Unless a flow defines an override below, its initial state is determined as follows:
+
+- **New editor:** start in `idle` with no persisted record identity. Required fields are empty except an occurrence date/time defaulted from an explicit launch context or, when no context supplies one, the current local date/time. Optional text, relations, assignments, and media start empty. A launch context may prefill only fields it owns, such as the selected account or timeline day; state from another abandoned draft is never copied implicitly.
+- **Existing-record editor:** start in `loading` with the primary action disabled. Load the complete last-saved record before presenting an editable `idle` state. A partial load is never rendered as an empty field. Load failure keeps editing disabled and offers Retry or Back.
+- **Selection subflow:** start from the parent draft's current selections, not from defaults. Returning from a picker, preview, or linked-record screen restores the unchanged parent draft plus any explicit new selection.
+- **Read or operation flow:** start in `loading`, `checking`, or `selecting` as named by that flow, with no success state and with its primary action disabled until all required input and preconditions are available.
+- **Primary action:** Save, Confirm, Continue, Search, or Export begins disabled while required data is loading, while local validation fails, or while another attempt is running. It becomes enabled only when the current complete input is valid. An edit may additionally keep Save disabled until the draft differs from the last-saved state.
+- **Draft restoration:** navigation within the running flow, configuration recreation, and any recoverable failure restore all entered fields and selected media. Explicit Discard clears that draft. Opening a fresh create route after discard starts from new-editor defaults. Recovery after force-stop, OS process death, uninstall, or device loss is not promised by MVP.
+
+Each per-flow **Entry-state override** below changes only the named defaults. All other shared entry-state rules continue to apply.
+
+### Validation and durable-save boundary
 
 - Trim text for validation without silently replacing the user's visible draft before confirmation.
-- Field and business validation happens before a repository or Use Case commit and points to the field or selection that needs correction.
-- While a commit is running, duplicate confirmation is disabled. System Back does not turn an in-flight write into a success or start a second write.
-- A financial success state is shown only after the complete Room transaction durably commits. No balance, history, timeline, or statistics UI may optimistically claim a successful financial write.
-- A note or relation success state is shown only after its complete requested change commits. An edit failure leaves the prior saved version unchanged.
+- Field and business validation happens before a save attempt and points to the field or selection that needs correction.
+- While a save is running, duplicate confirmation is disabled. System Back does not turn an in-flight write into a success or start a second write.
+- A financial success state is shown only after the complete financial change is durably saved. No balance, history, timeline, or statistics UI may optimistically claim a successful financial write.
+- A note or link success state is shown only after its complete requested change is durably saved. An edit failure leaves the prior saved version unchanged.
 - Recoverable I/O failure keeps the draft and offers Retry or, when an external URI is no longer usable, Reselect.
 - Space exhaustion, permission loss, corrupt input, and incompatible backup are blocking for the current attempt and explain the next safe action. They are not blindly retried.
 
@@ -54,6 +67,10 @@ The global `+` chooser and feature-local typed actions all dispatch to one of fo
 - Global `+` → Expense or Income.
 - A Finance-owned typed action may open the same editor with an account or date preselected from the launch context.
 
+**Entry-state override**
+
+The selected transaction type is fixed by the typed entry point. A new draft starts with blank amount and allocations; it may prefill only an explicitly selected account and date. Save is initially disabled and remains disabled until account, amount, occurrence time, and exact allocations are valid. Editing an existing income or expense first loads its complete saved fields, assignments, links, and confirmed images under the shared existing-record rule.
+
 **Fields and selections**
 
 - required account;
@@ -63,7 +80,7 @@ The global `+` chooser and feature-local typed actions all dispatch to one of fo
 - optional descriptive transaction fields;
 - optional shared tags, one optional primary project, links to saved notes, and pending confirmed images.
 
-The UI displays allocation values as positive magnitudes. It does not ask the user to enter the storage sign: Expense produces one negative account entry and Income one positive account entry at the domain boundary.
+The UI displays allocation values as positive magnitudes. It does not ask the user to enter a sign: an Expense reduces the selected balance and an Income increases it.
 
 **Validation**
 
@@ -75,7 +92,7 @@ The UI displays allocation values as positive magnitudes. It does not ask the us
 
 **Save/confirm**
 
-Confirm submits the Transaction, its one AccountEntry, all CategoryAllocations, requested relations, attachment metadata, and attachment links as one atomic owner save. The editor enters a committing state and retains the draft. Only after durable commit may it clear the draft, show success, update the balance, and navigate to the transaction detail or its launch context.
+Confirm saves the transaction, its complete category allocations, requested links/assignments, and confirmed images as one all-or-nothing change. The editor enters a saving state and retains the draft. Only after durable save may it clear the draft, show success, update the balance, and navigate to the transaction detail or its launch context.
 
 **Cancel/Back**
 
@@ -83,7 +100,7 @@ Use the shared dirty-draft rule. No transaction, allocation, relation, or attach
 
 **Failure/retry**
 
-Validation failure leaves focusable field errors and the complete draft. A repository or file failure rolls back the whole requested save, shows no financial success, leaves prior balances unchanged, and preserves the draft for Retry or Reselect. A failed image preparation may be removed or reselected without clearing unrelated transaction fields.
+Validation failure leaves focusable field errors and the complete draft. A save or image-import failure applies none of the requested change, shows no financial success, leaves prior balances unchanged, and preserves the draft for Retry or Reselect. A failed image preparation may be removed or reselected without clearing unrelated transaction fields.
 
 ### Transfer creation
 
@@ -91,6 +108,10 @@ Validation failure leaves focusable field errors and the complete draft. A repos
 
 - Global `+` → Transfer.
 - A Finance-owned account action may preselect that account as source while leaving destination explicit.
+
+**Entry-state override**
+
+A new draft fixes the type as Transfer, starts with blank amount and destination, and may prefill only an explicitly selected source account and date. Confirm is initially disabled and remains disabled until both account selections and the amount/date are valid. Editing first loads both saved account selections and every other saved field before enabling changes.
 
 **Fields and selections**
 
@@ -111,7 +132,7 @@ Validation failure leaves focusable field errors and the complete draft. A repos
 
 **Save/confirm**
 
-Confirm invokes the transfer Use Case. One Transaction, the negative source AccountEntry, the equal positive destination AccountEntry, and all requested relations commit atomically. Success appears only after both account effects durably commit and their algebraic sum is zero.
+Confirm saves both equal-and-opposite account effects and every requested link/assignment/image as one all-or-nothing transfer. Success appears only after both account histories and balances durably reflect the zero-sum transfer.
 
 **Cancel/Back**
 
@@ -119,7 +140,7 @@ Use the shared dirty-draft rule. Neither account is changed by cancellation.
 
 **Failure/retry**
 
-Any commit failure rolls back both entries and every requested relation. The UI shows no transfer success and no one-sided balance change. It preserves source, destination, amount, date, optional fields, links, and pending media for correction or Retry.
+Any save failure applies neither account effect nor any requested link/assignment/image. The UI shows no transfer success and no one-sided balance change. It preserves source, destination, amount, date, optional fields, links, and pending media for correction or Retry.
 
 ### Note creation and editing
 
@@ -128,6 +149,10 @@ Any commit failure rolls back both entries and every requested relation. The UI 
 - Global `+` → Note.
 - Notes → new note.
 - Note detail → edit opens a draft based on the last saved version.
+
+**Entry-state override**
+
+A new note starts with blank Markdown, no confirmed image, and the launch-context or current date/time; Save is initially disabled. It becomes enabled when occurrence time is valid and either trimmed Markdown is non-empty or at least one image is confirmed. Edit starts in `loading` and does not expose an editable empty note while the saved body, images, assignments, and transaction links are being loaded.
 
 **Fields and selections**
 
@@ -162,6 +187,10 @@ Validation identifies the missing content condition without erasing Markdown or 
 
 Finance → create account opens one combined account-and-opening-balance editor.
 
+**Entry-state override**
+
+The combined editor starts in `idle` with blank account name, no currency, blank opening balance, and the product default opening date if one exists. It never starts from another account's values. Create is initially disabled and becomes enabled only when name, currency, opening balance, and any shown date are valid. Returning from currency selection restores name, balance, and date unchanged.
+
 **Fields and selections**
 
 - required trimmed account name;
@@ -177,7 +206,7 @@ Name must remain non-blank after trimming. Currency must be selected. Opening ba
 
 **Save/confirm**
 
-Confirm performs one atomic operation creating the Account, its `OPENING_BALANCE` Transaction, and that transaction's unique AccountEntry. Success is shown only after all three commit; the new account then displays a balance recomputable from its history.
+Confirm saves the account and its opening-balance history as one all-or-nothing change. Success is shown only when the account appears with the requested balance and that balance is recomputable from the visible history.
 
 **Cancel/Back**
 
@@ -194,7 +223,11 @@ Any failure leaves no partial account or opening transaction, shows no success, 
 - Transaction detail/edit → link notes.
 - Note detail/edit → link transactions.
 
-Both entry points edit the same typed `TransactionNoteRelation`; neither creates a generic relation or relation type.
+Both entry points edit the same typed transaction–note link; neither creates a generic relation or relation type.
+
+**Entry-state override**
+
+The selector starts in `loading` with Confirm disabled while it loads the fixed source and the complete previously saved link set. It becomes selectable only after that set is known. Confirm remains disabled until the proposed set differs from the saved set and all selected targets are valid. A load failure never presents an empty set as though all links were removed.
 
 **Fields and selections**
 
@@ -206,7 +239,7 @@ At confirmation, the source and every selected target must still exist and match
 
 **Save/confirm**
 
-Confirm commits the complete requested add/remove set atomically. Only after commit are the links shown as saved and navigable from both sides.
+Confirm saves the complete requested add/remove set as one all-or-nothing change. Only afterward are the links shown as saved and navigable from both sides.
 
 **Cancel/Back**
 
@@ -214,13 +247,17 @@ Cancellation discards only the proposed selection and leaves all prior links unc
 
 **Failure/retry**
 
-If validation or commit fails, none of the requested changes are saved, prior links remain unchanged, and no orphan or one-sided association appears. Preserve the proposed selection where all selected records are still available; mark unavailable selections for correction before Retry.
+If validation or save fails, none of the requested changes are saved, prior links remain unchanged, and no orphan or one-sided association appears. Preserve the proposed selection where all selected records are still available; mark unavailable selections for correction before Retry.
 
 ## Shared tags and primary project assignment
 
 **Entry point**
 
 A saved or draft Transaction or Note opens its assignment control from the owning detail/editor.
+
+**Entry-state override**
+
+For a saved owner, start in `loading` with Confirm disabled until the complete saved tag set, primary project, and available choices are loaded. For an unsaved owner, start from the parent draft's current assignments. Confirm is disabled until the proposed assignments are valid and differ from the starting set. Load failure retains the prior known assignments and never renders them as unassigned.
 
 **Fields and selections**
 
@@ -235,7 +272,7 @@ Every selected tag and the optional project must still exist and be available at
 
 **Save/confirm**
 
-For a saved owner, confirm atomically replaces the requested tag set and primary-project assignment. For a new owner, the assignments join that owner's atomic save. Only committed selections appear on detail, project aggregation, timeline, or search projections.
+For a saved owner, confirm replaces the requested tag set and primary-project assignment as one all-or-nothing change. For a new owner, the assignments are part of that owner's all-or-nothing save. Only saved selections appear on detail, project aggregation, timeline, or search results.
 
 **Cancel/Back**
 
@@ -243,7 +280,7 @@ Cancellation restores the prior saved selections, or the prior draft selections 
 
 **Failure/retry**
 
-If any selection is invalid or the full assignment cannot commit, none of the requested tag/project changes are saved. Prior saved assignments remain unchanged, the proposed selections remain visible for correction, and no success is shown.
+If any selection is invalid or the full assignment cannot be saved, none of the requested tag/project changes are saved. Prior saved assignments remain unchanged, the proposed selections remain visible for correction, and no success is shown.
 
 ## Image attachment import
 
@@ -251,27 +288,35 @@ If any selection is invalid or the full assignment cannot commit, none of the re
 
 A Transaction or Note editor invokes Android Photo Picker (or the explicitly supported system picker fallback). Share-image drafts enter the same pending-media pipeline after the share entry has supplied a URI.
 
+**Entry-state override**
+
+Entry preserves the complete parent draft and starts in `selecting` with no new image and no attachment success. After a selection, the preview starts in `validating`; Add/Confirm remains disabled until the image is readable and accepted. Returning from preview restores the parent draft and only the explicitly confirmed image. Reopening import after removal starts with no pending selection rather than reviving the removed image.
+
 **Fields and selections**
 
-The user chooses an image, reviews a pending preview, and either confirms it into the owner draft or removes/reselects it. UI state holds only a safe pending-media handle or persisted attachment ID, never a physical storage path.
+The user chooses an image, reviews a pending preview, and either confirms it into the owner draft or removes/reselects it. The UI never exposes an internal storage location.
 
 **Validation**
 
-No picker result means no attachment change. A selected item must be readable, satisfy size limits, have an accepted declared/decoded image MIME type, and be decodable. Content verification and SHA-256 calculation must complete before the image is marked confirmed in the draft.
+No picker result means no attachment change. A selected item must be readable, satisfy size limits, be an accepted image type, and be decodable. All required image validation must complete before the image is marked confirmed in the draft.
 
 **Save/confirm**
 
-Confirming the preview only confirms the image in the unsaved owner draft; it does not independently persist an attachment. The owner Save invokes the attachment flow defined by [data and storage](../architecture/data-and-storage.md): app-private same-filesystem temporary copy, validation and hashing, serialized content-addressed move/reuse, then one Room transaction for owner facts, finance children where applicable, relations, Attachment metadata, and AttachmentLinks.
+Confirming the preview only adds the image to the unsaved owner draft; it does not save an independent attachment. The image becomes durably visible only when the complete owning Transaction or Note saves successfully. The required storage reliability behavior is defined by [data and storage](../architecture/data-and-storage.md).
 
 **Cancel/Back**
 
-Back from the picker or pending preview leaves the owner draft unchanged unless the user explicitly removes a pending image. Discarding the owner draft schedules safe cleanup of unreferenced temporary/content candidates after the required grace and verification rules; it never deletes content still referenced by another owner.
+Back from the picker or pending preview leaves the owner draft unchanged unless the user explicitly removes a pending image. Discarding the owner draft saves no new image and never removes an image already used by a saved record.
 
 **Failure/retry**
 
-Unreadable or invalid content adds no image and leaves the rest of the draft intact. File or owner-commit failure shows no success, leaves a saved owner unchanged, exposes no link to missing content, and preserves the owner draft for Retry or Reselect. Orphan-candidate cleanup is internal and cannot be presented as a saved attachment.
+Unreadable or invalid content adds no image and leaves the rest of the draft intact. Import or owner-save failure shows no success, leaves a saved owner unchanged, exposes no missing image as an attachment, and preserves the owner draft for Retry or Reselect.
 
 ## System share drafts
+
+**Shared entry-state override**
+
+The share flow starts in `loading` while the app determines whether the incoming content contains usable text, an image, or both. No saved record, destination type, or success state exists at entry. After readable content is available, the flow enters `selecting` with Note/Expense/Income/Transfer unselected and Continue disabled until the user chooses one. The chosen typed editor then starts as a new draft, prefilled only from the incoming content as defined below; all other fields use that editor's new-entry defaults. Returning from the chosen editor within the running flow restores the share-populated draft. Explicit Discard or an empty-share result leaves nothing to restore.
 
 ### Shared text
 
@@ -289,7 +334,7 @@ Shared text is trimmed for the empty-share check. Empty text with no readable sh
 
 **Save/confirm**
 
-Entering from share creates only in-memory draft state. Nothing is saved until the user explicitly confirms the owning Note or Transaction and its complete durable save succeeds.
+Entering from share creates only unsaved draft state. Nothing is saved until the user explicitly confirms the owning Note or Transaction and its complete durable save succeeds.
 
 **Cancel/Back**
 
@@ -307,7 +352,7 @@ Android Sharesheet → this app → choose Note draft or a typed Transaction dra
 
 **Fields and selections**
 
-The shared image enters as pending media and follows the Image attachment import rules. The chosen owner editor supplies all other required fields.
+The shared image enters as pending media in `validating` and follows the Image attachment import rules. The chosen owner editor supplies all other required fields, and its primary action remains disabled until the image and all owner fields are valid.
 
 **Validation**
 
@@ -315,7 +360,7 @@ The URI must be readable as a valid image. If it is not and no non-empty shared 
 
 **Save/confirm**
 
-The image becomes saved only as an AttachmentLink of the confirmed owner inside the owner's complete atomic save. It is never an independent record or orphan attachment.
+The image becomes saved only as part of the confirmed owner's complete all-or-nothing save. It is never an independent record or visible orphan attachment.
 
 **Cancel/Back**
 
@@ -330,6 +375,10 @@ URI permission or read failure keeps any other draft values, identifies the medi
 **Entry point**
 
 Search from any top-level app bar opens one Unified Search screen and retains the launching tab as return context.
+
+**Entry-state override**
+
+A fresh Search screen starts in `idle` with blank query, All selected, no result claim, and the Search trigger disabled. Returning from a source detail restores the prior query, type filter, completed results, and list position. A trimmed non-empty query enables Search; starting it enters `loading` without labelling stale or partial content as the new result. Changing the filter retains the query and follows the same validity rule.
 
 **Fields and selections**
 
@@ -360,6 +409,10 @@ Failure is distinct from zero results. Do not present a partial page as the comp
 
 Settings → Data → Export transactions as CSV → Android Storage Access Framework destination confirmation.
 
+**Entry-state override**
+
+Entry starts in `checking` with CSV fixed as the operation kind, no destination, no progress, and Export disabled. After the app confirms that at least one transaction can be exported, it enters `selecting`; Export becomes enabled only after the user confirms a writable destination. Returning from the destination picker without a selection restores `selecting` and never creates a success state. Retry retains the CSV operation kind but requires reselection when the prior destination is no longer writable.
+
 **Fields and selections**
 
 The user chooses a writable destination. MVP exports all saved transactions; it has no selective record filter. The progress state identifies CSV, not backup.
@@ -370,11 +423,11 @@ At least one saved transaction must exist and a writable destination must be con
 
 **Save/confirm**
 
-After destination confirmation, stream the export with honest determinate progress when total work is known, otherwise indeterminate phase text. Report success only after the complete destination artifact is closed and verified. CSV is a separate artifact and is not included in the logical backup ZIP.
+After destination confirmation, show honest determinate progress when total work is known, otherwise indeterminate phase text. Report success only after the complete destination artifact is available and verified. CSV is a separate artifact and is not included in the logical backup ZIP.
 
 **Cancel/Back**
 
-Before writing, cancellation returns to Settings. During writing, Cancel requests cooperative cancellation at a safe stream boundary. A cancelled or incomplete destination is deleted best-effort or remains explicitly marked/named incomplete; it is never reported as a completed CSV. Saved app data is unchanged.
+Before export starts, cancellation returns to Settings. During export, Cancel requests cancellation at the next safe boundary; until cancellation is acknowledged, the screen does not claim completion. A cancelled or incomplete result is never reported or offered as a completed CSV. Saved app data is unchanged.
 
 **Failure/retry**
 
@@ -386,29 +439,37 @@ Permission loss, space exhaustion, provider failure, or validation failure shows
 
 Settings → Data → Create complete backup → Android Storage Access Framework destination confirmation.
 
+**Entry-state override**
+
+Entry starts in `checking` with Complete Backup fixed as the operation kind, no destination, no progress, and Create Backup disabled. It moves to `selecting` only when backup prerequisites are available, and the primary action becomes enabled only after a writable destination is confirmed. Returning from destination selection restores the operation kind but not an unconfirmed destination. Retry preserves the user's place in the backup flow and requests a new destination only when required.
+
 **Fields and selections**
 
-The only user selection is the destination. MVP always creates a complete logical ZIP; it does not select individual entities and does not add encryption options. The ZIP contains the versioned JSONL datasets, attachment binaries, and `manifest.json` defined by [data and storage](../architecture/data-and-storage.md). It does **not** contain transaction CSV.
+The only user selection is the destination. MVP always creates a complete logical ZIP; it does not select individual entities and does not add encryption options. Its complete contents are defined by [data and storage](../architecture/data-and-storage.md). It does **not** contain transaction CSV.
 
 **Validation**
 
-Before publication, validate a consistent logical read, every payload size/hash/count, the manifest, and the complete package. A destination must be writable and sufficient private staging space must be available.
+The destination must be writable, enough working space must be available, and the complete backup must pass all integrity and completeness checks defined by [data and storage](../architecture/data-and-storage.md) before success can be reported.
 
 **Save/confirm**
 
-Progress identifies ordered phases such as reading facts, writing datasets, writing attachments, validating, and copying to destination. Build and atomically publish the complete package in app-private storage first. For SAF, report success only after the complete provider copy closes and verifies, with rename used when supported. Only a verified final URI is a successful backup.
+Progress identifies user-meaningful phases such as collecting records and images, validating the backup, and writing the selected destination. Report success only when the complete backup is verified and available at the selected destination.
 
 **Cancel/Back**
 
-Cancel requests cooperative cancellation before the next safe stream/publication boundary. Temporary private or provider residue remains incomplete and is cleaned best-effort; it is never listed as restorable. Cancellation does not change current app data.
+Cancel requests cancellation at the next safe boundary. Until cancellation is acknowledged, the screen does not claim completion. Any incomplete result is never offered as restorable. Cancellation does not change current app data.
 
 **Failure/retry**
 
-Any read, write, hash, space, permission, provider, or verification failure shows no success and leaves current app data unchanged. Incomplete artifacts remain visibly/internal-state incomplete and cannot be selected from the app's restorable-backup list. Retry may require destination reselection.
+Any read, write, space, permission, destination, or verification failure shows no success and leaves current app data unchanged. An incomplete result cannot be selected from the app's restorable-backup list. Retry may require destination reselection.
 
 ## Overwrite restore wizard
 
-Restore is one focused flow with bottom navigation hidden. The UI must never use “partially restored,” “some data restored,” or equivalent success wording. The only successful outcome is a complete replacement that passes generation activation and the startup gate.
+Restore is one focused flow with bottom navigation hidden. The UI must never use “partially restored,” “some data restored,” or equivalent success wording. The only successful outcome is a complete replacement that passes every preflight, activation, recovery, and post-restart validation gate defined by [data and storage](../architecture/data-and-storage.md).
+
+**Entry-state override**
+
+A new restore flow starts in `selecting` with no candidate, no summary, no progress, no success state, and Continue disabled. Selecting a candidate enters `checking`; overwrite confirmation remains unavailable until complete preflight succeeds. If the app re-enters while an earlier restore or migration recovery still requires resolution, it starts in `recovering` instead of showing a fresh candidate picker. Normal data navigation and a new restore attempt remain disabled until that recovery reaches a verified safe result.
 
 ### 1. Candidate selection and preflight
 
@@ -418,19 +479,19 @@ Settings → Data → Restore complete backup opens the Restore Wizard, then And
 
 **Fields and selections**
 
-One candidate URI. Preflight may show non-sensitive summary information such as backup creation time, format version, and validated entity/attachment counts only after reading them safely.
+One selected backup. Preflight may show non-sensitive summary information such as backup creation time, compatibility, and validated record/image counts only after reading them safely.
 
 **Validation**
 
-Before asking for overwrite confirmation, validate the entire package exactly as required by [data and storage](../architecture/data-and-storage.md): supported `formatVersion`, normalized traversal-safe unique paths, size limits, all SHA-256 values, JSONL counts, required logical content, relationships, image ownership, and enough temporary storage. `databaseSchemaVersion` is provenance, not the compatibility gate. CSV is never accepted as restore input.
+Before asking for overwrite confirmation, validate the entire package, its compatibility, completeness, integrity, relationships, image ownership, resulting balances, and required working-space availability according to [data and storage](../architecture/data-and-storage.md). CSV is never accepted as restore input.
 
 **Save/confirm**
 
-Preflight performs no change to the active generation. Only a fully valid candidate advances to confirmation.
+Preflight does not change current data. Only a fully valid candidate enables Continue and advances to confirmation.
 
 **Cancel/Back**
 
-Cancel closes the wizard, releases the candidate, and returns to Settings with current data unchanged.
+Cancel closes the wizard, releases the candidate selection, and returns to Settings with current data unchanged.
 
 **Failure/retry**
 
@@ -442,71 +503,81 @@ Unreadable, corrupt, incompatible, unsafe, incomplete, or oversized input is rej
 
 Only successful preflight enters confirmation.
 
+**Entry-state override**
+
+The confirmation screen starts with Confirm Restore disabled until the complete validated summary is present and the user acknowledges that all current data will be replaced. If validation is no longer current, the flow returns to `checking` and disables confirmation until preflight succeeds again.
+
 **Fields and selections**
 
-The screen identifies that the complete current vault will be replaced as one operation and that the existing generation is retained as the rollback point during activation. It presents the already validated backup summary; no entity-level merge choices exist.
+The screen identifies that the complete current vault will be replaced as one all-or-nothing operation and that the existing vault remains the recovery point until the replacement is proven safe. It presents the already validated backup summary; no entity-level merge choices exist.
 
 **Validation**
 
-Confirmation remains disabled if the candidate's validation token is stale or the source changed. In that case preflight runs again. Restore cannot start while migration recovery is pending.
+Confirmation remains disabled if the candidate changed or its prior validation is no longer current. In that case preflight runs again. Restore cannot start while an earlier restore or migration recovery is unresolved.
 
 **Save/confirm**
 
-One explicit confirmation begins staging import. Confirmation is not restore success.
+One explicit confirmation begins the complete restore operation. Confirmation is not restore success.
 
 **Cancel/Back**
 
-Cancel returns to candidate selection or Settings without modifying the active generation.
+Cancel returns to candidate selection or Settings without changing current data.
 
 **Failure/retry**
 
-If the candidate becomes unavailable or preconditions change, return to preflight with current data unchanged.
+If the candidate becomes unavailable or preconditions change, return to preflight with current data unchanged and Confirm Restore disabled.
 
-### 3. Import, validation, and activation progress
+### 3. Restore progress
 
 **Entry point**
 
 Explicit overwrite confirmation.
 
+**Entry-state override**
+
+Progress starts in `running` at the first truthful restore phase, with duplicate confirmation disabled and no success state. Cancel is enabled only while the operation can still honor cancellation without exposing a replacement. Once safe cancellation is no longer available, Cancel becomes disabled and the screen explains that validation or recovery must finish.
+
 **Fields and selections**
 
-No editable fields. Progress exposes truthful phases: staging import, staged invariant validation, activation pending, startup validation, and finalization. It does not expose implementation paths or private values.
+No editable fields. Progress exposes truthful user-meaningful phases: preparing replacement, validating all records and images, applying complete replacement, verifying startup, and finalizing. It does not expose implementation paths, record internals, or private values.
 
 **Validation**
 
-The isolated staging generation must pass record counts, foreign keys, `EntityRef` XOR, finance transaction matrix, recomputed balances, typed associations, endpoint ownership, and attachment hashes before activation.
+Before replacement, the candidate must pass all architecture-defined checks needed to prove that every record, relation, assignment, image, and recomputed balance is complete and consistent.
 
 **Save/confirm**
 
-Activation follows the binding generation protocol in [data and storage](../architecture/data-and-storage.md):
+The internal generation-activation and migration-recovery protocols are owned exclusively by [data and storage](../architecture/data-and-storage.md). Their user-visible contract is:
 
-1. Import and validate candidate `C` while old generation `O` remains active.
-2. Atomically persist `activeGenerationId=C`, `previousGenerationId=O`, `candidateGenerationId=C`, `state=PENDING`.
-3. On startup, process migration recovery **before** Room or generation opening. If `migrationRecoveryState=MIGRATION_RECOVERY_PENDING`, normal opening and restore completion remain blocked while its recorded recovery resumes idempotently.
-4. Revalidate candidate checksums and domain invariants while activation is `PENDING`.
-5. Only successful startup validation may atomically clear `candidateGenerationId` and set `state=HEALTHY` while retaining the previous generation according to policy.
-
-The UI cannot emit Restore Success before step 5 is durably complete.
+1. Current data remains unchanged while the complete candidate is prepared and validated.
+2. Replacement is applied as one operation; records, relationships, images, and balances never become visible piecemeal.
+3. Any required migration recovery completes before the app opens data for normal use.
+4. The replacement is revalidated during startup before it is accepted as the current vault.
+5. Restore Success is emitted only after the replacement is verified usable; until then the prior vault remains the recovery point.
 
 **Cancel/Back**
 
-Cancellation is accepted only before the activation-record switch and then safely abandons/quarantines staging while `O` remains active. After the atomic switch to `PENDING`, Back/Cancel cannot claim cancellation; the flow must complete startup validation or rollback. The screen explains that recovery is finishing and prevents duplicate restore starts.
+Cancellation is accepted only before complete replacement begins and leaves current data unchanged. After that boundary, Back/Cancel cannot claim cancellation; the flow must finish validation or recovery. The screen explains that recovery is finishing and prevents duplicate restore starts.
 
 **Failure/retry**
 
-- Failure before activation keeps `O` active and marks staging for safe cleanup.
-- A crash after the `PENDING` switch is resumed idempotently from the complete activation record.
-- Candidate startup-validation failure atomically rolls the activation record back to `O`, clears candidate/previous activation fields as defined by the protocol, then quarantines `C` only after the restored record is durable.
-- Cleanup never removes a generation referenced by active, previous, or candidate ID.
-- Migration recovery failure keeps `migrationRecoveryState=MIGRATION_RECOVERY_PENDING`, keeps Room closed, and exposes explicit recovery; it never creates an empty database or opens a mixed database/WAL/SHM set.
+- Failure before replacement leaves the original vault unchanged.
+- Interruption during replacement resumes the architecture-defined recovery before normal data use.
+- Failure during startup verification returns to the original vault as one complete recovery outcome.
+- While safe recovery is unresolved, normal data navigation and new restore attempts remain blocked rather than opening uncertain data.
+- Cleanup or diagnostics never become a user-visible success substitute.
 
-None of these failures may be described as partial restore success. Retry starts from a fresh preflight only after the original active generation or explicit migration recovery is safely available.
+None of these failures may be described as partial restore success. Retry starts from a fresh preflight only after the original vault or completed replacement is verified safe.
 
 ### 4. Terminal success
 
 **Entry point**
 
-The candidate generation has passed startup revalidation and the activation record is durably `HEALTHY`.
+The complete replacement has passed startup revalidation and the app has verified it is safe for normal use.
+
+**Entry-state override**
+
+This state can only be entered from completed verification. It starts in `completed` with Continue enabled, no Retry action, and no editable restore input. It is never restored from an unverified progress snapshot.
 
 **Fields and selections**
 
@@ -514,11 +585,11 @@ No editable fields. The result states that the complete backup was restored and 
 
 **Validation**
 
-Success requires the complete entity, relation, assignment, attachment ownership/hash, and recomputed-balance round trip promised by Journey 11. A merely imported or `PENDING` candidate is not success.
+Success requires the complete record, relation, assignment, image ownership/integrity, and recomputed-balance round trip promised by Journey 11. A candidate that has only been copied, parsed, or partially checked is not success.
 
 **Save/confirm**
 
-Continue enters Timeline backed by the new active generation. The prior generation remains governed by rollback retention; the UI does not promise immediate deletion.
+Continue enters Timeline using the completely restored vault. The UI makes no claim about internal recovery-point retention or cleanup timing.
 
 **Cancel/Back**
 
@@ -526,33 +597,37 @@ The operation is already complete. Back or Continue leaves the result and opens 
 
 **Failure/retry**
 
-If final state cannot be proven `HEALTHY`, do not render this state. Route to recovery/failure instead.
+If the complete replacement cannot be proven safe for normal use, do not render this state. Route to recovery/failure instead.
 
 ### 5. Terminal failure and recovery
 
 **Entry point**
 
-Pre-activation failure, completed rollback after candidate startup failure, or explicit pending migration recovery.
+Pre-replacement failure, verified return to the original vault after replacement failure, or unresolved restore/migration recovery.
+
+**Entry-state override**
+
+Entry starts in `recoverable failure`, `blocking failure`, or `recovering` according to the verified outcome. Retry is enabled only when current data is known safe and the failed operation is retryable. Back is enabled only when normal navigation is safe. While recovery is unresolved, both a new restore and normal navigation remain disabled; only the explicit recovery action or status is available.
 
 **Fields and selections**
 
-No private diagnostic details. Show stable error category, failed phase, whether the original vault is active or recovery is still required, and the next safe action.
+No private diagnostic details. Show a stable error category, failed phase, whether the original vault is available or recovery is still required, and the next safe action.
 
 **Validation**
 
-Never infer safety from file presence alone. The app reads the atomically persisted activation/recovery record and verifies the active or recovered generation before enabling normal navigation.
+Normal navigation is enabled only after the architecture-owned recovery process verifies a complete safe vault. The UI never infers safety from an interrupted progress indicator or the presence of a selected backup.
 
 **Save/confirm**
 
-After verified rollback, Continue opens the unchanged original vault and may offer a fresh restore attempt. While migration recovery remains pending, normal Room-backed navigation stays blocked and only the explicit recovery/retry path is available.
+After a verified return to the original vault, Continue opens that unchanged vault and may offer a fresh restore attempt. While restore or migration recovery remains unresolved, normal data navigation stays blocked and only the explicit recovery path is available.
 
 **Cancel/Back**
 
-Back cannot bypass a pending migration-recovery gate. After verified rollback to the original vault, Back may return to Settings.
+Back cannot bypass an unresolved migration-recovery gate. After the original vault is verified safe, Back may return to Settings.
 
 **Failure/retry**
 
-Retry is idempotent for the recorded recovery stage. It never loops automatic migration attempts, never activates unvalidated staging, and never offers a merge or partial-acceptance path.
+Retry continues the architecture-owned safe recovery or starts a fresh restore only after recovery completes. It never offers a bypass, merge, or partial-acceptance path.
 
 ## Interaction acceptance matrix
 
@@ -560,15 +635,15 @@ Future ViewModel and Compose tests must cover at least:
 
 | Interaction | Success assertion | Required failure assertion |
 |---|---|---|
-| Expense / Income | One committed account effect and exact allocations | No optimistic success; complete draft retained; no partial allocation |
+| Expense / Income | One saved account effect and exact allocations | No optimistic success; complete draft retained; no partial allocation |
 | Transfer | Two distinct same-currency account effects sum to zero | Neither account changes on any failure |
 | Note | Body or confirmed image is sufficient; no title required | Prior saved revision unchanged; draft retained |
-| Opening balance | Account + opening Transaction + AccountEntry all exist | All three absent after failed save |
+| Opening balance | Account and matching opening-balance history both exist | Neither appears after failed save |
 | Transaction–note linking | Every selected link navigates from both sides | Prior link set unchanged; no one-sided relation |
-| Tags / project | Many tags and at most one project commit together | Prior assignments unchanged |
+| Tags / project | Many tags and at most one project save together | Prior assignments unchanged |
 | Image import | Confirmed owner and image remain available offline | No visible link to missing content; draft retained |
 | Share text/image | Only an unsaved typed draft exists before confirm | Leaving saves nothing; no orphan image |
 | Search/filter | All/Transaction/Note results dispatch to source | Query/filter retained; partial results not presented as complete |
 | CSV export | Complete verified CSV, all transactions exactly once | Cancel/failure never reports incomplete output as complete |
-| Logical backup | Complete verified ZIP without CSV | Temporary/provider residue is not restorable |
-| Restore | Complete candidate reaches activation `HEALTHY` | Old generation remains/returns active; no partial-success wording; migration gate cannot be bypassed |
+| Logical backup | Complete verified ZIP without CSV | Incomplete output is not restorable |
+| Restore | Complete replacement passes startup verification | Original vault remains/returns usable; no partial-success wording; migration gate cannot be bypassed |
