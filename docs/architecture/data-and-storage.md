@@ -28,7 +28,14 @@ Before a new Room schema opens, a migration coordinator blocks writers and creat
 3. Open the snapshot read-only, run the SQLite integrity check and the old-schema domain invariant checks, calculate its SHA-256, and atomically rename it into its published snapshot path.
 4. Only after the verified snapshot is published may the migration open and change the working database.
 
-If migration, database open, or startup validation fails, the coordinator closes every database handle and atomically restores the verified snapshot before normal use. It then enters an explicit recovery state and does not loop automatic migration retries. The snapshot is retained until the migrated generation has passed one successful startup and the user has produced a newer verified logical backup; only then may grace-period cleanup remove it.
+If migration, database open, or startup validation fails, restore follows this ordered protocol before normal use:
+
+1. Reverify the retained published snapshot against its recorded SHA-256 and rerun the SQLite integrity check through read-only access. A failed revalidation enters explicit recovery without changing the failed database.
+2. Block writers and close every database handle. Isolate the failed main database together with its `-wal` and `-shm` sidecars so none can be reopened or combined with restored content.
+3. Copy the retained snapshot into a recovery temporary file on the same filesystem as the main database, verify that copy, and atomically replace the main database with it.
+4. Keep the published snapshot unchanged and enter an explicit recovery state; do not loop automatic migration retries.
+
+The published snapshot remains unchanged until the migrated generation has passed one successful startup and the user has produced a newer verified logical backup. Only then may grace-period cleanup remove the snapshot and quarantined failed database files.
 
 This document intentionally contains no concrete schema, DDL, or Room annotations.
 
@@ -43,12 +50,14 @@ Attachment content uses the following logical states. These are reliability stat
 | `VERIFIED` | Under per-hash serialization, inspect the content-addressed target. If absent, atomically move the temporary file. If present, verify its actual SHA-256 and size before reuse. | `CONTENT_READY` or `QUARANTINED` | A mismatch is corruption: quarantine and fail; never overwrite it silently. Atomic move occurs only when the target is absent. |
 | `CONTENT_READY` | Commit the complete owner save in one Room transaction. | `ACTIVE` | The owner and attachment become visible together. A database failure leaves physical content only as a safe orphan candidate. |
 | `ACTIVE` | In the transaction that removes visible links, find zero references under per-hash serialization and mark the attachment for deletion. | `DELETE_PENDING` | Content remains present but cannot race an uncoordinated new link. |
-| `DELETE_PENDING` | A linking transaction obtains the same per-hash serialization and either cancels pending deletion before committing the link or waits/fails. | `ACTIVE` | A committed new link always protects the content. |
-| `DELETE_PENDING` | After the grace period, the cleaner obtains the same serialization, rechecks zero references, and retries physical deletion idempotently. | `DELETE_PENDING` or physically absent | Failed deletion retains `DELETE_PENDING` metadata for retry. Metadata is deleted only after physical absence is confirmed. |
+| `DELETE_PENDING` | A linking transaction obtains the same per-hash serialization, rechecks that the target exists, and verifies its actual SHA-256 and size. Only successful verification may cancel pending deletion and commit the link. If the target is missing, the content must re-enter `VERIFIED` → `CONTENT_READY` from a validated app-private temporary file, or linking fails. | `ACTIVE`, `CONTENT_READY`, or unchanged | A committed new link always references reverified content. |
+| `DELETE_PENDING` | After the grace period, the cleaner obtains the same per-hash serialization, rechecks zero references, retries physical deletion idempotently, confirms physical absence, and retains serialization until the metadata-deletion Room transaction commits. | `DELETE_PENDING` or physically absent with metadata removed | Failed deletion retains `DELETE_PENDING` metadata for retry. A retry after deletion but before metadata commit observes absence and completes metadata deletion. |
 
 In MVP, attachment owners are limited to `Transaction` and `Note` EntityRefs. The owner-save Room transaction includes the new or edited owner fact, its required finance children, requested relations, `Attachment` metadata, and every requested `AttachmentLink`; all commit or none commit. The database must never expose a committed link to missing content.
 
-Cleanup and linking serialize per SHA-256. Visible links are removed first, a zero-reference candidate is marked `DELETE_PENDING` in that Room transaction, and the cleaner rechecks zero references under the same serialization before physical deletion. Physical deletion is idempotent, and metadata remains until absence is confirmed. Content is never deleted after a new link commits. Unreferenced physical content left by a failed owner transaction is eligible for orphan cleanup only after verification and the grace period.
+Cleanup and linking serialize per SHA-256. Visible links are removed first, a zero-reference candidate is marked `DELETE_PENDING` in that Room transaction, and the cleaner rechecks zero references under the same serialization before physical deletion. The cleaner holds that serialization through physical-absence confirmation and metadata-deletion transaction commit. Physical deletion is idempotent, and metadata remains until absence is confirmed. Content is never deleted after a new link commits. Unreferenced physical content left by a failed owner transaction is eligible for orphan cleanup only after verification and the grace period.
+
+Quarantine is limited to a newly ingested temporary file or a corrupt content-addressed target with zero active links. A target referenced by any active link is never moved or quarantined; corruption is reported and the operation fails without relocating that file.
 
 ## SearchDocument
 
@@ -68,7 +77,8 @@ The technical proof of concept compares FTS4 with the `unicode61` tokenizer agai
 - Record one Android 14 reference device and software configuration with the results. This is the reference configuration, and both candidates run on that same device and configuration.
 - Use a fixed page size of 50. For every query and candidate, run 5 warmups followed by 30 measured runs.
 - Record p50, p95, and coefficient of variation (`CV`) for response time.
-- Correctness is required first. If FTS4 Chinese correctness is inadequate, choose paged `LIKE` for MVP regardless of timing.
+- Correctness is required first. If exactly one candidate satisfies every expected result, choose it. In particular, if FTS4 Chinese correctness is inadequate and paged `LIKE` is correct, choose paged `LIKE` for MVP regardless of timing.
+- If both candidates fail correctness, the proof of concept fails and no implementation candidate is selected.
 - If both FTS4 unicode61 and normalized paged LIKE satisfy correctness, choose the option with more stable response time. Stability is decided by choosing the lower `CV` when the absolute `CV` difference is at least 0.05. Otherwise choose the lower p95 when the relative difference is at least 10%. If still tied, choose paged `LIKE` for lower infrastructure complexity.
 
 The project will not add a server or migrate to Room 3 solely for search. A later ADR records the corpus and query-manifest versions, reference configuration, complete measurements, and final choice.
@@ -142,6 +152,9 @@ Future fault-injection coverage is required at these boundaries:
 - during the owner-save Room transaction;
 - during the `DELETE_PENDING` mark transaction;
 - during physical attachment deletion;
+- after physical attachment deletion but before the metadata-deletion transaction commits;
+- immediately before and after atomic migration-snapshot replacement;
+- during interruption of failed-database `-wal` and `-shm` sidecar isolation or cleanup;
 - during SAF copy and provider rename.
 
 ## Explicit exclusions
