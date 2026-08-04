@@ -26,6 +26,8 @@
 | `docs/architecture/decisions/0001-native-android-room-2.md` | Why the project uses native Android and Room 2.8.4 |
 | `docs/architecture/decisions/0002-entityref-and-strong-relations.md` | Why domain entities remain separate and core relations are typed |
 | `docs/architecture/decisions/0003-generation-based-restore.md` | Why restore uses validated staging generations |
+| `docs/architecture/decisions/0004-catalog-lifecycle-and-normalized-names.md` | Why catalogs use versioned normalized names and recoverable lifecycle states |
+| `docs/architecture/decisions/0005-canonical-attachment-content.md` | Why one SHA-256 identifies one canonical attachment fact and blob |
 | `docs/experience/information-architecture.md` | Persistent bottom navigation and top-level page structure |
 | `docs/experience/interaction-rules.md` | Creation, editing, linking, failure, and recovery behavior |
 | `docs/engineering/conventions.md` | Kotlin, Compose, module, state, and dependency rules |
@@ -43,7 +45,7 @@ The approved design remains at `docs/superpowers/specs/2026-08-04-codex-first-an
 - Track: `docs/superpowers/specs/2026-08-04-codex-first-android-record-app-design.md`
 - Track: `docs/superpowers/plans/2026-08-04-project-documentation-system.md`
 
-- [ ] **Step 1: Initialize a local Git repository**
+- [x] **Step 1: Initialize a local Git repository**
 
 Run:
 
@@ -53,7 +55,7 @@ git init -b main
 
 Expected: Git reports an initialized repository under `D:\record\.git` and performs no network operation.
 
-- [ ] **Step 2: Configure a repository-local commit identity only when none is available**
+- [x] **Step 2: Configure a repository-local commit identity only when none is available**
 
 Run:
 
@@ -66,7 +68,7 @@ git config --get user.email
 
 Expected: both commands print non-empty values. This changes only the new repository's local Git configuration.
 
-- [ ] **Step 3: Create `.gitignore` with the exact generated-state policy**
+- [x] **Step 3: Create `.gitignore` with the exact generated-state policy**
 
 Use `apply_patch` to create:
 
@@ -80,7 +82,7 @@ local.properties
 .worktrees/
 ```
 
-- [ ] **Step 4: Verify generated files are ignored and approved inputs remain trackable**
+- [x] **Step 4: Verify generated files are ignored and approved inputs remain trackable**
 
 Run:
 
@@ -90,7 +92,7 @@ git status --short --ignored
 
 Expected: `.idea/`, `.superpowers/`, and `.worktrees/` are ignored; `.idea/` and `.superpowers/` appear with `!!`, while `.worktrees/` may not appear until created; the research report and `docs/` appear as untracked rather than ignored.
 
-- [ ] **Step 5: Commit the approved research, design, and implementation plan**
+- [x] **Step 5: Commit the approved research, design, and implementation plan**
 
 Run:
 
@@ -109,7 +111,7 @@ Expected: `git diff --cached --check` prints nothing; the commit succeeds locall
 - Create: `README.md`
 - Create: `docs/index.md`
 
-- [ ] **Step 1: Create `AGENTS.md`**
+- [x] **Step 1: Create `AGENTS.md`**
 
 Use `apply_patch`. The file must contain these sections and rules:
 
@@ -169,7 +171,7 @@ Use `apply_patch`. The file must contain these sections and rules:
 - Affected core documents and ADRs are synchronized.
 ```
 
-- [ ] **Step 2: Create `README.md` as a portal, not a second specification**
+- [x] **Step 2: Create `README.md` as a portal, not a second specification**
 
 Use this exact heading order:
 
@@ -196,7 +198,7 @@ One-sentence product statement: a private Android timeline connecting money with
 
 Link each item with a relative Markdown link. Use an angle-bracket link target for `deep-research-report (6).md` so spaces and parentheses render correctly. Do not duplicate architecture or MVP requirement prose in the README.
 
-- [ ] **Step 3: Create `docs/index.md` as the reading router**
+- [x] **Step 3: Create `docs/index.md` as the reading router**
 
 Include a table with these exact task routes:
 
@@ -219,7 +221,7 @@ Also include:
 - conflict resolution order from design section 3.3;
 - statement that the approved design spec becomes historical after this plan completes.
 
-- [ ] **Step 4: Verify the portal files contain their required anchors**
+- [x] **Step 4: Verify the portal files contain their required anchors**
 
 Run:
 
@@ -228,7 +230,10 @@ $checks = @(
   @{Path='AGENTS.md'; Pattern='## Required reading'},
   @{Path='AGENTS.md'; Pattern='## Non-negotiable data rules'},
   @{Path='README.md'; Pattern='## Start here'},
-  @{Path='docs/index.md'; Pattern='one active spec|one-active-spec|唯一.*active spec'}
+  @{Path='docs/index.md'; Pattern='Active means exactly the unique `in-progress` spec'}
+  @{Path='docs/index.md'; Pattern='project may have no active spec'}
+  @{Path='docs/index.md'; Pattern='Current active spec: none'}
+  @{Path='docs/index.md'; Pattern='Tech PoC P0 is only the next candidate'}
 )
 foreach ($check in $checks) {
   if (-not (Select-String -LiteralPath $check.Path -Pattern $check.Pattern)) { throw "Missing anchor in $($check.Path): $($check.Pattern)" }
@@ -238,7 +243,7 @@ foreach ($check in $checks) {
 
 Expected: `portal-anchors: PASS`.
 
-- [ ] **Step 5: Commit the operating contract and router**
+- [x] **Step 5: Commit the operating contract and router**
 
 Run:
 
@@ -256,7 +261,7 @@ Expected: clean whitespace check and a successful local commit.
 - Create: `docs/product/vision.md`
 - Create: `docs/product/mvp-requirements.md`
 
-- [ ] **Step 1: Create `docs/product/vision.md`**
+- [x] **Step 1: Create `docs/product/vision.md`**
 
 Use this heading structure and content contract:
 
@@ -280,7 +285,7 @@ List every exclusion from design section 2.3.
 State that the MVP is not full double-entry accounting and not a cloud synchronization product.
 ```
 
-- [ ] **Step 2: Create `docs/product/mvp-requirements.md`**
+- [x] **Step 2: Create `docs/product/mvp-requirements.md`**
 
 Define these user journeys with observable acceptance criteria:
 
@@ -300,7 +305,7 @@ Define these user journeys with observable acceptance criteria:
 
 For each journey, specify preconditions, user action, success state, validation failure, and infrastructure failure. Include the 30-day dogfood criterion and release blockers from design section 9.2. Do not mention DAO, SQL, Gradle modules, or file implementation details.
 
-- [ ] **Step 3: Verify product scope has no V1/V2 leakage**
+- [x] **Step 3: Verify product scope has no V1/V2 leakage**
 
 Run:
 
@@ -314,7 +319,7 @@ if ($leaks) { throw "Out-of-scope items found in MVP requirements: $($leaks -joi
 
 Expected: `mvp-scope: PASS`. Non-goals belong in `vision.md`, not in executable MVP journeys.
 
-- [ ] **Step 4: Commit the product documents**
+- [x] **Step 4: Commit the product documents**
 
 Run:
 
@@ -332,7 +337,7 @@ Expected: clean whitespace check and a successful local commit.
 - Create: `docs/architecture/overview.md`
 - Create: `docs/architecture/domain-model.md`
 
-- [ ] **Step 1: Create `docs/architecture/overview.md`**
+- [x] **Step 1: Create `docs/architecture/overview.md`**
 
 Include:
 
@@ -346,7 +351,7 @@ Include:
 - explicit bans on UI-to-DAO access, exposing Room entities to UI, and timeline writes to source domains;
 - module-splitting thresholds: two consumers, stable public interface, independent tests, and reduced dependency surface.
 
-- [ ] **Step 2: Create `docs/architecture/domain-model.md`**
+- [x] **Step 2: Create `docs/architecture/domain-model.md`**
 
 Include a Mermaid ER diagram and define:
 
@@ -364,7 +369,7 @@ Include a Mermaid ER diagram and define:
 
 Do not include Room annotations or DAO method signatures; those belong to the first database implementation spec.
 
-- [ ] **Step 3: Verify all non-negotiable invariants are present**
+- [x] **Step 3: Verify all non-negotiable invariants are present**
 
 Run:
 
@@ -379,7 +384,7 @@ foreach ($pattern in $patterns) {
 
 Expected: `domain-invariants: PASS`.
 
-- [ ] **Step 4: Commit architecture and domain documents**
+- [x] **Step 4: Commit architecture and domain documents**
 
 Run:
 
@@ -398,8 +403,10 @@ Expected: clean whitespace check and a successful local commit.
 - Create: `docs/architecture/decisions/0001-native-android-room-2.md`
 - Create: `docs/architecture/decisions/0002-entityref-and-strong-relations.md`
 - Create: `docs/architecture/decisions/0003-generation-based-restore.md`
+- Create: `docs/architecture/decisions/0004-catalog-lifecycle-and-normalized-names.md`
+- Create: `docs/architecture/decisions/0005-canonical-attachment-content.md`
 
-- [ ] **Step 1: Create `docs/architecture/data-and-storage.md`**
+- [x] **Step 1: Create `docs/architecture/data-and-storage.md`**
 
 Use these sections:
 
@@ -414,7 +421,7 @@ Use these sections:
 
 Include the exact storage convention `files/vaults/<generationId>/attachments/` and generation-specific database names.
 
-- [ ] **Step 2: Create ADR 0001**
+- [x] **Step 2: Create ADR 0001**
 
 Use headings `Status`, `Context`, `Options considered`, `Decision`, and `Consequences`. Set status to `Accepted` and date to `2026-08-04`. Record:
 
@@ -423,7 +430,7 @@ Use headings `Status`, `Context`, `Options considered`, `Decision`, and `Consequ
 - Android 14+ as the compatibility floor;
 - consequence: Android-first quality and reduced compatibility work, with iOS deferred.
 
-- [ ] **Step 3: Create ADR 0002**
+- [x] **Step 3: Create ADR 0002**
 
 Set status to `Accepted` and record:
 
@@ -433,7 +440,7 @@ Set status to `Accepted` and record:
 - timeline and search as projections;
 - generic `EntityRelation` deferred until a validated long-tail relationship exists.
 
-- [ ] **Step 4: Create ADR 0003**
+- [x] **Step 4: Create ADR 0003**
 
 Set status to `Accepted` and record:
 
@@ -443,17 +450,31 @@ Set status to `Accepted` and record:
 - retain the previous generation until successful startup;
 - consequence: extra temporary storage in exchange for no partial restore.
 
-- [ ] **Step 5: Verify each ADR has a complete decision record**
+- [x] **Step 5: Create ADR 0004**
+
+Set status to `Accepted` and record the persisted, versioned catalog name contract; active/archived lifecycle; historical-reference preservation; backup/restore validation; and explicit migration requirements.
+
+- [x] **Step 6: Create ADR 0005**
+
+Set status to `Accepted` and record the globally unique SHA-256 content identity, canonical Attachment metadata fact and physical blob, many-link ownership, zero-reference cleanup, duplicate import behavior, and backup/restore/migration consequences.
+
+- [x] **Step 7: Verify each required ADR has a complete decision record**
 
 Run:
 
 ```powershell
-$adrs = Get-ChildItem -LiteralPath 'docs/architecture/decisions' -Filter '*.md'
-if ($adrs.Count -ne 3) { throw "Expected 3 ADRs, found $($adrs.Count)" }
-foreach ($adr in $adrs) {
-  $text = Get-Content -LiteralPath $adr.FullName -Raw
-  foreach ($heading in @('# Status','# Context','# Options considered','# Decision','# Consequences')) {
-    if ($text -notmatch [regex]::Escape($heading)) { throw "Missing $heading in $($adr.Name)" }
+$requiredAdrs = @(
+  'docs/architecture/decisions/0001-native-android-room-2.md',
+  'docs/architecture/decisions/0002-entityref-and-strong-relations.md',
+  'docs/architecture/decisions/0003-generation-based-restore.md',
+  'docs/architecture/decisions/0004-catalog-lifecycle-and-normalized-names.md',
+  'docs/architecture/decisions/0005-canonical-attachment-content.md'
+)
+foreach ($adr in $requiredAdrs) {
+  if (-not (Test-Path -LiteralPath $adr)) { throw "Missing required ADR: $adr" }
+  $text = Get-Content -LiteralPath $adr -Raw
+  foreach ($heading in @('# Status','# Decision')) {
+    if ($text -notmatch [regex]::Escape($heading)) { throw "Missing $heading in $adr" }
   }
 }
 'adr-completeness: PASS'
@@ -461,7 +482,7 @@ foreach ($adr in $adrs) {
 
 Expected: `adr-completeness: PASS`.
 
-- [ ] **Step 6: Commit storage and ADR documents**
+- [x] **Step 8: Commit storage and ADR documents**
 
 Run:
 
@@ -479,7 +500,7 @@ Expected: clean whitespace check and a successful local commit.
 - Create: `docs/experience/information-architecture.md`
 - Create: `docs/experience/interaction-rules.md`
 
-- [ ] **Step 1: Create `docs/experience/information-architecture.md`**
+- [x] **Step 1: Create `docs/experience/information-architecture.md`**
 
 Document:
 
@@ -494,7 +515,7 @@ Document:
 
 Include a Mermaid flowchart for top-level destinations and detail routes.
 
-- [ ] **Step 2: Create `docs/experience/interaction-rules.md`**
+- [x] **Step 2: Create `docs/experience/interaction-rules.md`**
 
 For each of these interactions, define entry state, editable fields, validation, save behavior, cancellation behavior, and failure behavior:
 
@@ -510,7 +531,7 @@ For each of these interactions, define entry state, editable fields, validation,
 
 Require draft preservation on recoverable failures, no optimistic financial success before commit, and no partial restore wording.
 
-- [ ] **Step 3: Verify the approved navigation is explicit**
+- [x] **Step 3: Verify the approved navigation is explicit**
 
 Run:
 
@@ -524,7 +545,7 @@ foreach ($term in @('Timeline|时间线','Finance|财务','Notes|笔记','Projec
 
 Expected: `experience-navigation: PASS`.
 
-- [ ] **Step 4: Commit experience documents**
+- [x] **Step 4: Commit experience documents**
 
 Run:
 
@@ -543,7 +564,7 @@ Expected: clean whitespace check and a successful local commit.
 - Create: `docs/engineering/testing-strategy.md`
 - Create: `docs/engineering/security-and-privacy.md`
 
-- [ ] **Step 1: Create `docs/engineering/conventions.md`**
+- [x] **Step 1: Create `docs/engineering/conventions.md`**
 
 Include:
 
@@ -562,7 +583,7 @@ Include:
 - no secret, token, password, user content, or sensitive path in code or logs;
 - documentation-first rule for changed stable decisions.
 
-- [ ] **Step 2: Create `docs/engineering/testing-strategy.md`**
+- [x] **Step 2: Create `docs/engineering/testing-strategy.md`**
 
 Include the exact risk matrix from design section 9:
 
@@ -579,7 +600,7 @@ Include the exact risk matrix from design section 9:
 
 Define evidence format as command, environment, result, and remaining risk. State that a passing build without restore verification is insufficient.
 
-- [ ] **Step 3: Create `docs/engineering/security-and-privacy.md`**
+- [x] **Step 3: Create `docs/engineering/security-and-privacy.md`**
 
 Define:
 
@@ -594,7 +615,7 @@ Define:
 - no amounts, merchants, note text, attachment content, keys, or identifying paths in logs;
 - backup integrity checks do not equal backup confidentiality.
 
-- [ ] **Step 4: Verify the privacy prohibitions are explicit**
+- [x] **Step 4: Verify the privacy prohibitions are explicit**
 
 Run:
 
@@ -608,7 +629,7 @@ foreach ($term in @('no required account|无需账号','SQLCipher','Photo Picker
 
 Expected: `privacy-rules: PASS`.
 
-- [ ] **Step 5: Commit engineering documents**
+- [x] **Step 5: Commit engineering documents**
 
 Run:
 
@@ -625,7 +646,7 @@ Expected: clean whitespace check and a successful local commit.
 **Files:**
 - Create: `docs/roadmap.md`
 
-- [ ] **Step 1: Create `docs/roadmap.md`**
+- [x] **Step 1: Create `docs/roadmap.md`**
 
 Document the exact sequence:
 
@@ -655,7 +676,7 @@ Define:
 - completed specs are read-only history;
 - V1/V2 ideas remain candidates and do not authorize schema, interface, or module work.
 
-- [ ] **Step 2: Verify roadmap ordering and lifecycle**
+- [x] **Step 2: Verify roadmap ordering and lifecycle**
 
 Run:
 
@@ -669,7 +690,7 @@ foreach ($term in @('P0','P6','M1','M8','draft','approved','in-progress','comple
 
 Expected: `roadmap-lifecycle: PASS`.
 
-- [ ] **Step 3: Commit the roadmap**
+- [x] **Step 3: Commit the roadmap**
 
 Run:
 
@@ -689,7 +710,7 @@ Expected: clean whitespace check and a successful local commit.
 - Verify: `docs/**/*.md`
 - Modify only files that fail the checks
 
-- [ ] **Step 1: Verify every required core document exists**
+- [x] **Step 1: Verify every required core document exists**
 
 Run:
 
@@ -716,11 +737,21 @@ $required = @(
 $missing = $required | Where-Object { -not (Test-Path -LiteralPath $_) }
 if ($missing) { throw "Missing required documents: $($missing -join ', ')" }
 "required-docs: PASS ($($required.Count))"
+$requiredAdrs = @(
+  'docs/architecture/decisions/0001-native-android-room-2.md',
+  'docs/architecture/decisions/0002-entityref-and-strong-relations.md',
+  'docs/architecture/decisions/0003-generation-based-restore.md',
+  'docs/architecture/decisions/0004-catalog-lifecycle-and-normalized-names.md',
+  'docs/architecture/decisions/0005-canonical-attachment-content.md'
+)
+$missingAdrs = $requiredAdrs | Where-Object { -not (Test-Path -LiteralPath $_) }
+if ($missingAdrs) { throw "Missing required ADRs: $($missingAdrs -join ', ')" }
+"required-adrs: PASS (0001-0005)"
 ```
 
-Expected: `required-docs: PASS (17)`.
+Expected: `required-docs: PASS (17)` and `required-adrs: PASS (0001-0005)`.
 
-- [ ] **Step 2: Scan project documents for incomplete language**
+- [x] **Step 2: Scan project documents for incomplete language**
 
 Run:
 
@@ -742,7 +773,7 @@ if ($bad) { $bad | Format-Table Path,LineNumber,Line; throw 'Incomplete document
 
 Expected: `placeholder-scan: PASS`.
 
-- [ ] **Step 3: Verify source-of-truth separation manually**
+- [x] **Step 3: Verify source-of-truth separation manually**
 
 Check these exact conditions:
 
@@ -757,7 +788,7 @@ Check these exact conditions:
 
 Expected: all eight conditions hold. Fix the owning document immediately if any condition fails.
 
-- [ ] **Step 4: Check links and repository cleanliness**
+- [x] **Step 4: Check links and repository cleanliness**
 
 Run the local-link validator:
 
@@ -798,7 +829,7 @@ git log --oneline -8
 
 Expected: `git diff --check` prints nothing; `git status --short` is empty; recent history shows the baseline plus focused documentation commits.
 
-- [ ] **Step 5: Record completion in the plan commit only if the audit required fixes**
+- [x] **Step 5: Record completion in the plan commit only if the audit required fixes**
 
 If Step 3 required edits, run:
 
@@ -813,3 +844,16 @@ Expected: a successful local commit. If no files changed, do not create an empty
 ## Completion result
 
 After all tasks pass, the workspace has a versioned, conflict-resistant documentation system. The next design cycle creates the Tech PoC P0 specification; this plan does not scaffold Android, add Gradle files, or implement application behavior.
+
+### Execution verification record
+
+- Date: `2026-08-04`
+- Required core documents: PASS (`17/17`), with required ADRs 0001–0005 present.
+- Incomplete-language placeholder scan: PASS.
+- Local Markdown links: PASS.
+- Source-of-truth ownership audit: PASS (all eight conditions).
+- Original task checks, including the executable Task 2 portal checks and path-based Task 5 ADR checks: PASS.
+- Executed checklist completeness: PASS; every implementation-plan step is marked complete.
+- `git diff --check`: PASS.
+- Final pre-commit working-tree review: PASS; only the approved final-review documentation set was staged for the closing commit.
+- Remaining risk: application behavior is not yet implemented; the next authorized action remains creation and approval of the Tech PoC P0 specification and plan.

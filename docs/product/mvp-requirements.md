@@ -254,15 +254,15 @@ The user can choose a destination for a transaction export.
 
 ### User action
 
-The user requests a CSV export of all saved transactions and confirms the destination.
+The user requests a CSV export of all effective, non-soft-deleted transactions and confirms the destination.
 
 ### Success state
 
-The CSV contains every saved transaction exactly once. For each row, its values match all corresponding user-visible values on that transaction's detail screen. The result opens as a table with one header row and consistent columns in the app's declared supported spreadsheet workflow. The app reports success only after export completes. CSV is for interoperability; the logical ZIP is the complete restore artifact.
+The CSV contains every effective, non-soft-deleted Transaction exactly once, including every effective opening balance, income, expense, and transfer. Soft-deleted Transactions are excluded. For each row, its values match all corresponding user-visible values on that transaction's detail screen. The result opens as a table with one header row and consistent columns in the app's declared supported spreadsheet workflow. The app reports success only after export completes. CSV is an analytical/interoperability artifact, not a forensic backup; only the complete logical ZIP preserves soft-deleted history for full restoration.
 
 ### Validation failure
 
-If no saved transactions exist or no writable destination is confirmed, the app explains the issue, produces no CSV, and leaves saved data unchanged.
+If no effective, non-soft-deleted transactions exist or no writable destination is confirmed, the app explains the issue, produces no CSV, and leaves saved data unchanged.
 
 ### Infrastructure failure
 

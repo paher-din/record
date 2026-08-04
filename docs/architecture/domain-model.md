@@ -64,7 +64,7 @@ erDiagram
     }
     ATTACHMENT {
         string id PK
-        string contentIdentity
+        string contentIdentity UK
     }
     ATTACHMENT_LINK {
         string attachmentId PK,FK
@@ -92,6 +92,12 @@ erDiagram
 ```
 
 The three optional identity edges at the top of the diagram are conditional on `entityType` and subject to the XOR constraint: exactly one exists for each `EntityRef`.
+
+## Canonical attachment content
+
+`Attachment.contentIdentity` is the SHA-256 of validated content and is globally unique. Exactly one canonical `Attachment` metadata fact and one physical blob exist for a content identity; multiple Attachment rows sharing one SHA-256 are invalid. Any number of `AttachmentLink` facts may reference that canonical ID, but owner endpoints remain limited to Transaction and Note EntityRefs.
+
+Zero-reference means that no `AttachmentLink` exists anywhere for the canonical Attachment, not merely that one owner or one attempted metadata row has no link. Removing one owner's link cannot make shared content deletion-eligible while any other owner remains linked. The accepted persistence and lifecycle decision is [ADR 0005](decisions/0005-canonical-attachment-content.md).
 
 ## Finance aggregate
 

@@ -8,7 +8,7 @@ This document is the stable source of truth for persistence and recovery decisio
 - Attachment binary content uses content-addressed storage coordinated by `:core:data`.
 - `SearchDocument` is a rebuildable projection, never a domain fact.
 - The logical backup is the external portability source and is separate from the internal database schema.
-- The binding inputs to persistence behavior are the domain transaction matrix, the XOR `EntityRef` subtype invariant, the endpoint whitelist, atomic purge, and the versioned catalog name/lifecycle invariants accepted in [ADR 0004](decisions/0004-catalog-lifecycle-and-normalized-names.md).
+- The binding inputs to persistence behavior are the domain transaction matrix, the XOR `EntityRef` subtype invariant, the endpoint whitelist, atomic purge, the versioned catalog name/lifecycle invariants accepted in [ADR 0004](decisions/0004-catalog-lifecycle-and-normalized-names.md), and the canonical attachment identity accepted in [ADR 0005](decisions/0005-canonical-attachment-content.md).
 
 ## Room baseline and migrations
 
@@ -68,19 +68,21 @@ This document intentionally contains no concrete schema, DDL, or Room annotation
 
 Attachment content uses the following logical states. These are reliability states, not a concrete persistence schema.
 
+One SHA-256 `contentIdentity` maps globally to exactly one canonical `Attachment` metadata fact and exactly one physical content-addressed blob. The database enforces uniqueness of `Attachment.contentIdentity`; every `AttachmentLink` references that canonical Attachment ID, and multiple Transaction/Note owners may share it. Multiple Attachment rows for one SHA-256 are forbidden.
+
 | From | Trigger and serialized action | To | Binding result |
 |---|---|---|---|
 | External source | Copy into an app-private temporary file on the same filesystem as the final content path. | `TEMP` | External paths and filenames are discarded. |
 | `TEMP` | Validate declared and decoded MIME type, size, and decodability, then calculate SHA-256. | `VERIFIED` | Invalid content fails without becoming visible. |
-| `VERIFIED` | Under per-hash serialization, inspect the content-addressed target. If absent, atomically move the temporary file. If present, verify its actual SHA-256 and size before reuse. | `CONTENT_READY` or `QUARANTINED` | A mismatch is corruption: quarantine and fail; never overwrite it silently. Atomic move occurs only when the target is absent. |
+| `VERIFIED` | Under per-hash serialization, inspect the canonical Attachment fact and content-addressed target. If both are absent, atomically move the temporary file and prepare the canonical metadata fact. If both exist, verify the blob's actual SHA-256 and size and reuse that same metadata identity. | `CONTENT_READY` or `QUARANTINED` | A mismatch, a metadata/blob split, or conflicting metadata is corruption: quarantine only an unlinked new input and fail; never overwrite or create a second Attachment row silently. Atomic move occurs only when the target is absent. |
 | `CONTENT_READY` | Commit the complete owner save in one Room transaction. | `ACTIVE` | The owner and attachment become visible together. A database failure leaves physical content only as a safe orphan candidate. |
-| `ACTIVE` | In the transaction that removes visible links, find zero references under per-hash serialization and mark the attachment for deletion. | `DELETE_PENDING` | Content remains present but cannot race an uncoordinated new link. |
+| `ACTIVE` | In the transaction that removes visible links, count every `AttachmentLink` for the canonical Attachment under per-hash serialization. Only when the global count becomes zero may the canonical Attachment enter pending deletion. | `DELETE_PENDING` | Removing one owner while another link remains leaves the shared canonical fact and blob active. Content remains present and cannot race an uncoordinated new link. |
 | `DELETE_PENDING` | A linking transaction obtains the same per-hash serialization, rechecks that the target exists, and verifies its actual SHA-256 and size. Only successful verification may cancel pending deletion and commit the link. If the target is missing, the content must re-enter `VERIFIED` → `CONTENT_READY` from a validated app-private temporary file, or linking fails. | `ACTIVE`, `CONTENT_READY`, or unchanged | A committed new link always references reverified content. |
 | `DELETE_PENDING` | After the grace period, the cleaner obtains the same per-hash serialization, rechecks zero references, retries physical deletion idempotently, confirms physical absence, and retains serialization until the metadata-deletion Room transaction commits. | `DELETE_PENDING` or physically absent with metadata removed | Failed deletion retains `DELETE_PENDING` metadata for retry. A retry after deletion but before metadata commit observes absence and completes metadata deletion. |
 
 In MVP, attachment owners are limited to `Transaction` and `Note` EntityRefs. The owner-save Room transaction includes the new or edited owner fact, its required finance children, requested relations, `Attachment` metadata, and every requested `AttachmentLink`; all commit or none commit. The database must never expose a committed link to missing content.
 
-Cleanup and linking serialize per SHA-256. Visible links are removed first, a zero-reference candidate is marked `DELETE_PENDING` in that Room transaction, and the cleaner rechecks zero references under the same serialization before physical deletion. The cleaner holds that serialization through physical-absence confirmation and metadata-deletion transaction commit. Physical deletion is idempotent, and metadata remains until absence is confirmed. Content is never deleted after a new link commits. Unreferenced physical content left by a failed owner transaction is eligible for orphan cleanup only after verification and the grace period.
+Cleanup and linking serialize per SHA-256. Visible links are removed first, a canonical Attachment whose complete global link count reaches zero is marked `DELETE_PENDING` in that Room transaction, and the cleaner rechecks all links to that canonical ID under the same serialization before physical deletion. The cleaner holds that serialization through physical-absence confirmation and canonical metadata-deletion transaction commit. A concurrent relink cancels or waits for pending deletion and reuses the same canonical ID after byte verification. Physical deletion is idempotent, and metadata remains until absence is confirmed. Content is never deleted after a new link commits. Unreferenced physical content left by a failed owner transaction is eligible for orphan cleanup only after verification and the grace period.
 
 Quarantine is limited to a newly ingested temporary file or a corrupt content-addressed target with zero active links. A target referenced by any active link is never moved or quarantined; corruption is reported and the operation fails without relocating that file.
 
@@ -113,7 +115,7 @@ The project will not add a server or migrate to Room 3 solely for search. A late
 The portable backup is a ZIP with these logical contents:
 
 - `manifest.json`;
-- versioned JSONL for entity references (`EntityRef`), accounts, categories (`Category`), transactions, account entries, category allocations, notes, projects, tags, entity tags, transaction-note associations, attachments, and attachment ownership;
+- versioned JSONL for entity references (`EntityRef`), accounts, categories (`Category`), transactions, account entries, category allocations, notes, projects, tags, entity tags, transaction-note associations, canonical attachments, and attachment ownership;
 - attachment binaries at `attachments/<sha256>`.
 
 Catalog logical records are complete rather than display-only:
@@ -139,7 +141,7 @@ Atomic publication applies only in the app-private backup directory: write a tem
 
 For a Storage Access Framework destination, first build and validate the complete package in private storage. Copy it to a provider target marked or named as temporary or incomplete. If the provider supports rename, rename it only after the full copy closes and verification succeeds. If rename is unavailable, report success only after the full copy closes and the provider copy verifies successfully; only then clear the app's incomplete marker and treat that verified URI as final. Any partial residue remains marked or named incomplete, is deleted on a best-effort basis, is never reported as success, and is never listed by the app as restorable.
 
-An incomplete temporary package is never listed as restorable. Before import, the app validates `formatVersion`, every manifest-declared catalog normalization version, normalized relative paths with no traversal, duplicate normalized paths, duplicate `logicalType`/`path` pairs, duplicate singleton JSONL `logicalType` values, declared and actual size limits, SHA-256 values, and JSONL record counts. During streaming, the encountered per-record `nameKeyVersion` set must exactly match the manifest summary; an omitted, extra, or unsupported version rejects the candidate.
+An incomplete temporary package is never listed as restorable. Before import, the app validates `formatVersion`, every manifest-declared catalog normalization version, normalized relative paths with no traversal, duplicate normalized paths, duplicate `logicalType`/`path` pairs, duplicate singleton JSONL `logicalType` values, declared and actual size limits, SHA-256 values, and JSONL record counts. It also requires exactly one canonical Attachment record and one matching blob for each referenced SHA-256, forbids duplicate Attachment rows sharing a `contentIdentity`, verifies every link targets the canonical ID, and rejects missing, extra, mismatched, or corrupt attachment content. During streaming, the encountered per-record `nameKeyVersion` set must exactly match the manifest summary; an omitted, extra, or unsupported version rejects the candidate.
 
 ### Restore preflight resource limits
 
@@ -185,25 +187,31 @@ The storage convention is:
 
 - generation-specific database names;
 - `files/vaults/<generationId>/attachments/` for generation-specific content;
-- one app-private, atomically persisted activation/recovery record. Its generation-activation portion contains `activeGenerationId`, nullable `previousGenerationId`, nullable `candidateGenerationId`, and `state`, whose only values are `HEALTHY` and `PENDING`. Its independent `migrationRecoveryState` is defined above and is checked first at startup. This record is the active-generation pointer; there is no separately persisted pointer.
+- one app-private, atomically persisted activation/recovery record. Its generation-activation portion contains `activeGenerationId`, nullable `previousGenerationId`, nullable `candidateGenerationId`, nullable `retiringGenerationId`, and `state`, whose only values are `HEALTHY` and `PENDING`. Its independent `migrationRecoveryState` is defined above and is checked first at startup. This record is the active-generation pointer and durable cleanup intent; there is no separately persisted pointer.
+
+Every startup resolves the migration gate and then the generation-activation gate before Room or SQLite opens the active generation. A safe startup may also scan generation directories: it must never delete a directory named by `activeGenerationId`, `previousGenerationId`, `candidateGenerationId`, or `retiringGenerationId`; complete or incomplete directories referenced by no pointer are orphan candidates and are cleaned idempotently under the same per-generation exclusion used by restore. Normal active reads are allowed while only retiring cleanup is pending, but a new restore is not.
 
 The activation protocol is:
 
 | Step | Before | Event | Atomically persisted result and required action |
 |---|---|---|---|
-| 1. Stage | `activeGenerationId=O`, `candidateGenerationId=null`, `state=HEALTHY`; `previousGenerationId` may retain an older rollback generation | A staging candidate is imported and validated. | The activation record is unchanged; the validated staging generation is not yet referenced. |
-| 2. Activate pending | Old generation `O` is active; validated candidate is `C`. | Commit one activation-record write. | `activeGenerationId=C`, `previousGenerationId=O`, `candidateGenerationId=C`, `state=PENDING`. |
+| 0. Preflight maintenance | `state=HEALTHY` | A restore is requested. | Require `previousGenerationId=null`, `candidateGenerationId=null`, and `retiringGenerationId=null`. If retiring cleanup is pending, first run it idempotently. A transient cleanup failure returns a typed maintenance error and blocks this restore without affecting reads from `activeGenerationId`; no pointer may be overwritten. |
+| 1. Stage | `activeGenerationId=O`, all three nullable generation fields are null, `state=HEALTHY` | A staging candidate is imported and validated. | The activation record is unchanged; the validated staging generation is not yet referenced. |
+| 2. Activate pending | Old generation `O` is active; validated candidate is `C`. | Commit one activation-record write. | `activeGenerationId=C`, `previousGenerationId=O`, `candidateGenerationId=C`, `retiringGenerationId=null`, `state=PENDING`. |
 | 3. Startup gate | `state=PENDING` | The next startup begins. | Revalidate candidate checksums, catalog name/lifecycle/version rules, historical catalog references, and all other domain invariants before normal use; do not clear `PENDING` early. |
-| 4. Confirm healthy | Candidate startup validation succeeds. | Commit one activation-record write. | Keep `activeGenerationId=C` and `previousGenerationId=O`, clear `candidateGenerationId`, and set `state=HEALTHY`. The previous generation remains for the rollback retention policy. |
-| 5. Roll back | Candidate startup validation fails. | Using the candidate and previous IDs from the complete `PENDING` record, commit one rollback-record write. | Restore `activeGenerationId` from `previousGenerationId` to `O`, set `previousGenerationId=null`, `candidateGenerationId=null`, and `state=HEALTHY`; then quarantine `C`. Only after the restored record is durably confirmed may `C` be cleaned. |
+| 4. Confirm healthy | Candidate startup validation succeeds. | Commit one activation-record write. | Keep `activeGenerationId=C`, set `retiringGenerationId=O`, clear `previousGenerationId` and `candidateGenerationId`, and set `state=HEALTHY`. This single transition makes the healthy candidate user-visible and persists cleanup intent without retaining a stale rollback pointer. |
+| 5. Roll back | Candidate startup validation or candidate startup fails. | Using `C` and `O` from the complete `PENDING` record, commit one rollback-record write. | Restore `activeGenerationId=O`, set `retiringGenerationId=C`, clear `previousGenerationId` and `candidateGenerationId`, and set `state=HEALTHY`. The original generation is healthy before the failed candidate becomes cleanup-eligible. |
+| 6. Retire | `state=HEALTHY`, `retiringGenerationId=R` | Run synchronous preflight maintenance or deferred maintenance. | Under a per-generation lock and with every handle to `R` closed, re-read the record and require `R` differs from all active/previous/candidate pointers. Delete `R` or confirm it is absent, then atomically clear `retiringGenerationId`. |
 
-Every step is idempotent, including validation recovery, rollback, quarantine, and cleanup. A crash before the activation-record switch leaves the old generation active. A crash after the switch leaves a durable `PENDING` record, so startup repeats validation. Because rollback updates the record atomically, a crash during rollback exposes either the whole new `PENDING` record or the whole restored old `HEALTHY` record, never mixed fields. Cleanup never deletes a generation referenced by `activeGenerationId`, `previousGenerationId`, or `candidateGenerationId`.
+Every step is idempotent, including validation recovery, rollback, quarantine, orphan scanning, and retirement. A crash before the activation-record switch leaves the old generation active. A crash after the switch leaves a durable `PENDING` record, so startup repeats validation. Because confirm and rollback each update the record atomically, a crash exposes either the whole `PENDING` record or the whole resulting `HEALTHY` record, never mixed fields. A crash before retirement deletion retries deletion; a crash after deletion but before clearing the pointer observes absence and completes the clear. Cleanup never deletes a generation referenced by any activation-record generation field.
+
+The restore UI may report terminal success after the new active generation is healthy; retirement is non-user-blocking safety maintenance. AndroidX WorkManager may retry that idempotent retirement after normal startup, but correctness never depends on it: startup gates resolve pending activation synchronously, and the next restore preflight must finish or fail retirement before staging. An unresolved retirement cannot be overwritten by another restore.
 
 Any failure before activation leaves the current generation active and quarantines or marks staging for safe cleanup. Restore never exposes a partial replacement. This generation activation is a restore operation, not a database migration.
 
 ## CSV portability boundary
 
-CSV export is a separate independent journey and artifact, never embedded in the logical restore ZIP and never accepted as restore input. It contains product-complete transaction rows rather than an internal database dump, and MVP does not support selective export. It exports every saved transaction exactly once and preserves every user-visible transaction detail value. The exact columns may be versioned in a dedicated exporter specification, while UTF-8 encoding, one header row, consistent columns, and locale-independent machine-readable date and amount representations remain binding.
+CSV export is a separate analytical/interoperability journey and artifact, never embedded in the logical restore ZIP and never accepted as restore input. It contains product-complete transaction rows rather than an internal or forensic database dump, and MVP does not support selective export. It exports every effective, non-soft-deleted Transaction exactly once, including effective opening balances, income, expense, and transfers; soft-deleted transactions are excluded. The complete logical backup, not CSV, preserves soft-deleted history for full restoration. Every exported row preserves the corresponding user-visible transaction detail values. The exact columns may be versioned in a dedicated exporter specification, while UTF-8 encoding, one header row, consistent columns, and locale-independent machine-readable date and amount representations remain binding.
 
 ## Required failure test points
 
@@ -213,12 +221,16 @@ Future fault-injection coverage is required at these boundaries:
 - after `PENDING` is durable but before startup validation;
 - during startup validation;
 - during the rollback-record write;
-- during generation cleanup;
+- immediately before and after each successful-validation and rollback transition that creates `retiringGenerationId`;
+- before retirement deletion, after deletion but before pointer clear, and during pointer clear;
+- while a new restore preflight encounters pending retirement;
+- during startup orphan scanning, including complete and incomplete unreferenced directories and every pointer-protected generation;
 - during the attachment atomic move;
 - during the owner-save Room transaction;
 - during the `DELETE_PENDING` mark transaction;
 - during physical attachment deletion;
 - after physical attachment deletion but before the metadata-deletion transaction commits;
+- while two owners share one canonical attachment, one owner unlinks, cleanup races a relink, and the remaining owner stays linked;
 - after `MIGRATION_RECOVERY_PENDING` is persisted but before the first database or sidecar move;
 - immediately before and after atomic migration-snapshot replacement;
 - during interruption of failed-database `-wal` and `-shm` sidecar isolation or cleanup;

@@ -64,6 +64,14 @@ Typed errors contain safe categories and retry capabilities, not user content or
 - Recovery transitions, sidecar isolation, activation validation, rollback, quarantine, and cleanup handlers are idempotent and fault-injection tested. No implementation may infer recovery success from file presence or an old UI progress state.
 - Restore readers enforce the exact entry, UTF-8 path, per-entry size, aggregate uncompressed-size, staging-reserve, compression-ratio, and streaming limits in [data and storage](../architecture/data-and-storage.md). Manifest values are untrusted declarations; actual streamed counters independently stop at the first excess without changing the current vault.
 
+### WorkManager maintenance
+
+- AndroidX WorkManager is used only for delayed, idempotent, non-user-blocking maintenance: canonical attachment zero-reference cleanup after its grace period, retiring-generation cleanup retry, and another explicitly approved maintenance handler.
+- User Save, CSV export, logical backup, overwrite restore, migration, activation, rollback, startup validation, and every correctness gate are forbidden worker responsibilities. Startup migration/activation gates run synchronously before Room and the shell even if matching unique work exists.
+- Every worker has a persisted operation or content identity, uses unique work to prevent duplicate schedulers, re-reads durable preconditions on every attempt, and delegates to a reusable `:core:data` handler. A worker result cannot be inferred from stale input data.
+- Constraints are the minimum justified by the operation; no network constraint is valid for this offline app. Automatic retry is limited to typed transient failures, bounded attempts/backoff, and idempotency tests. Validation, corruption, incompatibility, permission denial, and storage exhaustion fail without automatic retry.
+- The WorkManager version is centralized in the version catalog once Gradle exists and follows dependency compatibility, license, and maintenance verification.
+
 ## Module and platform boundaries
 
 - Feature modules never depend on one another. Cross-feature navigation uses typed route contracts owned by `:app`; shared values and interfaces live only in the justified core owner.

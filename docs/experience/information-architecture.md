@@ -263,9 +263,13 @@ Each top-level destination owns an independent navigation back stack and a retai
 | Notes | Note-list position and offset | Active note/tag/project filters | Selected note-date filter or date anchor |
 | Projects | Project-list or current project-feed position and offset | Active/archived list mode plus project/entity-type filters | Selected project-feed date filter or date anchor |
 
-Retention is required for tab switching, source-detail round trips, Search round trips, and configuration recreation while the task remains in the running app. Unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss is outside the MVP promise, consistent with the cross-cutting acceptance rule.
+Timeline derives its default selected day from an injected `Clock` plus the device `ZoneId`. On first install, a user cold start with no restorable session state, or any other launch with no legal restorable Timeline UI state, the initial selected day is the current local date. Configuration or process recreation restores a legal saved selected day, filter, and scroll position; tab switching and child round trips preserve the same values. If the local date changes while the app remains foregrounded, Timeline does not move automatically or overwrite the date the user is viewing.
 
-Compose implementation must hoist these values out of disposable list items and scope them to each top-level back-stack entry. Restoring one tab must not overwrite another tab's state. A tab reselect may expose an explicit “return to root” or “scroll to current date” action later, but reselecting a tab must not implicitly reset state in MVP.
+Timeline exposes an explicit **Today** action. Invoking it reads the current local date again from the injected time sources, selects that day, preserves applicable filters, and scrolls the mixed Timeline to the top. It is the only in-session action that changes a retained selected day merely because “today” has changed; tab reselect and foreground midnight do not.
+
+Retention is required for tab switching, source-detail round trips, Search round trips, and configuration or eligible process recreation. Unsaved-draft recovery after force-stop, OS process death, uninstall, or device loss is outside the MVP promise, consistent with the cross-cutting acceptance rule; this does not prevent restoring a valid saved read-only Timeline UI state when Android supplies one.
+
+Compose implementation must hoist these values out of disposable list items and scope them to each top-level back-stack entry. Restoring one tab must not overwrite another tab's state. Reselecting a tab must not implicitly reset state in MVP; only the explicit Today action selects the current local date and returns Timeline to the top.
 
 ## Cross-domain navigation rules
 

@@ -586,6 +586,32 @@ Prompt cancellation or authentication failure enters `Phase.RecoverableFailure` 
 
 Platform lockout or unavailable credentials enter `Phase.BlockingFailure`. Retry is enabled only when the platform permits another authentication attempt. No diagnostic export, restore detail, user data, Settings route, or “continue anyway” action is available before authentication.
 
+## Timeline date state and Today
+
+**Entry point**
+
+App launch enters Timeline by default; selecting the Timeline bottom-navigation item returns to its retained top-level state.
+
+**Entry-state override**
+
+On first install, a user cold start without restorable session state, or another launch without legal restorable Timeline UI state, start with the selected day equal to the current local date derived from the injected `Clock` and device `ZoneId`, default filters, and list position at the top. Configuration or process recreation with legal saved state restores selected day, filters, and scroll exactly. Switching tabs, opening a source detail, or returning from Search preserves that retained state.
+
+**Fields and selections**
+
+The user may select a day, apply Timeline filters, scroll the mixed list, and invoke the explicit Today action. The displayed day never changes solely because the clock crosses midnight while the app remains foregrounded.
+
+**Save/confirm**
+
+Timeline writes no domain fact. Selecting Today reads the current local date at invocation time, selects it, keeps applicable filters, invalidates any superseded day-load revision, and scrolls the Timeline to the top. A normal tab reselect does not invoke Today.
+
+**Cancel/Back**
+
+Leaving Timeline retains the current selected day, filters, and scroll. Back from source details restores them exactly; no navigation event implicitly substitutes the current date.
+
+**Failure/retry**
+
+A current-day load failure retains the selected day and filters and exposes Retry. A stale result for a previously selected day is ignored. Time-zone or clock changes affect only a later explicit Today action or a launch with no restorable state; they do not rewrite an active view.
+
 ## Unified search and type filtering
 
 **Entry point**
@@ -631,11 +657,11 @@ Entry starts in `Phase.Checking` with CSV fixed as the operation kind, no destin
 
 **Fields and selections**
 
-The user chooses a writable destination. MVP exports all saved transactions; it has no selective record filter. The progress state identifies CSV, not backup.
+The user chooses a writable destination. MVP exports all effective, non-soft-deleted Transactions; it has no selective record filter. This includes effective opening balances, income, expense, and transfers. The progress state identifies CSV, not backup.
 
 **Validation**
 
-At least one saved transaction must exist and a writable destination must be confirmed. The exporter validates UTF-8 output, one header row, consistent columns, and one row per saved transaction whose values match the user-visible transaction detail. CSV is an interoperability artifact and never a restore source.
+At least one effective, non-soft-deleted Transaction must exist and a writable destination must be confirmed. The exporter validates UTF-8 output, one header row, consistent columns, and exactly one row per effective Transaction whose values match the user-visible transaction detail. Soft-deleted Transactions are excluded because CSV is an analytical/interoperability artifact, not a forensic backup or restore source; only the complete logical backup retains deleted history.
 
 **Save/confirm**
 
@@ -942,7 +968,7 @@ Future ViewModel and Compose tests must cover at least:
 | Image import | Confirmed owner and image remain available offline | No visible link to missing content; draft retained |
 | Share text/image | Only an unsaved typed draft exists before confirm | Leaving saves nothing; no orphan image |
 | Search/filter | Only the current request revision can render All/Transaction/Note results and dispatch to source | Stale/invalidated results and errors are ignored; current query/filter remains editable |
-| CSV export | Complete verified CSV, all transactions exactly once, returns Success to Settings → Export | Modal navigation lock holds; Cancel waits for confirmation; incomplete output is never complete |
+| CSV export | Complete verified CSV, every effective/non-soft-deleted Transaction exactly once and no deleted history, returns Success to Settings → Export | Modal navigation lock holds; Cancel waits for confirmation; incomplete output is never complete |
 | Logical backup | Complete verified ZIP without CSV returns Success to Settings → Backup | Modal lock holds; Cancel waits for confirmation; Failed supports Retry; incomplete output is not restorable |
 | App Lock | Platform-authenticated enable/disable and unlock follow the recovery-aware route with secure-window protection | Failure/cancel/Back stays locked or preserves the prior setting; no shell, previous frame, diagnostics, or recovery detail leaks before authentication |
 | Diagnostic export | Complete verified redacted artifact returns Success to Settings → Diagnostics | Modal lock holds; Cancel waits; failure changes no vault/ring-buffer data and never auto-shares/uploads |

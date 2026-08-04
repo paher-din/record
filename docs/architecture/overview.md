@@ -47,7 +47,7 @@ An arrow means “depends on.” `:app` composes all three feature modules and o
 | `:feature:notes` | Markdown notes, images, and transaction-note interaction. |
 | `:feature:timeline` | Day timeline, project aggregation, and unified search results. |
 | `:core:model` | Pure Kotlin domain IDs, `Money`, enums, and public value objects. |
-| `:core:data` | Room, repositories, transactions, attachments, search, migration, and import/export. |
+| `:core:data` | Room, repositories, transactions, attachments, search, migration, import/export, and idempotent maintenance handlers. |
 | `:core:ui` | Design system, amount input, date components, and shared UI states. |
 
 ## Dependency rules
@@ -81,6 +81,12 @@ flowchart LR
 ```
 
 Each ViewModel exposes an immutable `StateFlow<UiState>`. The UI sends events and renders state; it does not receive persistence representations. A ViewModel keeps all entered fields and selected media in draft state until the complete durable save succeeds. Failure leaves the draft available for correction or retry and does not surface a success state. The precise user-visible durability contract is defined by the [MVP requirements](../product/mvp-requirements.md).
+
+## Deferred maintenance boundary
+
+AndroidX WorkManager is part of the approved native stack. It schedules only delayed, idempotent, non-user-blocking maintenance whose correctness preconditions are already durably represented: zero-reference attachment cleanup after its grace period, retry of retiring-generation cleanup, and another maintenance operation only after explicit architecture approval.
+
+WorkManager never owns user Save, CSV export, logical backup, overwrite restore, migration, generation activation/rollback, startup validation, or another correctness-critical path. `:app` synchronously resolves migration and activation startup gates before Room and the shell; foreground operations remain in their owning ViewModel/repository state machine. Workers call `:core:data` maintenance handlers through unique work keyed by persisted operation/content identity and may retry only typed transient failures under bounded policy.
 
 ## Use Case policy
 
