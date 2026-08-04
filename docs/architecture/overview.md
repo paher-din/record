@@ -57,7 +57,7 @@ An arrow means “depends on.” `:app` composes all three feature modules and o
 - No core module depends on a feature module. `:core:model` is platform-independent and has no dependency on another project module.
 - `:core:data` owns persistence and external data operations; `:core:ui` may use public values from `:core:model`, but neither core module owns a product journey.
 - `:feature:timeline` consumes read projections and queries. It never writes finance or notes facts; edits navigate to the owning feature.
-- UI code does not access a DAO, Room Entity, Android `Context`, or a physical attachment path. Platform and storage details stay behind application-facing interfaces.
+- UI code does not access a DAO, Room Entity, or a physical attachment path. UI may use Android `Context` for legitimate platform UI integration, but never to bypass repositories for persistence, file I/O, or physical-path access. Platform and storage details stay behind application-facing interfaces.
 
 ## State and data flow
 
