@@ -21,13 +21,19 @@ Overwrite restore must replace all current facts, relationships, and attachments
 
 ## Decision
 
-Import the database and attachments into an isolated staging generation. Before the active-generation switch or activation, validate both payload checksums and domain invariants across the complete staged generation. Persist the active-generation pointer atomically, and leave the current generation untouched until that pointer changes. Retain the previous generation until the new generation starts successfully and validation passes again.
+Import the database and attachments into an isolated staging generation. Before activation, validate both payload checksums and domain invariants across the complete staged generation. Leave the current generation untouched during staging.
+
+Activation uses one atomically persisted record containing `activeGenerationId`, nullable `previousGenerationId`, nullable `candidateGenerationId`, and a `HEALTHY` or `PENDING` state. Activation atomically changes the record from the old healthy generation to the candidate as active, the old generation as previous, the candidate marker set, and `state=PENDING`.
+
+The next startup must revalidate the pending candidate before normal use. Success atomically sets `state=HEALTHY` and clears the candidate marker while retaining the previous generation for rollback retention. Failure atomically restores the previous generation as active and a healthy state before the failed candidate is quarantined or cleaned. All activation, validation recovery, rollback, quarantine, and cleanup steps are idempotent. No generation referenced by any activation-record field may be deleted.
 
 No failure may expose a partial restore. The restore path does not replace or synchronize a live SQLite database or its WAL files.
 
 ## Consequences
 
-- Failed preflight, import, validation, switching, or startup leaves a complete generation available rather than a partially replaced dataset.
-- The previous generation provides a bounded rollback path until the new generation proves healthy.
+- Failed preflight, import, validation, activation, or startup leaves a complete healthy generation available rather than a partially replaced dataset.
+- A durable `PENDING` state turns a crash after activation into an idempotent startup-validation retry rather than normal use of an unconfirmed generation.
+- Atomic rollback restores a complete activation record before the failed candidate becomes cleanup-eligible.
+- The previous generation provides a bounded rollback path until the new generation becomes `HEALTHY` after startup validation.
 - Restore requires temporary storage for the staging generation and retained rollback generation; that cost is accepted for data safety.
-- Generation lifecycle, startup validation, deferred cleanup, and atomic pointer persistence become explicit reliability responsibilities.
+- Generation lifecycle, startup validation, idempotent transitions, reference-aware deferred cleanup, and atomic activation-record persistence become explicit reliability responsibilities.

@@ -406,8 +406,8 @@ Use these sections:
 1. Room 2.8.4 baseline, schema export, explicit migrations, and destructive-migration ban.
 2. Attachment state flow: temporary copy → validation → SHA-256 → atomic move → Room link transaction → orphan cleanup.
 3. `SearchDocument` projection, same-transaction update, rebuild behavior, and FTS4-versus-LIKE PoC decision rule.
-4. Logical backup layout with manifest, JSONL, attachments, checksums, and separate format/schema versions.
-5. Backup generation: stream data, hash files, write manifest last, atomically publish.
+4. Logical backup ZIP layout with manifest, JSONL, attachments, checksums, and separate format/schema versions. `transactions.csv` is excluded from the ZIP and remains a separate independent export artifact.
+5. Backup generation: stream and hash only ZIP JSONL and attachment payloads, write manifest last, then publish. Never include or hash `transactions.csv` as a ZIP payload.
 6. Generation-based restore using staging, invariant validation, active-generation switch, rollback retention, and delayed cleanup.
 7. Migration test rules covering N-1 and N-2.
 8. Explicit exclusions: live SQLite/WAL sync, Auto Backup as primary promise, MVP SQLCipher, and network sync.
