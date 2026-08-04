@@ -82,10 +82,11 @@ Typed errors contain safe categories and retry capabilities, not user content or
 
 ## Diagnostic event boundary
 
-- Application-authored retained/exportable diagnostic events have exactly four allowed fields: an event timestamp, stable error category, non-sensitive operation stage, and anonymous operation ID.
-- The timestamp comes from an injected UTC clock as epoch milliseconds or an equivalent UTC instant. It contains no time-zone, locale, content, domain identity, device identity, or path information.
-- The anonymous operation ID is random and cannot be derived from a record, device, path, user value, or timestamp. Error category and stage are closed application enums, never raw exception text.
-- The app-private ring buffer enforces both limits independently: retain no event older than 7 days and never exceed 1 MiB after serialization. Boundary tests cover exact-limit inclusion, one-unit/time-step overflow, rotation, restart, clear, and export.
+- Application-authored retained/exportable diagnostic events have exactly three allowed fields: stable error category, non-sensitive operation stage, and anonymous operation ID. A log event has no timestamp or other field.
+- The anonymous operation ID is random and cannot be derived from a record, device, path, user value, clock value, or content. Error category and stage are closed application enums, never raw exception text.
+- The app-private ring buffer uses UTC-day segments selected by an injected clock. Segment-level storage metadata controls segment creation, rotation, and expiry; it is not a log-event field, is not associated with an individual event, and contains no user time zone, identity, path, or content.
+- Retain the current UTC-day segment and at most the preceding six UTC-day segments, forming a retention window of 7 days, while keeping total serialized ring-buffer storage at or below 1 MiB. Boundary tests cover all seven segments, UTC-day rollover, an eighth-day segment, exact 1 MiB, one serialized byte over, rotation, restart, clear, and export.
+- Diagnostic packages may put segment-derived `windowStart`/`windowEnd` and an injected-clock generation time in package-summary metadata. These package-level values are not event fields; exported event entries remain the strict three-field envelope.
 
 ## Dependencies and build configuration
 
