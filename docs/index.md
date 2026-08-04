@@ -3,6 +3,7 @@
 Read [AGENTS.md](../AGENTS.md) and [docs/index.md](index.md) for every task.
 
 | Task | Required documents |
+|---|---|
 | Any task | AGENTS.md, docs/index.md |
 | Product scope | product/vision.md, product/mvp-requirements.md, active spec |
 | Navigation or interaction | experience/information-architecture.md, experience/interaction-rules.md, active spec |
