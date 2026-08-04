@@ -28,12 +28,22 @@ Before a new Room schema opens, a migration coordinator blocks writers and creat
 3. Open the snapshot read-only, run the SQLite integrity check and the old-schema domain invariant checks, calculate its SHA-256, and atomically rename it into its published snapshot path.
 4. Only after the verified snapshot is published may the migration open and change the working database.
 
-If migration, database open, or startup validation fails, restore follows this ordered protocol before normal use:
+If migration, database open, or startup validation fails, restore is coordinated by the migration-recovery portion of one app-private activation/recovery record that is readable and atomically writable without Room. Before moving any database, `-wal`, or `-shm` file, the coordinator atomically persists `migrationRecoveryState=MIGRATION_RECOVERY_PENDING` with at least `snapshotId`, `snapshotSha256`, `liveDatabasePath`, `workDatabasePath`, `restoreTempPath`, `quarantinePath`, and `stage`.
 
-1. Reverify the retained published snapshot against its recorded SHA-256 and rerun the SQLite integrity check through read-only access. A failed revalidation enters explicit recovery without changing the failed database.
-2. Block writers and close every database handle. Isolate the failed main database together with its `-wal` and `-shm` sidecars so none can be reopened or combined with restored content.
-3. Copy the retained snapshot into a recovery temporary file on the same filesystem as the main database, verify that copy, and atomically replace the main database with it.
-4. Keep the published snapshot unchanged and enter an explicit recovery state; do not loop automatic migration retries.
+Every app startup reads this record before any Room or SQLite helper initialization. A pending record prohibits creating an empty database or opening a live database mixed with stale sidecars. Startup instead resumes the recorded recovery idempotently; normal Room opening remains blocked while the record is pending.
+
+The migration recovery state machine is:
+
+| State and stage | Binding action | Idempotent restart behavior |
+|---|---|---|
+| `migrationRecoveryState=MIGRATION_HEALTHY` | No migration recovery is active. A detected migration/open/startup failure atomically creates the complete pending recovery portion before any file move. | Either the healthy record or the whole pending record is visible, never partial fields. |
+| `migrationRecoveryState=MIGRATION_RECOVERY_PENDING`, `stage=PREPARED` | Reverify the unchanged published snapshot against `snapshotSha256`, then rerun SQLite integrity and old-schema domain invariant validation through read-only access. Block writers and close every database handle before file operations. | Validation can repeat. Failure retains the pending record, keeps Room closed, and enters explicit recovery. |
+| `migrationRecoveryState=MIGRATION_RECOVERY_PENDING`, `stage=FAILED_SET_ISOLATED` | Idempotently isolate the failed main database and its `-wal` and `-shm` sidecars under `quarantinePath`; atomically advance `stage` only after the recorded live/work paths can no longer form a mixed set. | Partial isolation is detected from the recorded paths and completed without creating a database. |
+| `migrationRecoveryState=MIGRATION_RECOVERY_PENDING`, `stage=RESTORE_COPY_VALIDATED` | Copy the retained snapshot to `restoreTempPath` on the same filesystem as `liveDatabasePath`; verify the copy's SHA-256, SQLite integrity, and old-schema domain invariants. | An existing valid restore copy is reused; an invalid partial copy is replaced from the unchanged published snapshot. |
+| `migrationRecoveryState=MIGRATION_RECOVERY_PENDING`, `stage=MAIN_REPLACED` | Atomically replace the main database with the validated restore copy, confirm the installed file's SHA-256, integrity, and domain invariants, then run recovery-startup validation before normal Room initialization. | Repeated replacement first verifies the installed file; a matching valid file advances without replacement, while any incomplete result is repaired from the recorded restore inputs. |
+| `migrationRecoveryState=MIGRATION_RECOVERED` | Only after copy validation, atomic replacement, installed-file validation, and recovery-startup validation all succeed may one atomic record update clear pending by changing `migrationRecoveryState` to recovered. A later safe normalization may set `MIGRATION_HEALTHY`. | A restart sees either pending and resumes recovery, or recovered/healthy and may proceed; it never infers success from file presence alone. |
+
+Partial isolation, repeated startup, and repeated replacement are therefore idempotent. Any failure keeps `migrationRecoveryState=MIGRATION_RECOVERY_PENDING`, preserves explicit recovery, and does not open Room. The coordinator does not loop automatic migration retries.
 
 The published snapshot remains unchanged until the migrated generation has passed one successful startup and the user has produced a newer verified logical backup. Only then may grace-period cleanup remove the snapshot and quarantined failed database files.
 
@@ -119,7 +129,7 @@ The storage convention is:
 
 - generation-specific database names;
 - `files/vaults/<generationId>/attachments/` for generation-specific content;
-- one atomically persisted activation record containing `activeGenerationId`, nullable `previousGenerationId`, nullable `candidateGenerationId`, and `state`, whose only values are `HEALTHY` and `PENDING`. This record is the active-generation pointer; there is no separately persisted pointer.
+- one app-private, atomically persisted activation/recovery record. Its generation-activation portion contains `activeGenerationId`, nullable `previousGenerationId`, nullable `candidateGenerationId`, and `state`, whose only values are `HEALTHY` and `PENDING`. Its independent `migrationRecoveryState` is defined above and is checked first at startup. This record is the active-generation pointer; there is no separately persisted pointer.
 
 The activation protocol is:
 
@@ -153,9 +163,12 @@ Future fault-injection coverage is required at these boundaries:
 - during the `DELETE_PENDING` mark transaction;
 - during physical attachment deletion;
 - after physical attachment deletion but before the metadata-deletion transaction commits;
+- after `MIGRATION_RECOVERY_PENDING` is persisted but before the first database or sidecar move;
 - immediately before and after atomic migration-snapshot replacement;
 - during interruption of failed-database `-wal` and `-shm` sidecar isolation or cleanup;
 - during SAF copy and provider rename.
+
+For every migration-recovery fault injection, the expected result is the same: startup creates no empty database, opens no mixed database/sidecar set, automatically resumes the recorded recovery idempotently, and leaves the published snapshot unchanged.
 
 ## Explicit exclusions
 
