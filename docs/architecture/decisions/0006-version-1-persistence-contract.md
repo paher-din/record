@@ -10,7 +10,7 @@ Accepted
 
 ## Context
 
-Tech PoC P1 introduces `databaseVersion = 1`, the origin of the persisted schema. Encoding choices made there — timestamp representation, enum storage and validation, foreign-key actions, and the minimal index set — become persistence-compatibility facts: changing any of them later is a schema migration that affects every N-1/N-2 upgrade, the logical backup format, and the restore reader. [ADR 0001](0001-native-android-room-2.md) requires a new persistence ADR for a persistence-contract change, and P1 is where that contract is first defined. The authoritative domain facts and invariants are the [domain model](../domain-model.md); migration and recovery rules are owned by [data and storage](../data-and-storage.md).
+Tech PoC P1 introduces `databaseVersion = 1`, the origin of the persisted schema. Encoding choices made there — timestamp representation, enum storage and validation, foreign-key actions, and the minimal index set — become persistence-compatibility facts: changing any of them later is a schema migration that affects every N-1/N-2 upgrade. The logical backup is a separate portability surface independent of the internal database schema, with its own version axis, per [data and storage](../data-and-storage.md); this ADR does not decide backup encoding. [ADR 0001](0001-native-android-room-2.md) requires a new persistence ADR for a persistence-contract change, and P1 is where that contract is first defined. The authoritative domain facts and invariants are the [domain model](../domain-model.md); migration and recovery rules are owned by [data and storage](../data-and-storage.md).
 
 ## Options considered
 
@@ -62,7 +62,7 @@ The contract is verified against the exported Room schema JSON, which is version
 - Version-1 encodings are the compatibility origin. Any later change to timestamps, enum storage, FK actions, or indexes is an explicit schema migration per data-and-storage, including the recoverable-migration-snapshot protocol before the first migration opens a new schema.
 - Enum whitelist enforcement lives at the API/validator layer. If a later slice needs database-level enforcement, it requires raw table-creation or trigger machinery and a new ADR, because the plain Room path cannot express `CHECK`.
 - Schema evolution is deliberate: the exported schema JSON is the verification artifact, and migration tests must prove the contract survives every N-1/N-2 upgrade.
-- The logical backup format inherits the contract: restore must read epoch-millis timestamps and string enum values as persisted, without reinterpreting them.
+- Logical-backup wire encoding is outside this ADR and remains independent of the Room schema. P5 defines that encoding and the explicit mapping between logical records and version-1 database representations.
 
 ## Verification
 
