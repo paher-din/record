@@ -16,7 +16,7 @@ Read [AGENTS.md](../AGENTS.md) and [docs/index.md](index.md) for every task.
 ## Reading rules
 
 - Active means exactly the unique `in-progress` spec under `docs/specs/*`. An `approved` spec is not active, and the project may have no active spec.
-- Current active spec: none. Tech PoC P2 — atomic transfer is only the next candidate; no later spec may start until it enters the lifecycle through a draft.
+- Current active spec: none. Tech PoC P2 is `approved` (2026-08-05), so its `plan.md` may be produced and reviewed; it has no implementation authorization until the user explicitly approves that plan and the approval is recorded.
 - A candidate sits outside the formal lifecycle. It may create only a draft `spec.md`; it cannot create a plan or authorize code, schema, interface, migration, route, dependency, or module work.
 - A Codex-generated or reviewed plan is not approved. The user must explicitly approve it, and the approval date/context must be recorded in plan metadata or the spec status record before the spec can become `in-progress`.
 - Read links relatively. During lifecycle work, read the target draft or approved spec even though it is not active.

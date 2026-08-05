@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none; Tech PoC P2 — atomic transfer is only the next candidate and is not authorized implementation
+- Current active spec: none; Tech PoC P2 is `approved` (2026-08-05), so its plan may be produced and reviewed, but implementation remains unauthorized until the user explicitly approves that plan and the approval is recorded
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules
