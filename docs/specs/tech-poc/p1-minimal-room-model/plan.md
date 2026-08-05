@@ -2,6 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+- **Status:** `in-progress` — the user explicitly approved this plan (Revision 7) on 2026-08-05 after review of commit `4272261`; the approval is recorded here per the roadmap lifecycle rules. Implementation is authorized per the tasks below.
+- **Spec:** [spec.md](spec.md) — `in-progress` (user accepted Revision 2 and ADR 0006 on 2026-08-05 after review of commit `420f688`).
+
 **Goal:** Prove the approved minimal Room 2.8.4 model — `EntityRef`, `Transaction`, `AccountEntry`, `Note`, plus `Account` (FK target) and the typed `TransactionNoteRelation` — with instrumented tests covering persist/reload, three-layer XOR identity enforcement, foreign keys, typed endpoint rules, atomic aggregate visibility under injected failure and concurrent writes, and machine-checked projection write bans. See the [P1 spec](spec.md) and [ADR 0006](../../../architecture/decisions/0006-version-1-persistence-contract.md).
 
 **Architecture:** Room entities, DAOs, database, XOR validator, and the repository live in `:core:data`; `EntityType`/`TransactionType` enums live in `:core:model` (pure Kotlin JVM). **The public surface of `:core:data` is exactly the normative declaration list in the "Public API" section below**: the `RecordRepository` (public factory + `close()`), the application DTOs, the typed `RepositoryResult`, and the `:core:model` enums re-exported through `api(project(":core:model"))`. Room entities, the DAO, the database, and the validator are module-internal, per the [engineering conventions](../../../engineering/conventions.md). The seven-module graph is unchanged.

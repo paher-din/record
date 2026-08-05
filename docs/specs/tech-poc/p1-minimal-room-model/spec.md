@@ -1,7 +1,8 @@
 # Tech PoC P1 — Minimal Room Model
 
-- **Status:** `approved` — the user accepted Revision 2 and ADR 0006; `plan.md` may be produced and reviewed. Implementation is forbidden until the plan is explicitly approved and that approval is recorded.
+- **Status:** `in-progress` — the user approved `plan.md` Revision 7 on 2026-08-05 after review of commit `4272261`; this is the project's unique active specification and implementation may proceed per the approved plan.
 - **Spec approved:** 2026-08-05 — the user explicitly approved Revision 2 and ADR 0006 after review of commit `420f688`.
+- **Plan approved:** 2026-08-05 — the user explicitly approved `plan.md` Revision 7 after review of commit `4272261`.
 - **Drafted:** 2026-08-05
 - **Revision 1:** 2026-08-05 — review corrections: commit-after-failure expectation, XOR enforcement mechanism, migration boundary, KSP2 versioning, concurrency acceptance, field-subset wording, and machine-checkable projection write ban.
 - **Revision 2:** 2026-08-05 — review corrections: removed the database-`CHECK` promise (Room 2.8.4 annotations cannot express it), fixed the migration-recovery boundary against data-and-storage, and backed the version-1 contract with [ADR 0006](../../../architecture/decisions/0006-version-1-persistence-contract.md).

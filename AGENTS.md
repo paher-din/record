@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none; Tech PoC P1 is `approved` (2026-08-05), so its plan may be produced and reviewed, but implementation remains unauthorized until the user explicitly approves that plan and the approval is recorded
+- Current active spec: Tech PoC P1 — minimal Room model (`in-progress` 2026-08-05: spec Revision 2 + ADR 0006 and plan Revision 7 both explicitly approved by the user)
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules
