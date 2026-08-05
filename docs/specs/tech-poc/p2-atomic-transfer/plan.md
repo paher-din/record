@@ -2,8 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-- **Status:** `draft` — produced under the approved spec; awaiting explicit user approval (Revision 1). Implementation is forbidden until the user approves this plan and the approval is recorded.
-- **Spec:** [spec.md](spec.md) — `approved` (user accepted Revision 1 on 2026-08-05 after review of commit `2156da3`).
+- **Status:** `in-progress` — the user explicitly approved this plan (Revision 1) on 2026-08-05 after review of commit `997547d`; the approval is recorded here per the roadmap lifecycle rules. Implementation is authorized per the tasks below.
+- **Spec:** [spec.md](spec.md) — `in-progress` (user accepted Revision 1 on 2026-08-05 after review of commit `2156da3`).
 - **Revision 1:** 2026-08-05 — review of commit `5988517`: recorded Kotlin sealed-source compatibility accurately, made allowlist regeneration executable, preserved P1 hook ordinals while adding the between-entry fault point, restored the complete catch order, added the required P1 fixture migration, completed typed-endpoint/schema evidence, and made host-tool resolution explicit.
 
 **Goal:** Prove the same-currency transfer and the entry-side financial invariants as one indivisible durable operation on the unchanged v1 schema. A pure finance-matrix validator enforces the entry rules for all four `TransactionType` values; the repository resolves entry account endpoints inside the transaction, runs the validator, and writes transfer entries in a deterministic source-then-destination order; property tests prove balance reproducibility from effective entries; Room fault tests prove no one-sided effect at any injected failure boundary.
