@@ -191,12 +191,13 @@ The following concepts are explicitly deferred and must not acquire placeholder 
 ### Financial invariants
 
 - All money is stored and calculated as integer minor units. `Float` and `Double` are forbidden for monetary amounts.
+- Financial invariant arithmetic is exact integer arithmetic. Persisted amounts remain signed `Long` values, but validation, absolute magnitude, zero-sum checks, allocation sums, and derived-balance reference calculations must use overflow-safe comparisons or widened intermediates; two's-complement wraparound is never a valid financial result.
 - An MVP income or expense has exactly one non-zero `AccountEntry`. An expense entry is negative; an income entry is positive; the transaction magnitude is `abs(AccountEntry.amountMinor)`.
 - Every category allocation amount is a positive absolute value.
 - An income or expense has one or more category allocations that sum exactly to the transaction magnitude.
 - A same-currency transfer has exactly two `AccountEntry` rows, references two distinct accounts, and is zero-sum (its algebraic sum is zero; 代数和为零) across those entries.
 - A transfer has no category allocation.
-- `OPENING_BALANCE` is a transaction with exactly one `AccountEntry`; there is no direct balance field.
+- `OPENING_BALANCE` is a transaction with exactly one `AccountEntry`; its signed value, including zero, defines the opening balance, and there is no direct balance field.
 - Creating an `Account`, its `OPENING_BALANCE` transaction, and that transaction's unique `AccountEntry` is one atomic operation: all three are created or none is created.
 - Account balance equals the sum of all effective `AccountEntry` values and must be reproducible from those entries. An entry is effective when its owning transaction is not soft-deleted.
 - A `Transaction`, its entries, allocations, and requested relations commit atomically. Failure leaves none of the requested changes committed.
@@ -206,7 +207,7 @@ The following concepts are explicitly deferred and must not acquire placeholder 
 
 | Type | AccountEntry cardinality | Sign/sum | CategoryAllocation | Atomic participants |
 |---|---|---|---|---|
-| `OPENING_BALANCE` | Exactly one | Its signed value defines the opening balance | None | `Account` + `Transaction` + its unique `AccountEntry`; requested relations, if any, join the same commit |
+| `OPENING_BALANCE` | Exactly one | Its signed value, including zero, defines the opening balance | None | `Account` + `Transaction` + its unique `AccountEntry`; requested relations, if any, join the same commit |
 | `INCOME` | Exactly one, non-zero | Positive; magnitude = `abs(entry.amountMinor)` | One or more positive allocations summing exactly to magnitude | `Transaction` + `AccountEntry` + all allocations + requested relations |
 | `EXPENSE` | Exactly one, non-zero | Negative; magnitude = `abs(entry.amountMinor)` | One or more positive allocations summing exactly to magnitude | `Transaction` + `AccountEntry` + all allocations + requested relations |
 | `TRANSFER` | Exactly two, non-zero, for distinct same-currency accounts | Source negative, destination positive, algebraic sum zero | None | `Transaction` + both `AccountEntry` rows + requested relations |
