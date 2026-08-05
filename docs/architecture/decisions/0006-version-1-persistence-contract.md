@@ -8,6 +8,8 @@ Accepted
 
 2026-08-05
 
+The user explicitly accepted this decision on 2026-08-05 after review of commit `420f688`.
+
 ## Context
 
 Tech PoC P1 introduces `databaseVersion = 1`, the origin of the persisted schema. Encoding choices made there — timestamp representation, enum storage and validation, foreign-key actions, and the minimal index set — become persistence-compatibility facts: changing any of them later is a schema migration that affects every N-1/N-2 upgrade. The logical backup is a separate portability surface independent of the internal database schema, with its own version axis, per [data and storage](../data-and-storage.md); this ADR does not decide backup encoding. [ADR 0001](0001-native-android-room-2.md) requires a new persistence ADR for a persistence-contract change, and P1 is where that contract is first defined. The authoritative domain facts and invariants are the [domain model](../domain-model.md); migration and recovery rules are owned by [data and storage](../data-and-storage.md).

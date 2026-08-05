@@ -5,7 +5,7 @@ This roadmap defines the only authorized stage order for one-person, Codex-assis
 ## Current position
 
 - Tech PoC P0 is `completed` (2026-08-05): the seven-module skeleton builds on the approved toolchain, the module dependency check is wired into `check` and passes its negative verification, and launch was verified on the Xiaomi 14 Pro reference device.
-- Tech PoC P1 entered the lifecycle as `draft` (2026-08-05): its `spec.md` clarifies the minimal Room model boundaries and acceptance criteria; it is not approved and authorizes no implementation.
+- Tech PoC P1 is `approved` (2026-08-05): the user accepted Revision 2 of its `spec.md` and ADR 0006 after review of commit `420f688`. Its `plan.md` may be produced and reviewed, but implementation remains unauthorized until the user explicitly approves that plan and the approval is recorded.
 - Current active spec: none. No functional specification is currently `in-progress`.
 - Tech PoC P2 is the next candidate after P1. Like every roadmap item that has not entered the formal lifecycle, it has no implementation authorization merely because it appears below.
 - A failed gate follows the same-slice revision and retry protocol below. The current slice remains the unique `in-progress` slice, and no later slice may start.
