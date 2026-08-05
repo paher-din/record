@@ -4,6 +4,7 @@
 
 - **Status:** `draft` — produced under the approved spec; awaiting explicit user approval (Revision 1). Implementation is forbidden until the user approves this plan and the approval is recorded.
 - **Spec:** [spec.md](spec.md) — `approved` (user accepted Revision 1 on 2026-08-05 after review of commit `2156da3`).
+- **Revision 1:** 2026-08-05 — review of commit `5988517`: recorded Kotlin sealed-source compatibility accurately, made allowlist regeneration executable, preserved P1 hook ordinals while adding the between-entry fault point, restored the complete catch order, added the required P1 fixture migration, completed typed-endpoint/schema evidence, and made host-tool resolution explicit.
 
 **Goal:** Prove the same-currency transfer and the entry-side financial invariants as one indivisible durable operation on the unchanged v1 schema. A pure finance-matrix validator enforces the entry rules for all four `TransactionType` values; the repository resolves entry account endpoints inside the transaction, runs the validator, and writes transfer entries in a deterministic source-then-destination order; property tests prove balance reproducibility from effective entries; Room fault tests prove no one-sided effect at any injected failure boundary.
 
@@ -44,7 +45,7 @@ sealed interface RepositoryResult<out T> {
 Semantics:
 
 - `FinanceRejected` is a domain rejection carrying the precise finance violation; **nothing committed**; callers do not auto-retry — the same caller behavior class as `ValidationRejected`.
-- No new write entry point, no new DTO, no renamed or re-meant P1 outcome. `FinanceRejected` joins the existing sealed `Failure`; because `Failure` is sealed, the addition is source-compatible for consumers.
+- No new write entry point, no new DTO, no renamed or re-meant P1 outcome. `FinanceRejected` is ABI-additive, but adding a direct subtype to sealed `Failure` is source-breaking for a consumer that recompiles an exhaustive `when` over every direct `Failure` subtype. The repository has no such production consumer today; P2 recompiles the whole repository, and the consumer fixture explicitly includes the new branch. Consumers matching the existing `is Failure` umbrella remain source-compatible.
 - Enum member order is the deterministic classification precedence (below) for multi-invalid candidates.
 
 ## Deterministic classification
@@ -57,21 +58,23 @@ The full repository write-precheck order inside the `withTransaction` (P1 order 
 4. **entry account endpoint resolution** (new): every entry `accountId` resolves to an existing `Account`; any missing → `EndpointRejected` — before any finance classification;
 5. **finance-matrix validation** (new): `FinanceMatrixValidator` over the resolved entries and their stored currency strings → `FinanceRejected(violation)` with precedence **cardinality → zero amount → wrong sign → same-account transfer → currency mismatch → non-zero-sum**; the first violation in that order wins;
 6. relation endpoints (unchanged) → `EndpointRejected`;
-7. ordered child writes: for a validated `TRANSFER`, the negative source entry is written first and the positive destination second **regardless of input-set iteration order**; single-entry types write their one entry; then the requested relations. The fault hook fires `afterChildWrite(ordinal)` after each child write, so `afterChildWrite(0)` is the deterministic boundary between the two transfer entries.
+7. ordered child writes preserve the P1 ordinal prefix required by the foreign keys: `EntityRef` → `afterChildWrite(0)`, `Transaction` → `afterChildWrite(1)`. A single-entry type then writes its entry → ordinal 2 and its relation stage → ordinal 3. A validated `TRANSFER` writes the negative source → ordinal 2, then the positive destination → ordinal 3, **regardless of the caller-provided entry-list order**, then its relation stage → ordinal 4. Therefore `afterChildWrite(2)` is the deterministic boundary between the two transfer entries; existing single-entry P1 ordinals do not move.
 
 Cross-family precedence (XOR → duplicate → endpoints → finance → relations) is deterministic as implemented and is pinned by the test matrix; it is not renegotiated by callers.
 
-## Catch priority (revised — P1 numbering shifted)
+## Catch priority (revised — complete order)
 
-The P1 list gains clause 2:
+`saveTransactionAggregate` retains every P1 mapping and inserts the finance clause immediately after XOR validation:
 
 0. `CancellationException` → **rethrow** — never converted to an outcome;
 1. `XorViolationException` → `ValidationRejected(violation)`;
 2. `FinanceViolationException` → `FinanceRejected(violation)` (new);
-3. `SQLiteFullException` → `StorageExhausted`;
-4. any other `SQLiteException` → `TransactionFailed`;
-5. exceptions from hook invocations (simulated faults): inside the transaction → `TransactionFailed`; from `afterCommitResponse` → `CommittedButResponseFailed`;
-6. any other exception → `Unexpected`.
+3. `DuplicateIdentityException` → `DuplicateIdentity`;
+4. `EndpointRejectedException` → `EndpointRejected`;
+5. `SQLiteFullException` → `StorageExhausted`;
+6. any other `SQLiteException` → `TransactionFailed`;
+7. exceptions from hook invocations (simulated faults): inside the transaction → `TransactionFailed`; from `afterCommitResponse` → `CommittedButResponseFailed`;
+8. any other exception → `Unexpected`.
 
 Raw exceptions or `Throwable.message` never cross the boundary.
 
@@ -98,22 +101,25 @@ Internal-only additions: `FinanceMatrixValidator`, `FinanceViolationException` (
 |---|---|
 | `core/data/src/main/java/com/paherdin/record/core/data/RepositoryResult.kt` | Add `FinanceViolation` enum + `FinanceRejected` member exactly per the normative delta; all P1 declarations unchanged |
 | `core/data/src/main/java/com/paherdin/record/core/data/FinanceMatrixValidator.kt` | `internal` pure validator per the semantics table + `internal FinanceViolationException(violation)` |
-| `core/data/src/main/java/com/paherdin/record/core/data/room/RecordDao.kt` | Add the account lookup used for endpoint resolution inside the transaction (get-by-id already exists for the entity set; a batch `getAccountCurrencies(accountIds)` is added if the single-query form is used) |
-| `core/data/src/main/java/com/paherdin/record/core/data/RecordRepository.kt` | Insert steps 4–5 and the deterministic source-first write order into `saveTransactionAggregate`; add catch clause 2 |
+| `core/data/src/main/java/com/paherdin/record/core/data/room/RecordDao.kt` | Unchanged: the existing internal `getAccount(id)` query is the only endpoint lookup P2 needs |
+| `core/data/src/main/java/com/paherdin/record/core/data/RecordRepository.kt` | Insert steps 4–5 and the deterministic source-first write order into `saveTransactionAggregate`; add the finance catch without dropping duplicate/endpoint mappings |
 | `core/data/api/expected-surface.txt` | Regenerated by the dump at Task 3 and reviewed one-to-one against the P1 list + the normative delta |
-| `core/data/apiGuard/positive/*.kt` | Existing fixtures unchanged; add `FinanceRejectionUsage.kt` unpacking a `FinanceRejected(violation)` from a typed failure |
-| `core/data/apiGuard/negative/*.kt` | Add one fixture per concern: reference to internal `FinanceMatrixValidator`, reference to internal `FinanceViolationException`, and a hypothetical raw/untyped transfer write taking a `Double` amount (must fail: unresolved symbol, proving no bypass path and no `Float`/`Double` money signature) |
+| `core/data/src/test/java/com/paherdin/record/core/data/ApiSurfaceTest.kt` | Extend the pinned metadata-internal set with `FinanceMatrixValidator` and `FinanceViolationException`; public-surface dump/assertion mechanism otherwise unchanged |
+| `core/data/apiGuard/positive/*.kt` | Update `SuccessUnpacking.kt` to pass a finance-valid income entry; add `FinanceRejectionUsage.kt` with an exhaustive direct-subtype `Failure` match that includes `FinanceRejected(violation)` and all P1 branches; other fixtures unchanged |
+| `core/data/apiGuard/negative/*.kt` | Add one defense-in-depth fixture per concern: reference to internal `FinanceMatrixValidator`, reference to internal `FinanceViolationException`, and a hypothetical raw/untyped transfer write taking a `Double` amount; the exact allowlist remains the general no-bypass/no-`Float`/`Double` proof |
 | `core/data/src/test/java/com/paherdin/record/core/data/FinanceMatrixValidatorTest.kt` | JVM: every valid row, every violation, deterministic precedence (isolated + multi-invalid candidates), and the exact-arithmetic boundaries (zero, one minor unit, `Long.MIN_VALUE`, `Long.MAX_VALUE`, `(MIN, MIN)` transfer) |
 | `core/data/src/test/java/com/paherdin/record/core/data/BalanceReproducibilityPropertyTest.kt` | JVM: fixed-seed generator of P2-valid histories (accounts; opening/income/expense/transfer creates; pure-model delete state transitions), `BigInteger` balance oracle, transfer zero-sum oracle, validator accept/reject assertions; seeds printed on failure |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/TransferValidationTest.kt` | Instrumented: endpoint/currency/same-account/sign/cardinality/zero-sum rejections through the public repository with no partial state; persisted fixture with `deletedAt` already present proves effective-entry exclusion |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/AtomicTransferVisibilityTest.kt` | Instrumented: transfer fault matrix with the external-reader latch protocol (P1 pattern) and balance observers |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/TransferConcurrencyTest.kt` | Instrumented: same-ID concurrent transfers (one `Success` + one `DuplicateIdentity`); distinct transfers `A`/`B` racing a reader with the four allowed complete snapshots |
+| `core/data/src/androidTest/java/com/paherdin/record/core/data/room/{AtomicVisibilityTest,ConcurrencyTest,PersistReloadTest,TypedEndpointTest,XorIdentityTest}.kt` | Replace P1 setup transactions that were intentionally finance-incomplete with finance-valid account/entry fixtures where finance rejection is not the subject; preserve every P1 assertion and precedence case |
 | `verification.md` | Created at Task 1 with the slice-state line; completed at Task 11 with the P2 execution evidence |
 
 ## Module dependency and build notes
 
 - No new module edge; `checkModuleDependencies` must keep passing. `:core:data`'s `api(project(":core:model"))` is unchanged.
 - Schema config, Room plugin, KSP pins, and `apiBoundaryCheck` wiring are inherited from P1 and untouched.
+- The committed `core/data/schemas/com.paherdin.record.core.data.room.RecordDatabase/1.json` baseline SHA-256 is `0E2ED86987D13B8C31667F35BC543A2B1BD7E694633DF744A43EA379B2784D81`; P2 must reproduce that exact hash.
 - No `fallbackToDestructiveMigration`, no new permissions, no manifest change.
 
 ---
@@ -134,17 +140,24 @@ The user's explicit approval of this plan (date/context from the approval messag
 
 - [ ] **Step 1: Confirm JDK, Gradle wrapper, and the reference device**
 
+The P1 verification record notes that the host's default `java` is JRE 8 and `adb` is not on `PATH`. Before running Gradle, select an installed JDK 17+ through process-local `JAVA_HOME` (do not persist or record the machine-specific path). Resolve `adb` from `ANDROID_HOME` when present, otherwise from the standard user SDK path, and fail before Task 3 if either executable is absent.
+
 Run:
 
 ```powershell
-java -version
+$p2Java = Join-Path $env:JAVA_HOME 'bin/java.exe'
+if (-not (Test-Path $p2Java)) { throw 'Set process-local JAVA_HOME to an installed JDK 17+ before P2 execution' }
+$p2Sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android/Sdk' }
+$p2Adb = Join-Path $p2Sdk 'platform-tools/adb.exe'
+if (-not (Test-Path $p2Adb)) { throw "adb not found under resolved Android SDK: $p2Sdk" }
+& $p2Java -version
 .\gradlew.bat --version
-adb devices -l
+& $p2Adb devices -l
 ```
 
 Expected: JDK 17+, Gradle 9.5.0, and the Xiaomi 14 Pro visible with USB debugging.
 
-### Task 3: Public surface extension and allowlist regen
+### Task 3: Public surface extension and allowlist regeneration
 
 **Files:**
 - Modify: `RepositoryResult.kt`, `core/data/api/expected-surface.txt`
@@ -153,16 +166,28 @@ Expected: JDK 17+, Gradle 9.5.0, and the Xiaomi 14 Pro visible with USB debuggin
 
 Add `FinanceViolation` and `FinanceRejected` exactly per the normative delta; no P1 declaration changes.
 
-- [ ] **Step 2: Compile and regenerate the allowlist**
+- [ ] **Step 2: Compile and dump the new public surface**
 
 Run:
 
 ```powershell
 .\gradlew.bat :core:data:compileDebugKotlin
+.\gradlew.bat :core:data:testDebugUnitTest --tests "com.paherdin.record.core.data.ApiSurfaceTest.publicSurfaceMatchesAllowlistExactly" -PapiSurfaceDump=true --info
+$p2ApiDumpXml = [xml](Get-Content 'core/data/build/test-results/testDebugUnitTest/TEST-com.paherdin.record.core.data.ApiSurfaceTest.xml' -Raw)
+$p2ApiDumpXml.testsuite.'system-out'
+```
+
+`ApiSurfaceTest` dump mode prints the complete canonical surface but does **not** write the source tree. `--info` exposes the test stdout in the console, and the explicit JUnit-XML read is the deterministic fallback/output source if console logging changes. Copy that printed block into `api/expected-surface.txt` with `apply_patch`, then review the diff one-to-one: every P1 line is unchanged and the delta is exactly `FinanceViolation` (six members) plus `FinanceRejected`.
+
+- [ ] **Step 3: Verify the reviewed allowlist in normal assertion mode**
+
+Run without the dump property:
+
+```powershell
 .\gradlew.bat :core:data:testDebugUnitTest --tests "com.paherdin.record.core.data.ApiSurfaceTest"
 ```
 
-The dump mode regenerates `expected-surface.txt`. Review the diff one-to-one: the P1 lines are unchanged and the delta is exactly `FinanceViolation` (six members) plus `FinanceRejected`. Commit the reviewed allowlist.
+Expected: PASS. The allowlist remains part of the implementation commit in Task 11; Task 3 does not create an extra partial commit.
 
 ### Task 4: Finance validator and JVM unit tests
 
@@ -175,7 +200,7 @@ Per the semantics table, with the internal `FinanceViolationException`; zero-sum
 
 - [ ] **Step 2: Truth-table unit tests**
 
-Every valid row and every violation, precedence checks with isolated and multi-invalid candidates (e.g. zero + same-account → `ZERO_AMOUNT`; same-account + currency mismatch → `TRANSFER_SAME_ACCOUNT`; duplicate + finance mixed → unchanged cross-family precedence is not re-pinned here), and the boundary set: zero; one minor unit; `Long.MIN_VALUE`/`Long.MAX_VALUE` for each type; the `(MIN, MIN)` and `(MIN, +x)` transfer cases rejected as `WRONG_SIGN` / `TRANSFER_NOT_ZERO_SUM` under exact arithmetic.
+Every valid row and every violation, precedence checks with isolated and multi-invalid candidates (e.g. zero + same-account → `ZERO_AMOUNT`; same-account + currency mismatch → `TRANSFER_SAME_ACCOUNT`), and the boundary set: zero; one minor unit; `Long.MIN_VALUE`/`Long.MAX_VALUE` for each type. The `(MIN, MIN)` transfer uses distinct same-currency accounts and is rejected as `WRONG_SIGN`; the `(MIN, +x)` case also uses distinct same-currency accounts and a positive `x` in range, reaches the final exact-sum check, and is rejected as `TRANSFER_NOT_ZERO_SUM`. Repository-level cross-family precedence belongs to Task 7, not this pure-validator test.
 
 Run:
 
@@ -207,15 +232,16 @@ Expected: PASS; the seed(s) are printed in `verification.md` so every run is rep
 ### Task 6: Repository integration
 
 **Files:**
-- Modify: `RecordDao.kt`, `RecordRepository.kt`
+- Modify: `RecordRepository.kt`
+- Read/reuse unchanged: `RecordDao.kt#getAccount(id)`
 
 - [ ] **Step 1: Account endpoint resolution**
 
-Inside `saveTransactionAggregate`'s `withTransaction`, after the duplicate check: resolve every entry `accountId` (single lookup or the batch DAO query); any missing account → `EndpointRejected`.
+Inside `saveTransactionAggregate`'s `withTransaction`, after the duplicate check: deduplicate the candidate `accountId` values, resolve each with the existing `dao.getAccount(id)`, and build the currency map; any missing account → `EndpointRejected`. Do not add a speculative batch DAO method or change the schema.
 
 - [ ] **Step 2: Finance validation and deterministic write order**
 
-After endpoint resolution: run `FinanceMatrixValidator` with the resolved currency map (catch clause 2 maps `FinanceViolationException` → `FinanceRejected`). For a validated transfer, derive source/destination from the signs and write negative-source first, positive-destination second, regardless of input iteration order; single-entry types write their one entry. The fault hook order and all other write steps are unchanged.
+After endpoint resolution: run `FinanceMatrixValidator` with the resolved currency map (catch clause 2 maps `FinanceViolationException` → `FinanceRejected`, while the duplicate and endpoint catches remain present). Preserve child ordinals 0 (`EntityRef`) and 1 (`Transaction`). A single-entry type writes its entry at ordinal 2 and keeps its relation stage at ordinal 3. A transfer derives source/destination from the validated signs, writes negative source at ordinal 2 and positive destination at ordinal 3 regardless of input iteration order, then runs its relation stage at ordinal 4. This makes ordinal 2 the between-entry fault boundary without moving the existing P1 single-entry ordinals.
 
 - [ ] **Step 3: Compile and run the P1 JVM suite**
 
@@ -231,12 +257,25 @@ Expected: PASS — including the unchanged `SchemaContractTest` (proving no sche
 
 **Files:**
 - Create: `TransferValidationTest.kt` (androidTest)
+- Modify: `AtomicVisibilityTest.kt`, `ConcurrencyTest.kt`, `PersistReloadTest.kt`, `TypedEndpointTest.kt`, `XorIdentityTest.kt` (P1 androidTest fixtures only)
 
-- [ ] **Step 1: Repository-path rejection matrix**
+- [ ] **Step 1: Migrate P1 setup fixtures to the newly enforced domain boundary**
 
-Through the public surface: entry referencing a nonexistent account → `EndpointRejected`; same-account transfer → `TRANSFER_SAME_ACCOUNT`; differing-currency transfer → `TRANSFER_CURRENCY_MISMATCH`; zero, wrong-sign, wrong-cardinality, and non-zero-sum transfers → their violations; every case asserts no partial state (pre-existing state byte-compared via the internal read-only snapshot seam) and that the violation is a typed outcome with no raw SQLite exception escaping.
+Existing P1 tests contain deliberately minimal `INCOME` transactions with no entries because finance validation did not exist in P1. Where a test needs a successfully persisted transaction for a relation, reload, visibility, or duplicate scenario, create the required account through the public repository and give the transaction exactly one positive entry; update the expected full snapshots accordingly. Keep intentionally finance-invalid payloads only where an earlier result is the assertion (for example, the existing Note/Transaction XOR collision proves XOR rejection precedes finance validation). Do not weaken or delete a P1 assertion.
 
-- [ ] **Step 2: Persisted effective-entry exclusion**
+Run:
+
+```powershell
+.\gradlew.bat :core:data:compileDebugAndroidTestKotlin
+```
+
+Expected: the migrated P1 fixtures and the new P2 tests compile against the same public repository surface.
+
+- [ ] **Step 2: Repository-path rejection and cross-family precedence matrix**
+
+Through the public surface: entry referencing a nonexistent account → `EndpointRejected`; entry whose `accountId` is occupied only by a Transaction/Note identity but has no same-ID `Account` → `EndpointRejected` (wrongly typed endpoint); same-account transfer → `TRANSFER_SAME_ACCOUNT`; differing-currency transfer → `TRANSFER_CURRENCY_MISMATCH`; zero, wrong-sign, wrong-cardinality, and non-zero-sum transfers → their violations. Pin cross-family precedence with compound repository candidates: same-ID duplicate + invalid finance → `DuplicateIdentity`; missing account + finance violation → `EndpointRejected`; valid account endpoints + finance violation + missing relation endpoint → `FinanceRejected`. Every case asserts structural equality of all pre-existing rows/fields through the internal read-only snapshot seam and that the violation is a typed outcome with no raw SQLite exception escaping.
+
+- [ ] **Step 3: Persisted effective-entry exclusion**
 
 Persist an aggregate whose `deletedAt` is already present through the existing typed surface; assert its entries contribute nothing to the account's effective-entry sum (reference computation over the internal snapshot). This proves exclusion without claiming a public soft-delete transition.
 
@@ -247,7 +286,7 @@ Persist an aggregate whose `deletedAt` is already present through the existing t
 
 - [ ] **Step 1: `AtomicTransferVisibilityTest` — transfer fault matrix**
 
-Reuse the P1 latch protocol and fault hook. For a transfer with relations, inject failure at every stage/ordinal — `beforeTransaction`, `afterChildWrite(0)` (after the source entry, before the destination entry), `afterChildWrite(1)` (after the destination entry), each remaining child-write ordinal, `beforeCommit`, and `afterCommitResponse` (commit already durable). The external reader asserts at every observation: the complete `Transaction` + `AccountEntry` ID sets and fields, both affected accounts' entry histories, and `BigInteger`-derived balances — matching exactly the old complete state or the new complete state; never one side of the transfer, never a partial relation set, never a balance inconsistent with effective entries.
+Reuse the P1 latch protocol and fault hook. For a transfer with at least one relation, inject failure at every stage/ordinal — `beforeTransaction`; `afterChildWrite(0)` after `EntityRef`; ordinal 1 after `Transaction`; ordinal 2 after the negative source and before the positive destination; ordinal 3 after the destination; ordinal 4 after the relation stage; `beforeCommit`; and `afterCommitResponse` (commit already durable). The external reader asserts at every observation: the complete `Transaction` + `AccountEntry` ID sets and fields, both affected accounts' entry histories, and `BigInteger`-derived balances — matching exactly the old complete state or the new complete state; never one side of the transfer, never a partial relation set, never a balance inconsistent with effective entries. The unchanged P1 single-entry matrix still uses ordinals 0–3 and must continue to pass.
 
 - [ ] **Step 2: `TransferConcurrencyTest` — same-ID and distinct transfers**
 
@@ -257,11 +296,11 @@ Reuse the P1 latch protocol and fault hook. For a transfer with relations, injec
 
 **Files:**
 - Create: `core/data/apiGuard/positive/FinanceRejectionUsage.kt`, `core/data/apiGuard/negative/ReferenceFinanceMatrixValidator.kt`, `core/data/apiGuard/negative/ReferenceFinanceViolationException.kt`, `core/data/apiGuard/negative/RawTransferWrite.kt`
-- Modify: none beyond the fixture additions
+- Modify: `core/data/apiGuard/positive/SuccessUnpacking.kt` (replace its compile-only empty-entry example with a finance-valid income entry), `core/data/src/test/java/com/paherdin/record/core/data/ApiSurfaceTest.kt` (pin both new internal FQCNs)
 
 - [ ] **Step 1: Consumer fixtures**
 
-Positive: unpack `FinanceRejected(violation)` from a typed failure and branch on the violation. Negative, one concern per file: referencing the internal validator, referencing the internal exception, and a hypothetical `saveRawTransfer(accountId: String, amount: Double)` call (must fail: unresolved reference — no raw write path, no `Double` money signature).
+Add both new implementation FQCNs to `ApiSurfaceTest.INTERNAL_CLASSES`, requiring Kotlin metadata visibility `INTERNAL`. Positive consumer: exhaustively match every direct `Failure` subtype, including unpacking `FinanceRejected(violation)`, so the fixture documents the sealed-source compatibility obligation on recompilation. Negative, one concern per file: referencing the internal validator, referencing the internal exception, and a hypothetical `saveRawTransfer(accountId: String, amount: Double)` call (must fail with the expected internal/unresolved diagnostic). The exact bidirectional allowlist is the authoritative proof that no additional public write or `Float`/`Double` signature exists; the named negative fixture is defense-in-depth, not a general proof by itself.
 
 - [ ] **Step 2: Run the machine checks**
 
@@ -269,13 +308,15 @@ Run:
 
 ```powershell
 .\gradlew.bat :core:data:testDebugUnitTest :core:data:apiBoundaryCheck
+$p2SchemaHash = (Get-FileHash 'core/data/schemas/com.paherdin.record.core.data.room.RecordDatabase/1.json' -Algorithm SHA256).Hash
+if ($p2SchemaHash -ne '0E2ED86987D13B8C31667F35BC543A2B1BD7E694633DF744A43EA379B2784D81') { throw "P2 changed v1 schema JSON: $p2SchemaHash" }
 ```
 
-Expected: `ApiSurfaceTest` PASS (allowlist exact both directions), `SchemaContractTest` PASS unchanged, `apiBoundaryCheck` PASS with the new fixtures.
+Expected: `ApiSurfaceTest` PASS (allowlist exact both directions), `SchemaContractTest` PASS unchanged, `apiBoundaryCheck` PASS with the new fixtures, and the schema hash equals the pinned P1 value.
 
 - [ ] **Step 3: Negative verification**
 
-Two directions, then revert and re-run: (i) make `FinanceMatrixValidator` public → the negative fixture compiles → `apiBoundaryCheck` FAIL; (ii) add a public `fun saveTransfer(...)`-style method to `RecordRepository` → `ApiSurfaceTest` FAIL (allowlist mismatch). Record both states in `verification.md` (mirrors P1's negative-verification evidence).
+Two directions, each applied with `apply_patch`, verified failing, then reversed with `apply_patch` before the next case: (i) make `FinanceMatrixValidator` public → the negative fixture compiles → `apiBoundaryCheck` FAIL; (ii) add a public `fun saveTransfer(...)`-style method to `RecordRepository` → `ApiSurfaceTest` FAIL (allowlist mismatch). After both reversals, rerun the normal checks and require `git diff` to contain none of the temporary mutations. Record both failing and restored-passing states in `verification.md` (mirrors P1's negative-verification evidence).
 
 ### Task 10: Full build and device regression
 
@@ -302,9 +343,12 @@ Run:
 Expected: all P1 and P2 instrumented test classes PASS on the Xiaomi 14 Pro. Record the device build id:
 
 ```powershell
-adb shell getprop ro.build.version.sdk
-adb shell getprop ro.build.version.release
-adb shell getprop ro.build.display.id
+$p2Sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android/Sdk' }
+$p2Adb = Join-Path $p2Sdk 'platform-tools/adb.exe'
+if (-not (Test-Path $p2Adb)) { throw "adb not found under resolved Android SDK: $p2Sdk" }
+& $p2Adb shell getprop ro.build.version.sdk
+& $p2Adb shell getprop ro.build.version.release
+& $p2Adb shell getprop ro.build.display.id
 ```
 
 - [ ] **Step 3: P0 launch regression**
@@ -313,9 +357,12 @@ Run:
 
 ```powershell
 .\gradlew.bat :app:installDebug
-adb shell am start -n com.paherdin.record/.MainActivity
+$p2Sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android/Sdk' }
+$p2Adb = Join-Path $p2Sdk 'platform-tools/adb.exe'
+if (-not (Test-Path $p2Adb)) { throw "adb not found under resolved Android SDK: $p2Sdk" }
+& $p2Adb shell am start -n com.paherdin.record/.MainActivity
 Start-Sleep -Seconds 2
-adb shell dumpsys activity activities | Select-String "com.paherdin.record"
+& $p2Adb shell dumpsys activity activities | Select-String "com.paherdin.record"
 ```
 
 Expected: `topResumedActivity` is `com.paherdin.record/.MainActivity`.
