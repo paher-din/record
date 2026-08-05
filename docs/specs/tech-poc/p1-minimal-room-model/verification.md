@@ -1,13 +1,15 @@
 # Tech PoC P1 — Verification Record
 
-- **Slice state:** `approved` — the pre-approval dependency validation is recorded below; the P1 execution evidence is appended at Task 10, after which the slice may become `completed`.
+- **Slice state:** `approved` — the pre-approval dependency validation is recorded below; the slice-state line is synced to `in-progress` at plan approval (plan Task 1); the P1 execution evidence is appended at Task 11, after which the slice may become `completed`.
 - **Date:** 2026-08-05
 - **Spec:** [spec.md](spec.md) — acceptance criteria section 5.2
 - **Plan:** [plan.md](plan.md)
 
 ## Pre-approval dependency validation (KSP2 / Room / schema export)
 
-Per the [P1 spec](spec.md) section 3, the concrete KSP2 version and its real-build compatibility evidence are established before plan approval. The following transient experiments ran in the working tree on top of commit `efca88b` (`docs: record P1 spec and ADR 0006 approval (2026-08-05)`) and were fully reverted after each round; they are not P1 implementation. A confirmation rerun on top of commit `651d1e4` reproduced the identical schema artifact, proving determinism. All commands use `JAVA_HOME=C:\Users\p3148\tools\jdk\jdk-17.0.20+8`.
+Per the [P1 spec](spec.md) section 3, the concrete KSP2 version and its real-build compatibility evidence are established before plan approval. The following transient experiments ran in the working tree on top of commit `efca88b` (`docs: record P1 spec and ADR 0006 approval (2026-08-05)`) and were fully reverted after each round; they are not P1 implementation. A confirmation rerun on top of commit `651d1e4` reproduced the identical schema artifact, proving determinism.
+
+Environment (all rounds): host Windows 11 Home China 10.0.26200 (x64), AMD Ryzen 7 8845H (8 cores), 31.3 GiB RAM; JDK Temurin 17.0.20+8 (user-scope install; the local `JAVA_HOME` path is not recorded); Gradle 9.5.0; AGP 9.3.0 built-in Kotlin 2.2.10; KSP 2.3.9; Room 2.8.4; compileSdk 36. Fixture version: probe fixture v1 (`ProbeEntity`/`ProbeDatabase` as quoted below).
 
 ### Temporary configuration (identical in every round)
 
@@ -100,4 +102,4 @@ Remaining risk: none known for the pinned combination. The working tree was reve
 
 ## P1 execution record
 
-To be completed at Task 10 with the executed P1 verification commands, environment, results, deviations, and remaining risk, mapping every spec acceptance criterion (spec section 5.2, items 1–8) and the roadmap P1 exit gate.
+To be completed at Task 11 with the executed P1 verification commands, environment, results, deviations, and remaining risk, mapping every spec acceptance criterion (spec section 5.2, items 1–8) and the roadmap P1 exit gate.

@@ -8,6 +8,8 @@
 
 **Plan revision 3 (2026-08-05):** review corrections — proactive typed classification inside the write transaction replaces the unimplementable SQLite error-code mapping (no exception-message parsing, explicit catch priority, hook-originated faults attributed by a wrapper); `:core:data` declares `api(project(":core:model"))`; the API-surface check is restricted to `:core:data`'s own declarations with the full public signatures pinned normatively in this plan, classes without `@Metadata` failing by default (only the documented Room-generated exclusion allowed), reflection used solely to fetch the `@Metadata` annotation; `beforeTransaction` fires before `withTransaction`; the XOR validator takes candidate-occupancy semantics so legal creation is accepted; lifecycle entry/exit tasks added.
 
+**Plan revision 4 (2026-08-05):** review corrections — typed prechecks moved **inside** `withTransaction` so concurrent outcomes are stable; cross-table collision checked before same-ID duplicate (the other subtype's `EntityRef` would otherwise shadow it); `CancellationException` rethrown before any mapping; read APIs wrapped in `RepositoryResult`; the ABI no-metadata exclusion narrowed to an explicit pinned FQCN set; `RecordRepository` declares an `internal constructor` proven by a negative fixture; the validator's truth table made complete and mutually exclusive; `PersistReloadTest` uses internal read-only DAO snapshots for the physical tables; lifecycle entry syncs every fact source; verification record environment fields completed.
+
 **Tech Stack:** Gradle 9.5.0, AGP 9.3.0 (built-in Kotlin 2.2.10), KSP2 2.3.9, Room 2.8.4 (runtime + `androidx.room` Gradle plugin + KSP2 compiler), `org.jetbrains.kotlin:kotlin-compiler-embeddable` 2.2.10 and `org.jetbrains.kotlin:kotlin-metadata-jvm` 2.2.10 (dev/test-time only), androidx.test runner/ext-junit, JUnit 4.13.2. `minSdk 34` / `targetSdk 34` / `compileSdk 36`.
 
 **Reference environment (frozen):** Xiaomi 14 Pro (physical, USB debugging), Android 14 / API 34 out-of-box baseline. The actual system build is recorded in `verification.md` at verification time (currently API 36 per P0; recorded, not rejected).
@@ -38,20 +40,20 @@ No dependency introduces network permissions, analytics, crash reporting, or clo
 
 ### Normative declaration list
 
-The following is the complete public surface of `:core:data`, pinned here so that the committed `api/expected-surface.txt` allowlist is derived from this list, not decided at implementation time. The dump in `ApiSurfaceTest` (Task 8) normalizes declarations to signature lines; data classes contribute only their mechanical synthetic members (`componentN`/`copy`/`equals`/`hashCode`/`toString`), which follow from the primary constructor and are not design decisions.
+The following is the complete public surface of `:core:data`, pinned here so that the committed `api/expected-surface.txt` allowlist is derived from this list, not decided at implementation time. The dump in `ApiSurfaceTest` (Task 9) normalizes declarations to signature lines; data classes contribute only their mechanical synthetic members (`componentN`/`copy`/`equals`/`hashCode`/`toString`), which follow from the primary constructor and are not design decisions.
 
 ```kotlin
 // package com.paherdin.record.core.data
 
-class RecordRepository : Closeable {
+class RecordRepository internal constructor() : Closeable {
     companion object { fun open(context: Context): RecordRepository }
     override fun close(): Unit
     suspend fun createAccount(account: NewAccount): RepositoryResult<Unit>
     suspend fun saveTransactionAggregate(tx: NewTransaction): RepositoryResult<Unit>
     suspend fun saveNoteAggregate(note: NewNote): RepositoryResult<Unit>
     suspend fun replaceTransactionNoteRelations(transactionId: String, noteIds: Set<String>): RepositoryResult<Unit>
-    suspend fun getTransactionView(id: String): TransactionView?
-    suspend fun getNoteView(id: String): NoteView?
+    suspend fun getTransactionView(id: String): RepositoryResult<TransactionView?>
+    suspend fun getNoteView(id: String): RepositoryResult<NoteView?>
 }
 
 data class NewAccount(val id: String, val name: String, val currency: String)
@@ -106,17 +108,20 @@ Semantics:
 | `CommittedButResponseFailed` | **The data IS durable**; the failure occurred after the commit; caller must NOT retry (would duplicate). |
 | `Unexpected` | Unclassified failure (e.g. programming error); safest state preserved. |
 
+Read outcomes: `Success(null)` means the record does not exist; a read failure is a typed `Failure` — `CancellationException` is always rethrown, `SQLiteFullException` → `StorageExhausted`, any other exception → `Unexpected`. Raw Room/SQLite exceptions never cross.
+
 ### Boundary mapping and catch priority
 
-Inside the same write transaction, **before any write**, the repository performs proactive typed checks — no `SQLiteConstraintException` error-code or message parsing (the framework exposes no reliable error-code accessor, and parsing messages violates the provider-specific-message ban):
+The write flow is: `hook.beforeTransaction()` → one `withTransaction { typed prechecks; candidate-occupancy validation; child writes; hook.beforeCommit() }` → `hook.afterCommitResponse()`. **The typed prechecks run inside the `withTransaction`**, so Room's write serialization makes their outcomes stable under concurrency: two concurrent same-ID saves yield exactly one `Success` and one `DuplicateIdentity`, and a raw `SQLiteConstraintException` never escapes. No `SQLiteConstraintException` error-code or message parsing is used (the framework exposes no reliable error-code accessor, and parsing messages violates the provider-specific-message ban). Precheck order inside the transaction:
 
-1. same-ID already exists (an `EntityRef` row or a same-subtype row) → `DuplicateIdentity`;
-2. the other subtype holds the same ID → `ValidationRejected(CROSS_TABLE_ID_COLLISION)`;
+1. the **other** subtype holds the same ID → `ValidationRejected(CROSS_TABLE_ID_COLLISION)` — checked before same-ID, because the other subtype's `EntityRef` also exists and would otherwise shadow this branch;
+2. a same-subtype row or its `EntityRef` already exists → `DuplicateIdentity`;
 3. every referenced endpoint exists with the correct type (relation `transactionId` is a `Transaction`, `noteId` is a `Note`, entry `accountId` is an `Account`) → `EndpointRejected`;
 4. the XOR validator runs on the write's candidate occupancy (below) → `ValidationRejected(violation)`.
 
-Catch priority (specific first, generic last; `StorageExhausted` and programming errors are never swallowed by a generic transaction-failure catch):
+Catch priority (specific first, generic last; structured concurrency is never violated; `StorageExhausted` and programming errors are never swallowed by a generic transaction-failure catch):
 
+0. `CancellationException` → **rethrow** — it is never converted to an outcome;
 1. the validator's internal `XorViolationException` → `ValidationRejected(violation)`;
 2. `SQLiteFullException` → `StorageExhausted`;
 3. any other `SQLiteException` (including unclassified `SQLiteConstraintException`) → `TransactionFailed` — the kind is never guessed;
@@ -127,11 +132,19 @@ Raw exceptions or `Throwable.message` never cross the boundary.
 
 ### XOR validator semantics (candidate occupancy)
 
-`XorInvariantValidator.validate(entityType, candidateTransaction, candidateNote)` is pure and its parameters mean **the occupancy this write will produce**: `candidateTransaction = (this request supplies a Transaction row) || (a Transaction row already exists)`, `candidateNote = (this request supplies a Note row) || (a Note row already exists)`. The repository computes the flags from its proactive same-ID queries and calls the validator inside the transaction:
+`XorInvariantValidator.validate(entityType, candidateTransaction, candidateNote)` is pure and its parameters mean **the occupancy this write will produce**: `candidateTransaction = (this request supplies a Transaction row) || (a Transaction row already exists)`, `candidateNote = (this request supplies a Note row) || (a Note row already exists)`. The repository computes the flags from its proactive same-ID queries and calls the validator inside the transaction. The truth table is complete and mutually exclusive:
 
-- new Transaction on a fresh ID → `(TRANSACTION, true, false)` → valid; a `Note` already on that ID → `(TRANSACTION, true, true)` → `CROSS_TABLE_ID_COLLISION`;
-- new Note → mirrored; `entityType = PROJECT` → `PROJECT_NOT_SUPPORTED` (P1);
-- `candidateTransaction=false` for `TRANSACTION` (and mirrored) is defensive `MISSING_SUBTYPE`, unreachable through the typed public DTOs.
+| `entityType` | `candidateTransaction` | `candidateNote` | Result |
+|---|---|---|---|
+| `TRANSACTION` | true | false | valid |
+| `NOTE` | false | true | valid |
+| `TRANSACTION` | false | true | `DISCRIMINATOR_MISMATCH` |
+| `NOTE` | true | false | `DISCRIMINATOR_MISMATCH` |
+| `TRANSACTION`/`NOTE` | false | false | `MISSING_SUBTYPE` |
+| `TRANSACTION`/`NOTE` | true | true | `CROSS_TABLE_ID_COLLISION` |
+| `PROJECT` | any | any | `PROJECT_NOT_SUPPORTED` |
+
+The invalid rows are unreachable through the typed public DTOs (a `NewTransaction` always supplies `candidateTransaction = true`); they are proven by the validator-directed unit tests and the consumer-compile fixtures.
 
 Internal-only: the six `@Entity` classes, `RecordDao`, `RecordDatabase`, `XorInvariantValidator`, `TransactionFaultHook`. Tests may read raw state through internal DAO queries for verification and may write directly to the database **only** for the database-layer rejection evidence cases (spec 5.1); those cases prove the schema's own constraints and never construct valid application state, so the validator remains the single path for every successful write.
 
@@ -158,17 +171,17 @@ Internal-only: the six `@Entity` classes, `RecordDao`, `RecordDatabase`, `XorInv
 | `core/data/schemas/com.paherdin.record.core.data.room.RecordDatabase/1.json` | Exported Room schema JSON — **committed**; verification artifact for ADR 0006 and the projection table-set assertion |
 | `core/data/api/expected-surface.txt` | **Committed** allowlist derived one-to-one from the normative declaration list (generated by the dump at Task 8, reviewed against this plan) |
 | `core/data/apiGuard/positive/*.kt` | **Committed** consumer-compilation fixtures that MUST compile: the documented public surface (factory, methods, `close()`, DTOs, enums, `RepositoryResult`) |
-| `core/data/apiGuard/negative/*.kt` | **Committed** consumer-compilation fixtures, one concern per file, that MUST FAIL to compile: references to internal types (`RecordDao`, `RecordDatabase`, `XorInvariantValidator`, the six entity classes, a generated `*_Impl` class — proving the documented exclusion is unreachable externally) and to hypothetical APIs the public surface must not have (an `EntityRef`-only write, a `PROJECT`-bearing write, projection write entries) |
+| `core/data/apiGuard/negative/*.kt` | **Committed** consumer-compilation fixtures, one concern per file, that MUST FAIL to compile: references to internal types (`RecordDao`, `RecordDatabase`, `XorInvariantValidator`, the six entity classes, a pinned generated class, a direct `RecordRepository(...)` construction attempt) and to hypothetical APIs the public surface must not have (an `EntityRef`-only write, a `PROJECT`-bearing write, projection write entries) |
 | `core/data/src/test/java/com/paherdin/record/core/data/SchemaContractTest.kt` | JVM test: committed `1.json` table/column/index/FK set equals spec 4.1+4.2 exactly (incl. no projection tables) |
-| `core/data/src/test/java/com/paherdin/record/core/data/XorInvariantValidatorTest.kt` | JVM tests of the pure validator: candidate-occupancy combinations — valid creation, cross-table collision, mismatch, missing subtype, `PROJECT` |
-| `core/data/src/test/java/com/paherdin/record/core/data/ApiSurfaceTest.kt` | JVM test: full public-signature allowlist of **`:core:data`'s own declarations only** (see Task 8) |
+| `core/data/src/test/java/com/paherdin/record/core/data/XorInvariantValidatorTest.kt` | JVM tests of the pure validator: every row of the complete truth table |
+| `core/data/src/test/java/com/paherdin/record/core/data/ApiSurfaceTest.kt` | JVM test: full public-signature allowlist of **`:core:data`'s own declarations only** (see Task 9); the only no-metadata exclusion is the explicit pinned Room-generated FQCN set, never a wildcard |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/PersistReloadTest.kt` | Criterion 1: public `open` → write → `close()` → public `open` → read back exact values |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/XorIdentityTest.kt` | Criterion 2: database-layer rejection evidence (PK/FK/missing parent/same-table duplicates) + repository cross-table collision → typed rejection |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/ForeignKeyTest.kt` | Criterion 3 |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/TypedEndpointTest.kt` | Criterion 4 |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/AtomicVisibilityTest.kt` | Criterion 5: ordinal fault injection at all four boundaries with latch-paused writers and external observers, per the state matrix |
 | `core/data/src/androidTest/java/com/paherdin/record/core/data/room/ConcurrencyTest.kt` | Criterion 6: concurrent saves + relation-set replacement races with full-state comparison and defined stable outcomes |
-| `verification.md` | Created 2026-08-05 with the pre-approval validation record; completed at Task 11 with the P1 execution evidence |
+| `verification.md` | Created 2026-08-05 with the pre-approval validation record; slice-state line synced at plan approval (Task 1); completed at Task 11 with the P1 execution evidence |
 
 ## Module dependency and build notes
 
@@ -186,7 +199,7 @@ Internal-only: the six `@Entity` classes, `RecordDao`, `RecordDatabase`, `XorInv
 
 - [ ] **Step 1: Record the plan approval**
 
-The user's explicit approval of this plan (date/context from the approval message) is recorded in `plan.md` metadata, and `spec.md` status is set to `in-progress` with the approval date/context per the roadmap lifecycle. Commit as a lifecycle commit (`docs: approve P1 plan, P1 in-progress`) **before any implementation commit**. Implementation is forbidden until this step is done.
+The user's explicit approval of this plan (date/context from the approval message) is recorded in `plan.md` metadata, and the slice transitions to `in-progress` across **every fact source**: `spec.md` status → `in-progress` with the approval date/context, the current-active-spec lines in `AGENTS.md` and `docs/index.md`, the roadmap `Current position` line, and `verification.md`'s slice-state line. Commit as a lifecycle commit (`docs: approve P1 plan, P1 in-progress`) **before any implementation commit**. Implementation is forbidden until this step is done.
 
 ### Task 2: Verify toolchain and device prerequisites
 
@@ -337,7 +350,7 @@ No-op interface: `beforeTransaction()` — fired **before** `db.withTransaction`
 
 - [ ] **Step 5: `RecordRepository` (public, `Closeable`)**
 
-Exactly the normative surface. `open(context)` builds the internal database via `Room.databaseBuilder` with the internal default-name constant; `close()` closes it; internal test factory `openForTest(context, dbName)` for isolated test databases. Each write: `hook.beforeTransaction()` → proactive same-ID/endpoint checks → candidate-occupancy validation → one `withTransaction` with ordered child writes and `beforeCommit` last → `afterCommitResponse()` outside the transaction. Hook invocations are wrapped so hook-originated exceptions are attributed as simulated faults (Task 6 mapping rows 4). **The repository is the only public write surface.**
+Exactly the normative surface, with an `internal constructor` (an external consumer cannot construct it directly — proven by a negative fixture). `open(context)` builds the internal database via `Room.databaseBuilder` with the internal default-name constant; `close()` closes it; internal test factory `openForTest(context, dbName)` for isolated test databases. Each write: `hook.beforeTransaction()` → one `withTransaction` containing the typed prechecks, candidate-occupancy validation, ordered child writes, and `beforeCommit` last → `afterCommitResponse()` outside the transaction. Hook invocations are wrapped so hook-originated exceptions are attributed as simulated faults (boundary mapping clause 4). Reads return `RepositoryResult` with `Success(null)` for a missing record. **The repository is the only public write surface.**
 
 ### Task 7: Instrumented tests — persist/reload, XOR, FK, typed endpoints
 
@@ -347,11 +360,11 @@ Exactly the normative surface. `open(context)` builds the internal database via 
 
 - [ ] **Step 1: `PersistReloadTest` (criterion 1)**
 
-Public API only: `open(context)` → insert one aggregate per table through public repository methods → `close()` → `open(context)` → read back through public views: exact field values, enum string values, `deletedAt` absent/present, relation rows, `PRAGMA foreign_keys = 1`. Test isolation uses the internal test factory's database names.
+All successful writes go through the public repository methods only. After `close()`/`open(context)`, an **internal read-only DAO snapshot** verifies all six physical tables and `PRAGMA foreign_keys = 1` — the P1 public surface has no `AccountView`, so physical-table verification uses the internal read seam, never writes. Repository behavior is verified through the public read views: `Success(value)` with exact field values, enum string values, `deletedAt` absent/present, and relation rows; `Success(null)` for a missing record. Test isolation uses the internal test factory's database names.
 
 - [ ] **Step 2: `XorInvariantValidatorTest` (JVM, criterion 2 — validator layer)**
 
-Candidate-occupancy combinations: `(TRANSACTION, true, false)` and `(NOTE, false, true)` valid; `(TRANSACTION, true, true)` / `(NOTE, true, true)` → `CROSS_TABLE_ID_COLLISION`; `(TRANSACTION, false, *)` / `(NOTE, *, false)` → `MISSING_SUBTYPE`; `(PROJECT, *, *)` → `PROJECT_NOT_SUPPORTED`; mismatch combos → `DISCRIMINATOR_MISMATCH`.
+Every row of the complete mutually-exclusive truth table: both valid rows; both `DISCRIMINATOR_MISMATCH` rows; `MISSING_SUBTYPE`; `CROSS_TABLE_ID_COLLISION`; `PROJECT_NOT_SUPPORTED` for all four flag combinations.
 
 - [ ] **Step 3: `XorIdentityTest` (instrumented, criterion 2 — database layer + repository)**
 
@@ -403,7 +416,7 @@ Read the committed `1.json`; assert the table set is exactly the six spec-4.1 ta
 
 JVM unit test using `kotlin-metadata-jvm` 2.2.10. **Scope: `:core:data`'s own declarations only** — the test locates the classpath element containing `RecordDatabase.class` (the module's main classes dir, which contains only `:core:data` classes; `:core:model` types appear in signatures by qualified name and are not scanned). Mechanism: enumerate `.class` files under `com/paherdin/record/core/data/**` in that element; load each class and read its `kotlin.Metadata` annotation via reflection — **reflection is used only to fetch the annotation**; all visibility and signature decisions come from the Kotlin metadata deserialized with `kotlin-metadata-jvm` (documented `JvmProtoBufUtil` → `KmClass` reader).
 
-- **Classes without `@Metadata` fail the test by default** (unexpected public surface — e.g. Java or generated classes are not silently exempt). The only documented exclusion is Room-generated `*_Impl` classes, which are excluded from the comparison **and** proven unreachable externally by a consumer fixture in `apiBoundaryCheck` (they extend the internal `RecordDatabase`).
+- **Classes without `@Metadata` fail the test by default** (unexpected public surface — e.g. Java or generated classes are not silently exempt). The only exclusion is an **explicit, pinned set of Room-generated FQCNs** — the actual generated classes discovered at build time (`com.paherdin.record.core.data.room.RecordDatabase_Impl`, the generated DAO implementation, and any other impl actually generated), listed explicitly in `verification.md`; a wildcard like `*_Impl` is never used. Each excluded class is proven unreachable externally by a consumer fixture in `apiBoundaryCheck` (they extend the internal `RecordDatabase`).
 - Assertions: the six entity classes, `RecordDao`, `RecordDatabase`, and `XorInvariantValidator` are `internal` per the compiled metadata — compile-time visibility, not JVM reflection; the PUBLIC declarations match `api/expected-surface.txt` **exactly**, in both directions — any public declaration not in the allowlist fails (this catches any new public write method regardless of name), and any allowlist entry missing from the code fails; no `SearchDocument`/`Timeline` type and no projection-write method exists.
 - The allowlist content is generated by the dump and must correspond one-to-one to the normative declaration list in this plan's "Public API" section (data-class synthetic members excepted as mechanical). The file is committed and reviewed.
 
@@ -412,7 +425,7 @@ JVM unit test using `kotlin-metadata-jvm` 2.2.10. **Scope: `:core:data`'s own de
 BCV is not used (its `apiDump`/`apiCheck` do not register under AGP built-in Kotlin — Kotlin/binary-compatibility-validator#312). Instead, a Gradle task in `:core:data` that invokes the Kotlin compiler CLI (`org.jetbrains.kotlin.cli.jvm.K2JVMCompiler` via `JavaExec`, classpath from a detached dev-only configuration of `kotlin-compiler-embeddable` 2.2.10) with `-classpath <module debug classes + debugCompileClasspath + android.jar (compileSdk 36)>`, `dependsOn("compileDebugKotlin")`. The fixtures compile **outside the module**: a separate compilation with no friend-path `internal` visibility, so a same-module source set cannot serve as this consumer. **Each fixture file is compiled in its own independent compiler invocation**, so one still-failing fixture can never mask another that unexpectedly started compiling:
 
 - every `apiGuard/positive/*.kt` fixture compiles (exit 0) — the documented public surface (factory, methods, `close()`, DTOs, enums, `RepositoryResult`);
-- every `apiGuard/negative/*.kt` fixture fails to compile (nonzero exit and compiler stderr shows the internal-visibility/unresolved-reference diagnostics) — one concern per file: `RecordDao`, `RecordDatabase`, `XorInvariantValidator`, each entity class, a generated `*_Impl` class, an `EntityRef`-only write, a `PROJECT`-bearing write, and projection write entries.
+- every `apiGuard/negative/*.kt` fixture fails to compile (nonzero exit and compiler stderr shows the internal-visibility/unresolved-reference diagnostics) — one concern per file: `RecordDao`, `RecordDatabase`, `XorInvariantValidator`, each entity class, a direct `RecordRepository(...)` construction attempt (internal constructor), a pinned generated class, an `EntityRef`-only write, a `PROJECT`-bearing write, and projection write entries.
 
 The task is wired into `:core:data:check` via `dependsOn` so the boundary is enforced on every `check` run, durably.
 
