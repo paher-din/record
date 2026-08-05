@@ -12,6 +12,8 @@
 
 **Plan revision 5 (2026-08-05):** review corrections — metadata deserialization fixed to the official `KotlinClassMetadata.readStrict` entry; the Room-generated exclusion set pinned to exactly two FQCNs with one consumer fixture each; `open()` documented and tested as performing no fallible storage operation (lazy open; first open happens inside typed methods); cross-table collision enforcement routed **through the XOR validator** (candidate occupancy computed first, validator first, then same-type duplicate) so the repository path exercises the spec-5.1/ADR-0006 authority; Task 1's Files block lists every fact source; the unreachable duplicate-relation-pair assertion removed.
 
+**Plan revision 6 (2026-08-05):** review corrections — the public factory becomes `open(context): RepositoryResult<RecordRepository>`: `RoomDatabase.Builder.build()` can throw immediately on configuration errors, so construction-stage exceptions are mapped to typed outcomes (`CancellationException` rethrown; configuration/programming errors → `Unexpected`) instead of leaking; the file-absence assertion is removed (it proved nothing about exception safety and bound the check to Room implementation details); `PersistReloadTest` fixes the round-trip on one `openForTest(context, dbName)` instance — write through public methods → `close()` → reopen with the **same `dbName`** → public read views plus internal read-only physical snapshot — giving isolation and production write/transaction logic together.
+
 **Tech Stack:** Gradle 9.5.0, AGP 9.3.0 (built-in Kotlin 2.2.10), KSP2 2.3.9, Room 2.8.4 (runtime + `androidx.room` Gradle plugin + KSP2 compiler), `org.jetbrains.kotlin:kotlin-compiler-embeddable` 2.2.10 and `org.jetbrains.kotlin:kotlin-metadata-jvm` 2.2.10 (dev/test-time only), androidx.test runner/ext-junit, JUnit 4.13.2. `minSdk 34` / `targetSdk 34` / `compileSdk 36`.
 
 **Reference environment (frozen):** Xiaomi 14 Pro (physical, USB debugging), Android 14 / API 34 out-of-box baseline. The actual system build is recorded in `verification.md` at verification time (currently API 36 per P0; recorded, not rejected).
@@ -48,7 +50,7 @@ The following is the complete public surface of `:core:data`, pinned here so tha
 // package com.paherdin.record.core.data
 
 class RecordRepository internal constructor() : Closeable {
-    companion object { fun open(context: Context): RecordRepository }
+    companion object { fun open(context: Context): RepositoryResult<RecordRepository> }
     override fun close(): Unit
     suspend fun createAccount(account: NewAccount): RepositoryResult<Unit>
     suspend fun saveTransactionAggregate(tx: NewTransaction): RepositoryResult<Unit>
@@ -96,6 +98,7 @@ enum class XorViolation { DISCRIMINATOR_MISMATCH, MISSING_SUBTYPE, PROJECT_NOT_S
 Semantics:
 
 - `:core:model` enums (`EntityType`, `TransactionType`) appear in these signatures by qualified name; `:core:data` declares **`api(project(":core:model"))`** so external consumers can resolve them. `:core:model`'s own surface is exactly the two enums (compiler-public by definition).
+- `open(context)` returns `RepositoryResult<RecordRepository>`: `RoomDatabase.Builder.build()` can throw immediately on configuration errors, so construction-stage exceptions are mapped at the boundary (`CancellationException` rethrown; configuration/programming errors → `Unexpected`); the database file is created lazily by Room, and storage failures belong to the typed read/write methods.
 - The DTOs carry no discriminator field: `entityType` is implied by the typed DTO (`NewTransaction` is always `TRANSACTION`, `NewNote` always `NOTE`), so the public API cannot express a mismatched discriminator, a missing subtype, or a `PROJECT` write.
 - `RepositoryResult` outcome semantics per the engineering conventions' stable-error taxonomy:
 
@@ -353,7 +356,7 @@ No-op interface: `beforeTransaction()` — fired **before** `db.withTransaction`
 
 - [ ] **Step 5: `RecordRepository` (public, `Closeable`)**
 
-Exactly the normative surface, with an `internal constructor` (an external consumer cannot construct it directly — proven by a negative fixture). `open(context)` builds the internal database via `Room.databaseBuilder` with the internal default-name constant; **`open()` performs no fallible storage operation** — `Room.databaseBuilder(...).build()` opens lazily, so the database first opens inside the typed read/write methods, whose failures are mapped per the boundary rules (a test asserts no database file exists immediately after `open()`); `close()` closes it; internal test factory `openForTest(context, dbName)` for isolated test databases. Each write: `hook.beforeTransaction()` → one `withTransaction` containing the occupancy queries, candidate-occupancy validation, same-type duplicate check, endpoint checks, ordered child writes, and `beforeCommit` last → `afterCommitResponse()` outside the transaction. Hook invocations are wrapped so hook-originated exceptions are attributed as simulated faults (boundary mapping clause 4). Reads return `RepositoryResult` with `Success(null)` for a missing record. **The repository is the only public write surface.**
+Exactly the normative surface, with an `internal constructor` (an external consumer cannot construct it directly — proven by a negative fixture). `open(context)` builds the internal database via `Room.databaseBuilder` with the internal default-name constant and returns `RepositoryResult<RecordRepository>`: construction-stage exceptions (Room builder configuration errors) map to `Unexpected`; `CancellationException` is rethrown; no raw exception crosses the boundary. The database file is created lazily by Room, and storage failures are owned by the typed read/write methods. `close()` closes the database; internal test factory `openForTest(context, dbName)` for isolated test databases. Each write: `hook.beforeTransaction()` → one `withTransaction` containing the occupancy queries, candidate-occupancy validation, same-type duplicate check, endpoint checks, ordered child writes, and `beforeCommit` last → `afterCommitResponse()` outside the transaction. Hook invocations are wrapped so hook-originated exceptions are attributed as simulated faults (boundary mapping clause 4). Reads return `RepositoryResult` with `Success(null)` for a missing record. **The repository is the only public write surface.**
 
 ### Task 7: Instrumented tests — persist/reload, XOR, FK, typed endpoints
 
@@ -363,7 +366,7 @@ Exactly the normative surface, with an `internal constructor` (an external consu
 
 - [ ] **Step 1: `PersistReloadTest` (criterion 1)**
 
-All successful writes go through the public repository methods only. Immediately after `open(context)`, assert the database file does not yet exist (proving `open()` performs no fallible storage operation); after the first typed write, the file exists. After `close()`/`open(context)`, an **internal read-only DAO snapshot** verifies all six physical tables and `PRAGMA foreign_keys = 1` — the P1 public surface has no `AccountView`, so physical-table verification uses the internal read seam, never writes. Repository behavior is verified through the public read views: `Success(value)` with exact field values, enum string values, `deletedAt` absent/present, and relation rows; `Success(null)` for a missing record. Test isolation uses the internal test factory's database names.
+Open one database via `openForTest(context, dbName)`; all successful writes go through the public repository methods only. `close()`; reopen with the **same `dbName`** via `openForTest`; then verify the round trip with public read views — `Success(value)` with exact field values, enum string values, `deletedAt` absent/present, and relation rows; `Success(null)` for a missing record — plus an **internal read-only DAO snapshot** of all six physical tables and `PRAGMA foreign_keys = 1` (the P1 public surface has no `AccountView`, so physical-table verification uses the internal read seam, never writes). The same `dbName` scheme isolates tests while reusing production write, transaction, and read logic.
 
 - [ ] **Step 2: `XorInvariantValidatorTest` (JVM, criterion 2 — validator layer)**
 
