@@ -28,5 +28,3 @@ Each decision belongs to the core document for its owning domain. Downstream doc
 ## Conflict resolution
 
 Resolve conflicts in this order: identify the owning domain, update the owning source, add or supersede an ADR if needed, update specs/plans, then code/tests. A failed PoC technical assumption or selection conclusion always requires a new ADR recording the failure evidence, rejected option, alternative decision, and impact before the same active slice can retry; a pure test-infrastructure failure is recorded and repaired without being treated as a PoC conclusion.
-
-The approved design spec becomes historical after this documentation plan completes. Its current repository path is [the approved design spec](superpowers/specs/2026-08-04-codex-first-android-record-app-design.md).
