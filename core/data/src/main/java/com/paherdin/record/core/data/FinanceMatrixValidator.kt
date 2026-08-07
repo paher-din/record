@@ -23,6 +23,9 @@ internal class FinanceMatrixValidator {
         entries: List<NewAccountEntry>,
         currencyByAccountId: Map<String, String>,
     ) {
+        // Defensive guard: the repository resolves every entry accountId before
+        // calling this validator, so a missing key is a programming error, not a
+        // finance outcome (it would surface as Unexpected at the boundary).
         require(entries.all { it.accountId in currencyByAccountId }) {
             "every entry accountId must be resolved by the repository before finance validation"
         }

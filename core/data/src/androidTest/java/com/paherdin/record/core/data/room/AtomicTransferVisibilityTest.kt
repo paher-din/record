@@ -35,7 +35,9 @@ import java.math.BigInteger
  * observes only the old or the new complete state — never one side of the
  * transfer — with both accounts' entry histories and `BigInteger` balances
  * compared exactly. The write deliberately passes the entries destination
- * first, proving the deterministic source-first write order.
+ * first to exercise the deterministic ascending sort; the source-first order
+ * itself is enforced by that sort (the fault matrix observes only rolled-back
+ * or committed pairs, so the intermediate order is not directly observable).
  */
 @RunWith(AndroidJUnit4::class)
 class AtomicTransferVisibilityTest {
