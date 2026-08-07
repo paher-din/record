@@ -75,7 +75,10 @@ class PersistReloadTest {
         assertEquals(
             Success(Unit),
             repo.saveTransactionAggregate(
-                NewTransaction(id = "tx-2", type = TransactionType.INCOME, createdAt = 6000L, updatedAt = 6000L, deletedAt = null, entries = emptyList(), relationNoteIds = emptySet()),
+                NewTransaction(
+                    id = "tx-2", type = TransactionType.INCOME, createdAt = 6000L, updatedAt = 6000L, deletedAt = null,
+                    entries = listOf(NewAccountEntry("entry-2", "acc-1", 50L)), relationNoteIds = emptySet(),
+                ),
             ),
         )
         assertEquals(Success(Unit), repo.replaceTransactionNoteRelations("tx-1", setOf("note-1")))
@@ -98,7 +101,12 @@ class PersistReloadTest {
             reopened.getTransactionView("tx-1"),
         )
         assertEquals(
-            Success(TransactionView("tx-2", TransactionType.INCOME, 6000L, 6000L, null, emptyList(), emptySet())),
+            Success(
+                TransactionView(
+                    "tx-2", TransactionType.INCOME, 6000L, 6000L, null,
+                    listOf(NewAccountEntry("entry-2", "acc-1", 50L)), emptySet(),
+                ),
+            ),
             reopened.getTransactionView("tx-2"),
         )
         assertEquals(
@@ -124,7 +132,13 @@ class PersistReloadTest {
                 db.recordDao().allTransactions().toSet(),
             )
             assertEquals(setOf(Account("acc-1", "Wallet", "CNY")), db.recordDao().allAccounts().toSet())
-            assertEquals(setOf(AccountEntry("entry-1", "tx-1", "acc-1", -12345L)), db.recordDao().allAccountEntries().toSet())
+            assertEquals(
+                setOf(
+                    AccountEntry("entry-1", "tx-1", "acc-1", -12345L),
+                    AccountEntry("entry-2", "tx-2", "acc-1", 50L),
+                ),
+                db.recordDao().allAccountEntries().toSet(),
+            )
             assertEquals(setOf(Note("note-1")), db.recordDao().allNotes().toSet())
             assertEquals(setOf(TransactionNoteRelation("tx-1", "note-1")), db.recordDao().allRelations().toSet())
             // Foreign keys are enforced on open.

@@ -10,6 +10,7 @@ sealed interface RepositoryResult<out T> {
 
     sealed interface Failure : RepositoryResult<Nothing> {
         data class ValidationRejected(val violation: XorViolation) : Failure
+        data class FinanceRejected(val violation: FinanceViolation) : Failure
         data object DuplicateIdentity : Failure
         data object EndpointRejected : Failure
         data object StorageExhausted : Failure
@@ -27,4 +28,18 @@ enum class XorViolation {
     MISSING_SUBTYPE,
     PROJECT_NOT_SUPPORTED,
     CROSS_TABLE_ID_COLLISION,
+}
+
+/**
+ * The finance-matrix violations the validator can report (spec 4.1/4.3).
+ * Member order is the deterministic classification precedence for
+ * multi-invalid candidates.
+ */
+enum class FinanceViolation {
+    ENTRY_CARDINALITY,
+    ZERO_AMOUNT,
+    WRONG_SIGN,
+    TRANSFER_SAME_ACCOUNT,
+    TRANSFER_CURRENCY_MISMATCH,
+    TRANSFER_NOT_ZERO_SUM,
 }

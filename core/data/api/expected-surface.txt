@@ -5,6 +5,7 @@ data class NewAccountEntry(val id: String, val accountId: String, val amountMino
 data class NewNote(val id: String, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val relationTransactionIds: Set<String>)
 data class NewTransaction(val id: String, val type: TransactionType, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val entries: List<NewAccountEntry>, val relationNoteIds: Set<String>)
 data class NoteView(val id: String, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val relationTransactionIds: Set<String>)
+data class RepositoryResult.Failure.FinanceRejected(val violation: FinanceViolation) : RepositoryResult.Failure
 data class RepositoryResult.Failure.ValidationRejected(val violation: XorViolation) : RepositoryResult.Failure
 data class RepositoryResult.Success<T>(val value: T) : RepositoryResult<T>
 data class TransactionView(val id: String, val type: TransactionType, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val entries: List<NewAccountEntry>, val relationNoteIds: Set<String>)
@@ -14,6 +15,7 @@ data object RepositoryResult.Failure.EndpointRejected : RepositoryResult.Failure
 data object RepositoryResult.Failure.StorageExhausted : RepositoryResult.Failure
 data object RepositoryResult.Failure.TransactionFailed : RepositoryResult.Failure
 data object RepositoryResult.Failure.Unexpected : RepositoryResult.Failure
+enum class FinanceViolation { ENTRY_CARDINALITY, ZERO_AMOUNT, WRONG_SIGN, TRANSFER_SAME_ACCOUNT, TRANSFER_CURRENCY_MISMATCH, TRANSFER_NOT_ZERO_SUM }
 enum class XorViolation { DISCRIMINATOR_MISMATCH, MISSING_SUBTYPE, PROJECT_NOT_SUPPORTED, CROSS_TABLE_ID_COLLISION }
 fun close(): Unit
 sealed interface RepositoryResult.Failure : RepositoryResult<Nothing>

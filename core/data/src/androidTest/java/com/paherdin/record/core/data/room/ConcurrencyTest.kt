@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.paherdin.record.core.data.NewAccount
+import com.paherdin.record.core.data.NewAccountEntry
 import com.paherdin.record.core.data.NewNote
 import com.paherdin.record.core.data.NewTransaction
 import com.paherdin.record.core.data.RepositoryResult.Failure.DuplicateIdentity
@@ -43,13 +45,22 @@ class ConcurrencyTest {
     fun concurrentSameIdSavesYieldExactlyOneSuccessAndOneDuplicate() = runBlocking {
         val name = dbName("same_id")
         val repo = openForTest(context, name)
-        val tx = NewTransaction("x", TransactionType.INCOME, 1L, 1L, null, emptyList(), emptySet())
+        assertEquals(Success(Unit), repo.createAccount(NewAccount("acc-1", "Wallet", "CNY")))
+        val tx = NewTransaction(
+            "x", TransactionType.INCOME, 1L, 1L, null,
+            listOf(NewAccountEntry("entry-1", "acc-1", 50L)), emptySet(),
+        )
         val results = (1..2).map { async { repo.saveTransactionAggregate(tx) } }.map { it.await() }
         assertEquals(1, results.count { it == Success(Unit) })
         assertEquals(1, results.count { it == DuplicateIdentity })
         // Final state equals the successful aggregate's complete state.
         assertEquals(
-            Success(TransactionView("x", TransactionType.INCOME, 1L, 1L, null, emptyList(), emptySet())),
+            Success(
+                TransactionView(
+                    "x", TransactionType.INCOME, 1L, 1L, null,
+                    listOf(NewAccountEntry("entry-1", "acc-1", 50L)), emptySet(),
+                ),
+            ),
             repo.getTransactionView("x"),
         )
         val snap = snapshot(name, context)
@@ -62,12 +73,16 @@ class ConcurrencyTest {
     fun relationReplacementRacingReaderNeverObservesMixedSet() = runBlocking {
         val name = dbName("rel_race")
         val repo = openForTest(context, name)
+        assertEquals(Success(Unit), repo.createAccount(NewAccount("acc-1", "Wallet", "CNY")))
         assertEquals(Success(Unit), repo.saveNoteAggregate(NewNote("n1", 1L, 1L, null, emptySet())))
         assertEquals(Success(Unit), repo.saveNoteAggregate(NewNote("n2", 1L, 1L, null, emptySet())))
         assertEquals(
             Success(Unit),
             repo.saveTransactionAggregate(
-                NewTransaction("t1", TransactionType.INCOME, 1L, 1L, null, emptyList(), setOf("n1")),
+                NewTransaction(
+                    "t1", TransactionType.INCOME, 1L, 1L, null,
+                    listOf(NewAccountEntry("entry-1", "acc-1", 50L)), setOf("n1"),
+                ),
             ),
         )
 

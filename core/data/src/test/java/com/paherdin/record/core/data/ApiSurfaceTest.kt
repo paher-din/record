@@ -62,6 +62,8 @@ class ApiSurfaceTest {
             "com.paherdin.record.core.data.room.RecordDao",
             "com.paherdin.record.core.data.room.RecordDatabase",
             "com.paherdin.record.core.data.XorInvariantValidator",
+            "com.paherdin.record.core.data.FinanceMatrixValidator",
+            "com.paherdin.record.core.data.FinanceViolationException",
         )
 
         private val ALLOWLIST_FILE = File("api/expected-surface.txt")

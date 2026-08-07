@@ -2,6 +2,7 @@ package consumer
 
 import android.content.Context
 import com.paherdin.record.core.data.NewAccount
+import com.paherdin.record.core.data.NewAccountEntry
 import com.paherdin.record.core.data.NewNote
 import com.paherdin.record.core.data.NewTransaction
 import com.paherdin.record.core.data.RecordRepository
@@ -21,7 +22,7 @@ class SuccessUnpacking {
         }
         repo.createAccount(NewAccount("a", "name", "CNY"))
         repo.saveTransactionAggregate(
-            NewTransaction("t", TransactionType.INCOME, 1L, 1L, null, emptyList(), emptySet()),
+            NewTransaction("t", TransactionType.INCOME, 1L, 1L, null, listOf(NewAccountEntry("e", "a", 1L)), emptySet()),
         )
         repo.saveNoteAggregate(NewNote("n", 1L, 1L, null, setOf("t")))
         repo.replaceTransactionNoteRelations("t", setOf("n"))

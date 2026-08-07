@@ -1,10 +1,14 @@
 package com.paherdin.record.core.data.room
 
 import android.content.Context
+import android.database.Cursor
 import androidx.room.Room
 import com.paherdin.record.core.data.RecordRepository
 import com.paherdin.record.core.data.TransactionFaultHook
 import com.paherdin.record.core.data.openForTest
+import com.paherdin.record.model.EntityType
+import com.paherdin.record.model.TransactionType
+import java.math.BigInteger
 
 /** Full read-only snapshot of all six physical tables (test seam). */
 internal data class FullSnapshot(
@@ -14,7 +18,15 @@ internal data class FullSnapshot(
     val accountEntries: Set<AccountEntry>,
     val notes: Set<Note>,
     val relations: Set<TransactionNoteRelation>,
-)
+) {
+    /** Domain balance definition: sum of effective (non-soft-deleted) entries. */
+    fun effectiveEntrySum(accountId: String): BigInteger {
+        val deleted = entityRefs.filter { it.deletedAt != null }.map { it.id }.toSet()
+        return accountEntries
+            .filter { it.accountId == accountId && it.transactionId !in deleted }
+            .fold(BigInteger.ZERO) { acc, e -> acc.add(e.amountMinor.toBigInteger()) }
+    }
+}
 
 /** Reads a consistent six-table snapshot on a fresh connection. */
 internal suspend fun snapshot(dbName: String, context: Context): FullSnapshot {
@@ -32,6 +44,94 @@ internal suspend fun snapshot(dbName: String, context: Context): FullSnapshot {
     } finally {
         db.close()
     }
+}
+
+/**
+ * Atomic six-table snapshot on one connection inside an explicit deferred
+ * `BEGIN` transaction. In WAL mode the first read pins a read snapshot that
+ * every later read on the connection shares, and the deferred transaction
+ * does not block writers, so a racing reader observes a complete committed
+ * state (old or new) — never a torn mix of two commits across tables. The
+ * separate-query `snapshot()` above is correct only while writers are paused.
+ */
+internal fun consistentSnapshot(dbName: String, context: Context): FullSnapshot {
+    val db = Room.databaseBuilder(context, RecordDatabase::class.java, dbName).build()
+    try {
+        val sql = db.openHelper.writableDatabase
+        sql.execSQL("BEGIN")
+        return try {
+            FullSnapshot(
+                entityRefs = sql.query("SELECT * FROM EntityRef").use { rows ->
+                    buildSet {
+                        while (rows.moveToNext()) {
+                            add(
+                                EntityRef(
+                                    id = rows.string("id"),
+                                    entityType = EntityType.valueOf(rows.string("entityType")),
+                                    createdAt = rows.long("createdAt"),
+                                    updatedAt = rows.long("updatedAt"),
+                                    deletedAt = rows.nullableLong("deletedAt"),
+                                ),
+                            )
+                        }
+                    }
+                },
+                transactions = sql.query("SELECT * FROM `Transaction`").use { rows ->
+                    buildSet {
+                        while (rows.moveToNext()) {
+                            add(Transaction(rows.string("id"), TransactionType.valueOf(rows.string("type"))))
+                        }
+                    }
+                },
+                accounts = sql.query("SELECT * FROM Account").use { rows ->
+                    buildSet {
+                        while (rows.moveToNext()) {
+                            add(Account(rows.string("id"), rows.string("name"), rows.string("currency")))
+                        }
+                    }
+                },
+                accountEntries = sql.query("SELECT * FROM AccountEntry").use { rows ->
+                    buildSet {
+                        while (rows.moveToNext()) {
+                            add(
+                                AccountEntry(
+                                    id = rows.string("id"),
+                                    transactionId = rows.string("transactionId"),
+                                    accountId = rows.string("accountId"),
+                                    amountMinor = rows.long("amountMinor"),
+                                ),
+                            )
+                        }
+                    }
+                },
+                notes = sql.query("SELECT * FROM Note").use { rows ->
+                    buildSet {
+                        while (rows.moveToNext()) add(Note(rows.string("id")))
+                    }
+                },
+                relations = sql.query("SELECT * FROM TransactionNoteRelation").use { rows ->
+                    buildSet {
+                        while (rows.moveToNext()) {
+                            add(TransactionNoteRelation(rows.string("transactionId"), rows.string("noteId")))
+                        }
+                    }
+                },
+            )
+        } finally {
+            sql.execSQL("COMMIT")
+        }
+    } finally {
+        db.close()
+    }
+}
+
+private fun Cursor.string(column: String): String = getString(getColumnIndexOrThrow(column))
+
+private fun Cursor.long(column: String): Long = getLong(getColumnIndexOrThrow(column))
+
+private fun Cursor.nullableLong(column: String): Long? {
+    val index = getColumnIndexOrThrow(column)
+    return if (isNull(index)) null else getLong(index)
 }
 
 /** Repository on its own connection for one dbName, with cleanup. */

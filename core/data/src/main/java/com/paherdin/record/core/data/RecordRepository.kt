@@ -17,12 +17,14 @@ import com.paherdin.record.core.data.room.TransactionNoteRelation
 import com.paherdin.record.core.data.RepositoryResult.Failure.CommittedButResponseFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.DuplicateIdentity
 import com.paherdin.record.core.data.RepositoryResult.Failure.EndpointRejected
+import com.paherdin.record.core.data.RepositoryResult.Failure.FinanceRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.StorageExhausted
 import com.paherdin.record.core.data.RepositoryResult.Failure.TransactionFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.Unexpected
 import com.paherdin.record.core.data.RepositoryResult.Failure.ValidationRejected
 import com.paherdin.record.core.data.RepositoryResult.Success
 import com.paherdin.record.model.EntityType
+import com.paherdin.record.model.TransactionType
 import java.io.Closeable
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -39,11 +41,12 @@ private class HookFaultException(val fromCommitResponse: Boolean) : RuntimeExcep
  * The only public write surface of `:core:data` (spec 5.1, ADR 0006).
  * Every write runs one `withTransaction` containing the proactive typed
  * checks (occupancy queries → XOR validator first → same-type duplicate →
- * endpoint checks → ordered child writes → `beforeCommit` last), then
- * `afterCommitResponse` after the durable commit. Catch priority per the plan:
- * cancellation rethrown, validation/duplicate/endpoint rejections, storage
- * full, other SQLite exceptions, hook faults, then anything else — raw
- * exceptions never cross the boundary.
+ * account endpoints → finance-matrix validation → relation endpoints →
+ * ordered child writes → `beforeCommit` last), then `afterCommitResponse`
+ * after the durable commit. Catch priority per the plan: cancellation
+ * rethrown, validation/finance/duplicate/endpoint rejections, storage full,
+ * other SQLite exceptions, hook faults, then anything else — raw exceptions
+ * never cross the boundary.
  */
 class RecordRepository internal constructor() : Closeable {
 
@@ -55,6 +58,7 @@ class RecordRepository internal constructor() : Closeable {
     private lateinit var database: RecordDatabase
     private var hook: TransactionFaultHook = TransactionFaultHook.NO_OP
     private val dao: RecordDao get() = database.recordDao()
+    private val financeValidator = FinanceMatrixValidator()
 
     companion object {
         fun open(context: Context): RepositoryResult<RecordRepository> =
@@ -130,20 +134,33 @@ class RecordRepository internal constructor() : Closeable {
                 // XOR validator first, on the candidate occupancy this write produces.
                 XorInvariantValidator.validate(EntityType.TRANSACTION, true, noteExists)
                 if (transactionExists || dao.getEntityRef(tx.id) != null) throw DuplicateIdentityException()
-                if (tx.entries.any { dao.getAccount(it.accountId) == null }) throw EndpointRejectedException()
+                // Step 4: resolve every entry account endpoint (deduplicated) and
+                // build the stored-currency map; any missing account is EndpointRejected
+                // before any finance classification.
+                val currencyByAccountId = tx.entries.map { it.accountId }.distinct().associateWith { accountId ->
+                    dao.getAccount(accountId)?.currency ?: throw EndpointRejectedException()
+                }
+                // Step 5: finance-matrix validation with deterministic precedence.
+                financeValidator.validate(tx.type, tx.entries, currencyByAccountId)
                 if (tx.relationNoteIds.any { dao.getNote(it) == null }) throw EndpointRejectedException()
                 dao.insertEntityRef(EntityRef(tx.id, EntityType.TRANSACTION, tx.createdAt, tx.updatedAt, tx.deletedAt))
                 runHook { hook.afterChildWrite(0) }
                 dao.insertTransaction(Transaction(tx.id, tx.type))
                 runHook { hook.afterChildWrite(1) }
-                if (tx.entries.isNotEmpty()) {
-                    dao.insertAllEntries(tx.entries.map { AccountEntry(it.id, tx.id, it.accountId, it.amountMinor) })
+                // Step 7: deterministic entry order. After validation a transfer has
+                // exactly one negative and one positive amount, so sorting ascending
+                // writes the negative source at ordinal 2 before the positive
+                // destination at ordinal 3 regardless of input iteration order.
+                // Single-entry types write their one entry at ordinal 2, keeping the
+                // P1 ordinals; the relation stage follows at 2 + entries.size.
+                tx.entries.sortedBy { it.amountMinor }.forEachIndexed { index, entry ->
+                    dao.insertAccountEntry(AccountEntry(entry.id, tx.id, entry.accountId, entry.amountMinor))
+                    runHook { hook.afterChildWrite(index + 2) }
                 }
-                runHook { hook.afterChildWrite(2) }
                 if (tx.relationNoteIds.isNotEmpty()) {
                     dao.insertAllRelations(tx.relationNoteIds.map { TransactionNoteRelation(tx.id, it) })
                 }
-                runHook { hook.afterChildWrite(3) }
+                runHook { hook.afterChildWrite(2 + tx.entries.size) }
                 runHook { hook.beforeCommit() }
             }
             runHook(afterCommitResponse = true) { hook.afterCommitResponse() }
@@ -152,6 +169,8 @@ class RecordRepository internal constructor() : Closeable {
             throw e
         } catch (e: XorViolationException) {
             ValidationRejected(e.violation)
+        } catch (e: FinanceViolationException) {
+            FinanceRejected(e.violation)
         } catch (e: DuplicateIdentityException) {
             DuplicateIdentity
         } catch (e: EndpointRejectedException) {

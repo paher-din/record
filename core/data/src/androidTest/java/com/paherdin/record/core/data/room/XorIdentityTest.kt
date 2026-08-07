@@ -5,6 +5,8 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.paherdin.record.core.data.NewAccount
+import com.paherdin.record.core.data.NewAccountEntry
 import com.paherdin.record.core.data.NewNote
 import com.paherdin.record.core.data.NewTransaction
 import com.paherdin.record.core.data.RepositoryResult.Failure.ValidationRejected
@@ -100,7 +102,11 @@ class XorIdentityTest {
     fun repositoryRejectsDuplicateSameTypeId() = runBlocking {
         val name = dbName("dup_sametype")
         val repo = openForTest(context, name)
-        val tx = NewTransaction(id = "x", type = TransactionType.INCOME, createdAt = 1L, updatedAt = 1L, deletedAt = null, entries = emptyList(), relationNoteIds = emptySet())
+        assertEquals(Success(Unit), repo.createAccount(NewAccount("acc-1", "Wallet", "CNY")))
+        val tx = NewTransaction(
+            id = "x", type = TransactionType.INCOME, createdAt = 1L, updatedAt = 1L, deletedAt = null,
+            entries = listOf(NewAccountEntry("entry-1", "acc-1", 50L)), relationNoteIds = emptySet(),
+        )
         assertEquals(Success(Unit), repo.saveTransactionAggregate(tx))
         assertEquals(DuplicateIdentity, repo.saveTransactionAggregate(tx))
         // No partial state: exactly one transaction aggregate.

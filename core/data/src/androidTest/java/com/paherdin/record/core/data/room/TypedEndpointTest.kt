@@ -43,7 +43,10 @@ class TypedEndpointTest {
         assertEquals(
             Success(Unit),
             repo.saveTransactionAggregate(
-                NewTransaction("tx-1", TransactionType.INCOME, 1L, 1L, null, emptyList(), setOf("note-1")),
+                NewTransaction(
+                    "tx-1", TransactionType.INCOME, 1L, 1L, null,
+                    listOf(NewAccountEntry("entry-1", "acc-1", 100L)), setOf("note-1"),
+                ),
             ),
         )
     }
@@ -56,7 +59,10 @@ class TypedEndpointTest {
         assertEquals(
             EndpointRejected,
             repo.saveTransactionAggregate(
-                NewTransaction("tx-2", TransactionType.INCOME, 1L, 1L, null, emptyList(), setOf("no-such-note")),
+                NewTransaction(
+                    "tx-2", TransactionType.INCOME, 1L, 1L, null,
+                    listOf(NewAccountEntry("entry-2", "acc-1", 100L)), setOf("no-such-note"),
+                ),
             ),
         )
         // Nothing persisted.
@@ -73,7 +79,10 @@ class TypedEndpointTest {
         assertEquals(
             EndpointRejected,
             repo.saveTransactionAggregate(
-                NewTransaction("tx-2", TransactionType.INCOME, 1L, 1L, null, emptyList(), setOf("tx-1")),
+                NewTransaction(
+                    "tx-2", TransactionType.INCOME, 1L, 1L, null,
+                    listOf(NewAccountEntry("entry-2", "acc-1", 100L)), setOf("tx-1"),
+                ),
             ),
         )
         // note-1 is a Note, not a Transaction: wrong type for a transaction endpoint.

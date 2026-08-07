@@ -151,22 +151,26 @@ class AtomicVisibilityTest {
         val oldSnap = FullSnapshot(
             entityRefs = setOf(EntityRef("tx-1", EntityType.TRANSACTION, 1L, 1L, null)),
             transactions = setOf(Transaction("tx-1", TransactionType.INCOME)),
-            accounts = emptySet(),
-            accountEntries = emptySet(),
+            accounts = setOf(Account("acc-1", "Wallet", "CNY")),
+            accountEntries = setOf(AccountEntry("entry-1", "tx-1", "acc-1", 50L)),
             notes = emptySet(),
             relations = emptySet(),
         )
         val newSnap = FullSnapshot(
             entityRefs = oldSnap.entityRefs + setOf(EntityRef("note-1", EntityType.NOTE, 100L, 200L, null)),
             transactions = oldSnap.transactions,
-            accounts = emptySet(),
-            accountEntries = emptySet(),
+            accounts = oldSnap.accounts,
+            accountEntries = oldSnap.accountEntries,
             notes = setOf(Note("note-1")),
             relations = setOf(TransactionNoteRelation("tx-1", "note-1")),
         )
         val setup: suspend (RecordRepository) -> Unit = {
+            it.createAccount(NewAccount("acc-1", "Wallet", "CNY"))
             it.saveTransactionAggregate(
-                NewTransaction("tx-1", TransactionType.INCOME, 1L, 1L, null, emptyList(), emptySet()),
+                NewTransaction(
+                    "tx-1", TransactionType.INCOME, 1L, 1L, null,
+                    listOf(NewAccountEntry("entry-1", "acc-1", 50L)), emptySet(),
+                ),
             )
         }
         val write: suspend (RecordRepository) -> RepositoryResult<Unit> = {
@@ -204,17 +208,21 @@ class AtomicVisibilityTest {
                 EntityRef("note-2", EntityType.NOTE, 1L, 1L, null),
             ),
             transactions = setOf(Transaction("tx-1", TransactionType.INCOME)),
-            accounts = emptySet(),
-            accountEntries = emptySet(),
+            accounts = setOf(Account("acc-1", "Wallet", "CNY")),
+            accountEntries = setOf(AccountEntry("entry-1", "tx-1", "acc-1", 50L)),
             notes = setOf(Note("note-1"), Note("note-2")),
             relations = setOf(TransactionNoteRelation("tx-1", "note-1")),
         )
         val newSnap = oldSnap.copy(relations = setOf(TransactionNoteRelation("tx-1", "note-2")))
         val setup: suspend (RecordRepository) -> Unit = {
+            it.createAccount(NewAccount("acc-1", "Wallet", "CNY"))
             it.saveNoteAggregate(NewNote("note-1", 1L, 1L, null, emptySet()))
             it.saveNoteAggregate(NewNote("note-2", 1L, 1L, null, emptySet()))
             it.saveTransactionAggregate(
-                NewTransaction("tx-1", TransactionType.INCOME, 1L, 1L, null, emptyList(), setOf("note-1")),
+                NewTransaction(
+                    "tx-1", TransactionType.INCOME, 1L, 1L, null,
+                    listOf(NewAccountEntry("entry-1", "acc-1", 50L)), setOf("note-1"),
+                ),
             )
         }
         val write: suspend (RecordRepository) -> RepositoryResult<Unit> = {
