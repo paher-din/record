@@ -6,7 +6,8 @@ A private Android timeline connecting money with life context.
 
 - Tech PoC P0 completed (seven-module skeleton verified on Xiaomi 14 Pro)
 - Tech PoC P1 completed (Room schema v1, typed repository surface, and machine checks verified on Xiaomi 14 Pro)
-- Next: Tech PoC P2 — atomic transfer (spec draft)
+- Tech PoC P2 completed (finance matrix validation and atomic transfer verified on Xiaomi 14 Pro)
+- Next: Tech PoC P3 — attachment failure recovery (spec draft)
 - Supported baseline: Android 14+
 
 ## Start here

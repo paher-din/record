@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: Tech PoC P2 — atomic transfer (`in-progress` 2026-08-05: spec Revision 1 and plan Revision 1 both explicitly approved by the user)
+- Current active spec: none; Tech PoC P3 — attachment failure recovery is only the next candidate and is not authorized implementation
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules

@@ -1,8 +1,9 @@
 # Tech PoC P2 — Atomic Transfer
 
-- **Status:** `in-progress` — the user approved `plan.md` Revision 1 on 2026-08-05 after review of commit `997547d`; this is the project's unique active specification and implementation may proceed per the approved plan.
+- **Status:** `completed` — read-only history; later corrections use a new specification or ADR.
 - **Spec approved:** 2026-08-05 — the user explicitly approved Revision 1 after review of commit `2156da3`.
 - **Plan approved:** 2026-08-05 — the user explicitly approved `plan.md` Revision 1 after review of commit `997547d`.
+- **Completed:** 2026-08-05 — all seven acceptance criteria of section 5.2 and the roadmap P2 exit gate have verification evidence in `verification.md`; the user confirmed acceptance after a two-axis code review of the implementation and the follow-up cleanups.
 - **Drafted:** 2026-08-05
 - **Revision 1:** 2026-08-05 — review corrections: scoped the matrix claim to P2-verifiable entry rules, made all arithmetic overflow-safe, required a fault boundary between transfer entries, corrected the create-only soft-delete boundary, defined deterministic finance-rejection precedence, and pinned concurrent-reader snapshots.
 - **Roadmap:** [Tech PoC P2](../../../roadmap.md)
