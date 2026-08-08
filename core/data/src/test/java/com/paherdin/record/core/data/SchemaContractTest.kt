@@ -89,17 +89,20 @@ class SchemaContractTest {
         )
     }
 
-    // ---- tiny dependency-free JSON parser (subset sufficient for schema JSON) ----
+}
 
-    private fun parseJson(text: String): Any? {
-        val p = Parser(text)
-        val value = p.parseValue()
-        p.skipWhitespace()
-        check(p.peek() == null) { "trailing content at offset ${p.pos}" }
-        return value
-    }
+// ---- tiny dependency-free JSON parser (subset sufficient for schema JSON) ----
+// Shared by the v1 and v2 contract tests (SchemaV2ContractTest).
 
-    private class Parser(private val text: String) {
+internal fun parseJson(text: String): Any? {
+    val p = Parser(text)
+    val value = p.parseValue()
+    p.skipWhitespace()
+    check(p.peek() == null) { "trailing content at offset ${p.pos}" }
+    return value
+}
+
+internal class Parser(private val text: String) {
         var pos = 0
 
         fun peek(): Char? = if (pos < text.length) text[pos] else null
@@ -180,4 +183,3 @@ class SchemaContractTest {
             return text.substring(start, pos).toLong()
         }
     }
-}

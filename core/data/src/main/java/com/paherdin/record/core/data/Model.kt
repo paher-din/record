@@ -20,6 +20,7 @@ data class NewTransaction(
     val deletedAt: Long?,
     val entries: List<NewAccountEntry>,
     val relationNoteIds: Set<String>,
+    val attachmentContentIds: Set<String> = emptySet(),
 )
 
 data class NewNote(
@@ -28,6 +29,7 @@ data class NewNote(
     val updatedAt: Long,
     val deletedAt: Long?,
     val relationTransactionIds: Set<String>,
+    val attachmentContentIds: Set<String> = emptySet(),
 )
 
 data class TransactionView(

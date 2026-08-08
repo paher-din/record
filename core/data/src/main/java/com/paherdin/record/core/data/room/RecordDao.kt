@@ -93,4 +93,42 @@ internal interface RecordDao {
 
     @Query("SELECT * FROM TransactionNoteRelation")
     suspend fun allRelations(): List<TransactionNoteRelation>
+
+    // ---- attachment surface (Task 5/6) ----
+
+    @Query("SELECT * FROM Attachment WHERE contentIdentity = :contentIdentity")
+    suspend fun getAttachmentByContentIdentity(contentIdentity: String): Attachment?
+
+    @Query("SELECT * FROM Attachment WHERE id = :id")
+    suspend fun getAttachment(id: String): Attachment?
+
+    @Insert
+    suspend fun insertAttachment(attachment: Attachment)
+
+    @Query("UPDATE Attachment SET deletedAt = :deletedAt WHERE id = :id")
+    suspend fun updateAttachmentDeletedAt(id: String, deletedAt: Long?)
+
+    @Query("DELETE FROM Attachment WHERE id = :id")
+    suspend fun deleteAttachment(id: String)
+
+    @Query("SELECT COUNT(*) FROM AttachmentLink WHERE attachmentId = :attachmentId")
+    suspend fun countAttachmentLinks(attachmentId: String): Int
+
+    @Query("SELECT * FROM AttachmentLink WHERE ownerEntityRefId = :ownerEntityRefId AND attachmentId = :attachmentId")
+    suspend fun getAttachmentLink(ownerEntityRefId: String, attachmentId: String): AttachmentLink?
+
+    @Insert
+    suspend fun insertAttachmentLink(link: AttachmentLink)
+
+    @Query("DELETE FROM AttachmentLink WHERE ownerEntityRefId = :ownerEntityRefId AND attachmentId = :attachmentId")
+    suspend fun deleteAttachmentLink(ownerEntityRefId: String, attachmentId: String)
+
+    @Query("SELECT * FROM AttachmentLink WHERE ownerEntityRefId = :ownerEntityRefId")
+    suspend fun getLinksForOwner(ownerEntityRefId: String): List<AttachmentLink>
+
+    @Query("SELECT * FROM AttachmentLink")
+    suspend fun allAttachmentLinks(): List<AttachmentLink>
+
+    @Query("SELECT * FROM Attachment")
+    suspend fun allAttachments(): List<Attachment>
 }

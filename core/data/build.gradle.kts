@@ -10,6 +10,7 @@ android {
     namespace = "com.paherdin.record.core.data"
     compileSdk = 36
     defaultConfig {
+        minSdk = 34
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 }

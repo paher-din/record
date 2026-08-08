@@ -7,6 +7,9 @@ import com.paherdin.record.core.data.RepositoryResult
 import com.paherdin.record.core.data.RepositoryResult.Failure
 import com.paherdin.record.core.data.RepositoryResult.Failure.CommittedButResponseFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.DuplicateIdentity
+import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentCorrupted
+import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentIoFailed
+import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.EndpointRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.FinanceRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.StorageExhausted
@@ -29,6 +32,9 @@ class FinanceRejectionUsage {
             is Success -> "ok"
             is ValidationRejected -> "xor:${result.violation}"
             is FinanceRejected -> "finance:${result.violation}"
+            is AttachmentRejected -> "attachment:${result.violation}"
+            is AttachmentCorrupted -> "corrupt:${result.detail}"
+            is AttachmentIoFailed -> "io:${result.stage}"
             is DuplicateIdentity -> "duplicate"
             is EndpointRejected -> "endpoint"
             is StorageExhausted -> "storage"

@@ -14,6 +14,9 @@ import com.paherdin.record.core.data.room.RecordDao
 import com.paherdin.record.core.data.room.RecordDatabase
 import com.paherdin.record.core.data.room.Transaction
 import com.paherdin.record.core.data.room.TransactionNoteRelation
+import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentCorrupted
+import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentIoFailed
+import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.CommittedButResponseFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.DuplicateIdentity
 import com.paherdin.record.core.data.RepositoryResult.Failure.EndpointRejected
@@ -26,6 +29,7 @@ import com.paherdin.record.core.data.RepositoryResult.Success
 import com.paherdin.record.model.EntityType
 import com.paherdin.record.model.TransactionType
 import java.io.Closeable
+import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Same-type ID already exists; nothing committed. */
@@ -35,7 +39,7 @@ private class DuplicateIdentityException : IllegalStateException()
 private class EndpointRejectedException : IllegalStateException()
 
 /** Hook-originated exception, attributed as a simulated fault. */
-private class HookFaultException(val fromCommitResponse: Boolean) : RuntimeException()
+internal class HookFaultException(val fromCommitResponse: Boolean) : RuntimeException()
 
 /**
  * The only public write surface of `:core:data` (spec 5.1, ADR 0006).
@@ -50,23 +54,105 @@ private class HookFaultException(val fromCommitResponse: Boolean) : RuntimeExcep
  */
 class RecordRepository internal constructor() : Closeable {
 
-    internal constructor(database: RecordDatabase, hook: TransactionFaultHook = TransactionFaultHook.NO_OP) : this() {
+    internal constructor(
+        database: RecordDatabase,
+        hook: TransactionFaultHook = TransactionFaultHook.NO_OP,
+        filesDir: File? = null,
+        attachmentHook: AttachmentFaultHook = AttachmentFaultHook.NO_OP,
+    ) : this() {
         this.database = database
         this.hook = hook
+        if (filesDir != null) {
+            val io = AttachmentIo(attachmentHook)
+            val store = AttachmentContentStore(filesDir, io)
+            attachmentIo = io
+            attachmentStore = store
+            attachmentIngestor = AttachmentIngestor(
+                store,
+                io,
+                attachmentLocks,
+                database.recordDao(),
+                clock = { System.currentTimeMillis() },
+                hook = attachmentHook,
+            )
+            attachmentLinkManager = AttachmentLinkManager(
+                store,
+                attachmentLocks,
+                database.recordDao(),
+                clock = { System.currentTimeMillis() },
+                hook = attachmentHook,
+            )
+            attachmentCleaner = AttachmentCleaner(
+                store,
+                attachmentLocks,
+                database.recordDao(),
+                clock = { System.currentTimeMillis() },
+                hook = attachmentHook,
+            )
+        }
     }
 
     private lateinit var database: RecordDatabase
     private var hook: TransactionFaultHook = TransactionFaultHook.NO_OP
     private val dao: RecordDao get() = database.recordDao()
     private val financeValidator = FinanceMatrixValidator()
+    private val attachmentLocks = AttachmentHashLockRegistry()
+    private var attachmentIo: AttachmentIo? = null
+    private var attachmentStore: AttachmentContentStore? = null
+    private var attachmentIngestor: AttachmentIngestor? = null
+    private var attachmentLinkManager: AttachmentLinkManager? = null
+    private var attachmentCleaner: AttachmentCleaner? = null
 
     companion object {
-        fun open(context: Context): RepositoryResult<RecordRepository> =
-            openWithBuilder(context, TransactionFaultHook.NO_OP) { ctx ->
-                Room.databaseBuilder(ctx, RecordDatabase::class.java, DEFAULT_DB_NAME)
-                    .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-                    .build()
+        fun open(context: Context): RepositoryResult<RecordRepository> {
+            // Coordinator gate (Task 3, ADR 0007): resolve the recovery record and
+            // publish a verified snapshot for a v1 live database BEFORE any Room
+            // object exists. A blocked or failed gate maps to TransactionFailed;
+            // raw JSON/SQLite exceptions never cross the public boundary.
+            val coordinator = MigrationCoordinator(
+                context,
+                MigrationRecoveryRecordStore(recoveryRecordFile(context)),
+            )
+            val gate = try {
+                coordinator.startupGate()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: MigrationGateException) {
+                return TransactionFailed
+            } catch (e: Throwable) {
+                return Unexpected
             }
+            if (gate is Blocked) return TransactionFailed
+            val store = MigrationRecoveryRecordStore(recoveryRecordFile(context))
+            val result = openWithBuilder(
+                context,
+                TransactionFaultHook.NO_OP,
+                { ctx ->
+                    Room.databaseBuilder(ctx, RecordDatabase::class.java, DEFAULT_DB_NAME)
+                        .addMigrations(RecordDatabase.MIGRATION_1_2)
+                        .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+                        .build()
+                },
+            )
+            if (result is Success) {
+                // Migration/open completed: normalize the recovery record to
+                // healthy. A failure here is retried on the next startup (the
+                // gate revalidates the still-valid snapshot and Room reopens
+                // v2 without migrating).
+                try {
+                    store.write(MigrationRecord(MigrationRecord.RECORD_VERSION, MigrationRecoveryState.MIGRATION_HEALTHY, null))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // Best-effort normalization; the next startup retries it.
+                }
+            }
+            return result
+        }
+
+        /** The app-private activation/recovery record (data and storage, plan Task 3). */
+        internal fun recoveryRecordFile(context: Context): File =
+            File(context.filesDir, "recovery/activation-recovery-v1.json")
 
         /**
          * Internal unified mapping function: the typed `open()` boundary is
@@ -80,10 +166,20 @@ class RecordRepository internal constructor() : Closeable {
             context: Context,
             hook: TransactionFaultHook,
             builder: (Context) -> RecordDatabase,
+            attachmentHook: AttachmentFaultHook = AttachmentFaultHook.NO_OP,
         ): RepositoryResult<RecordRepository> = try {
-            Success(RecordRepository(builder(context), hook))
+            val database = builder(context)
+            // Task 3: force the writable database before reporting success so a
+            // lazy Room builder cannot report success before migration/open
+            // completes (plan Task 3 startup order).
+            database.openHelper.writableDatabase
+            Success(RecordRepository(database, hook, context.filesDir, attachmentHook))
         } catch (e: CancellationException) {
             throw e
+        } catch (e: SQLiteFullException) {
+            StorageExhausted
+        } catch (e: SQLiteException) {
+            TransactionFailed
         } catch (e: Throwable) {
             Unexpected
         }
@@ -96,6 +192,28 @@ class RecordRepository internal constructor() : Closeable {
         if (::database.isInitialized) {
             database.close()
         }
+    }
+
+    /**
+     * Ingests an image file (plan Task 5, spec 4.7): copies to app-private
+     * TEMP, validates declared/decoded MIME, size, and decodability, computes
+     * SHA-256, deduplicates under per-hash serialization, publishes the blob
+     * atomically, and commits the zero-link canonical row with
+     * `deletedAt = ingestedAt`. Returns the canonical `contentIdentity` only
+     * after the row/blob pair is durably prepared.
+     */
+    suspend fun ingestAttachment(source: File, declaredMimeType: String): RepositoryResult<String> = try {
+        val ingestor = checkNotNull(attachmentIngestor) { "attachment pipeline not assembled" }
+        when (val outcome = ingestor.ingest(source, declaredMimeType)) {
+            is IngestSuccess -> Success(outcome.contentIdentity)
+            is IngestRejected -> AttachmentRejected(outcome.violation)
+            is IngestCorrupted -> AttachmentCorrupted(outcome.detail)
+            is IngestIoFailed -> AttachmentIoFailed(outcome.stage)
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Unexpected
     }
 
     suspend fun createAccount(account: NewAccount): RepositoryResult<Unit> = try {
@@ -161,6 +279,10 @@ class RecordRepository internal constructor() : Closeable {
                     dao.insertAllRelations(tx.relationNoteIds.map { TransactionNoteRelation(tx.id, it) })
                 }
                 runHook { hook.afterChildWrite(2 + tx.entries.size) }
+                if (tx.attachmentContentIds.isNotEmpty()) {
+                    attachmentLinkManager!!.linkAll(tx.attachmentContentIds, tx.id)
+                    runHook { hook.afterChildWrite(3 + tx.entries.size) }
+                }
                 runHook { hook.beforeCommit() }
             }
             runHook(afterCommitResponse = true) { hook.afterCommitResponse() }
@@ -171,6 +293,10 @@ class RecordRepository internal constructor() : Closeable {
             ValidationRejected(e.violation)
         } catch (e: FinanceViolationException) {
             FinanceRejected(e.violation)
+        } catch (e: AttachmentRejectedException) {
+            AttachmentRejected(e.violation)
+        } catch (e: AttachmentCorruptedException) {
+            AttachmentCorrupted(e.detail)
         } catch (e: DuplicateIdentityException) {
             DuplicateIdentity
         } catch (e: EndpointRejectedException) {
@@ -201,6 +327,10 @@ class RecordRepository internal constructor() : Closeable {
                     dao.insertAllRelations(note.relationTransactionIds.map { TransactionNoteRelation(it, note.id) })
                 }
                 runHook { hook.afterChildWrite(2) }
+                if (note.attachmentContentIds.isNotEmpty()) {
+                    attachmentLinkManager!!.linkAll(note.attachmentContentIds, note.id)
+                    runHook { hook.afterChildWrite(3) }
+                }
                 runHook { hook.beforeCommit() }
             }
             runHook(afterCommitResponse = true) { hook.afterCommitResponse() }
@@ -209,6 +339,10 @@ class RecordRepository internal constructor() : Closeable {
             throw e
         } catch (e: XorViolationException) {
             ValidationRejected(e.violation)
+        } catch (e: AttachmentRejectedException) {
+            AttachmentRejected(e.violation)
+        } catch (e: AttachmentCorruptedException) {
+            AttachmentCorrupted(e.detail)
         } catch (e: DuplicateIdentityException) {
             DuplicateIdentity
         } catch (e: EndpointRejectedException) {
@@ -255,6 +389,90 @@ class RecordRepository internal constructor() : Closeable {
         } catch (e: Throwable) {
             Unexpected
         }
+
+    /**
+     * Links an existing Transaction/Note owner to canonical content (spec
+     * 4.7): under the shared per-hash serialization, rechecks the target,
+     * verifies the actual bytes, clears the zero-link cleanup marker, and
+     * commits the link in one Room transaction. Unknown content, missing
+     * bytes, or corruption rejects with nothing committed; a non-owner
+     * endpoint is `EndpointRejected`.
+     */
+    suspend fun linkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit> = try {
+        runHook { hook.beforeTransaction() }
+        db.withTransaction {
+            if (!isValidAttachmentOwner(ownerEntityRefId)) throw EndpointRejectedException()
+            // Per-hash serialization is global (registry doc): the dedicated
+            // link path must hold the same lock as owner-save linking and the
+            // cleaner, or the cleaner could delete the blob of a row this link
+            // is about to revive.
+            attachmentLocks.withLock(contentIdentity) {
+                attachmentLinkManager!!.linkOne(contentIdentity, ownerEntityRefId)
+            }
+            runHook { hook.beforeCommit() }
+        }
+        runHook(afterCommitResponse = true) { hook.afterCommitResponse() }
+        Success(Unit)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: AttachmentRejectedException) {
+        AttachmentRejected(e.violation)
+    } catch (e: AttachmentCorruptedException) {
+        AttachmentCorrupted(e.detail)
+    } catch (e: EndpointRejectedException) {
+        EndpointRejected
+    } catch (e: SQLiteFullException) {
+        StorageExhausted
+    } catch (e: SQLiteException) {
+        TransactionFailed
+    } catch (e: HookFaultException) {
+        if (e.fromCommitResponse) CommittedButResponseFailed else TransactionFailed
+    } catch (e: Throwable) {
+        Unexpected
+    }
+
+    /**
+     * Removes the owner link in one transaction; at zero global link count
+     * the canonical Attachment enters cleanup pending (`deletedAt =
+     * clock.now()`) in the same transaction. Idempotent: unlinking content
+     * or a link that does not exist is a no-op success.
+     */
+    suspend fun unlinkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit> = try {
+        runHook { hook.beforeTransaction() }
+        db.withTransaction {
+            if (!isValidAttachmentOwner(ownerEntityRefId)) throw EndpointRejectedException()
+            attachmentLinkManager!!.unlinkOne(contentIdentity, ownerEntityRefId)
+            runHook { hook.beforeCommit() }
+        }
+        runHook(afterCommitResponse = true) { hook.afterCommitResponse() }
+        Success(Unit)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: EndpointRejectedException) {
+        EndpointRejected
+    } catch (e: SQLiteFullException) {
+        StorageExhausted
+    } catch (e: SQLiteException) {
+        TransactionFailed
+    } catch (e: HookFaultException) {
+        if (e.fromCommitResponse) CommittedButResponseFailed else TransactionFailed
+    } catch (e: Throwable) {
+        Unexpected
+    }
+
+    /** Internal test seam: runs the cleaner and returns its report. */
+    internal suspend fun runAttachmentCleanup(): AttachmentCleaner.Report =
+        checkNotNull(attachmentCleaner) { "attachment pipeline not assembled" }.run()
+
+    /** The owner endpoint must exist and be a Transaction or Note EntityRef (ADR 0002). */
+    private suspend fun isValidAttachmentOwner(ownerEntityRefId: String): Boolean {
+        val ref = dao.getEntityRef(ownerEntityRefId) ?: return false
+        return when (ref.entityType) {
+            EntityType.TRANSACTION -> dao.getTransaction(ownerEntityRefId) != null
+            EntityType.NOTE -> dao.getNote(ownerEntityRefId) != null
+            EntityType.PROJECT -> false
+        }
+    }
 
     suspend fun getTransactionView(id: String): RepositoryResult<TransactionView?> = try {
         db.withTransaction {
@@ -326,11 +544,18 @@ internal fun openForTest(
     context: Context,
     dbName: String,
     hook: TransactionFaultHook = TransactionFaultHook.NO_OP,
-): RecordRepository = when (val result = RecordRepository.openWithBuilder(context, hook) { ctx ->
-    Room.databaseBuilder(ctx, RecordDatabase::class.java, dbName)
-        .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-        .build()
-}) {
+    attachmentHook: AttachmentFaultHook = AttachmentFaultHook.NO_OP,
+): RecordRepository = when (val result = RecordRepository.openWithBuilder(
+    context,
+    hook,
+    { ctx ->
+        Room.databaseBuilder(ctx, RecordDatabase::class.java, dbName)
+            .addMigrations(RecordDatabase.MIGRATION_1_2)
+            .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+            .build()
+    },
+    attachmentHook,
+)) {
     is Success -> result.value
     is RepositoryResult.Failure -> error("test open of '$dbName' failed with $result")
 }

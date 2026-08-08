@@ -164,6 +164,7 @@ class ApiSurfaceTest {
     // ---- normalization ----
 
     private fun renderClass(k: KmClass): List<String> {
+        if (k.visibility != Visibility.PUBLIC) return emptyList() // internal: asserted elsewhere
         if (k.kind == ClassKind.ENUM_CLASS) {
             return listOf("enum class ${simpleName(k)} { ${k.kmEnumEntries.joinToString(", ") { it.name }} }")
         }
@@ -172,7 +173,6 @@ class ApiSurfaceTest {
             return k.functions.filter { isPublicDesign(it) }
                 .map { "companion ${renderFunction(it, typeParams)}" }
         }
-        if (k.visibility != Visibility.PUBLIC) return emptyList() // internal: asserted elsewhere
         val typeParams = k.typeParameters.associate { it.id to it.name }
         val lines = mutableListOf(renderHeader(k, typeParams))
         k.functions.filter { isPublicDesign(it) }.forEach { lines += renderFunction(it, typeParams) }

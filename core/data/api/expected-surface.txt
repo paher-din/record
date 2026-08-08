@@ -2,9 +2,12 @@ class RecordRepository : Closeable
 companion fun open(context: Context): RepositoryResult<RecordRepository>
 data class NewAccount(val id: String, val name: String, val currency: String)
 data class NewAccountEntry(val id: String, val accountId: String, val amountMinor: Long)
-data class NewNote(val id: String, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val relationTransactionIds: Set<String>)
-data class NewTransaction(val id: String, val type: TransactionType, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val entries: List<NewAccountEntry>, val relationNoteIds: Set<String>)
+data class NewNote(val id: String, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val relationTransactionIds: Set<String>, val attachmentContentIds: Set<String>)
+data class NewTransaction(val id: String, val type: TransactionType, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val entries: List<NewAccountEntry>, val relationNoteIds: Set<String>, val attachmentContentIds: Set<String>)
 data class NoteView(val id: String, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val relationTransactionIds: Set<String>)
+data class RepositoryResult.Failure.AttachmentCorrupted(val detail: CorruptionDetail) : RepositoryResult.Failure
+data class RepositoryResult.Failure.AttachmentIoFailed(val stage: AttachmentStage) : RepositoryResult.Failure
+data class RepositoryResult.Failure.AttachmentRejected(val violation: AttachmentViolation) : RepositoryResult.Failure
 data class RepositoryResult.Failure.FinanceRejected(val violation: FinanceViolation) : RepositoryResult.Failure
 data class RepositoryResult.Failure.ValidationRejected(val violation: XorViolation) : RepositoryResult.Failure
 data class RepositoryResult.Success<T>(val value: T) : RepositoryResult<T>
@@ -15,6 +18,9 @@ data object RepositoryResult.Failure.EndpointRejected : RepositoryResult.Failure
 data object RepositoryResult.Failure.StorageExhausted : RepositoryResult.Failure
 data object RepositoryResult.Failure.TransactionFailed : RepositoryResult.Failure
 data object RepositoryResult.Failure.Unexpected : RepositoryResult.Failure
+enum class AttachmentStage { TEMP_COPY, VALIDATION_HASH, ATOMIC_MOVE, METADATA_WRITE, PHYSICAL_DELETE, METADATA_DELETE, ORPHAN_CLEANUP }
+enum class AttachmentViolation { UNDECODABLE, SIZE_LIMIT_EXCEEDED, MIME_TYPE_NOT_ACCEPTED, CONTENT_IDENTITY_UNKNOWN, CONTENT_NOT_AVAILABLE }
+enum class CorruptionDetail { METADATA_BLOB_SPLIT, HASH_MISMATCH, SIZE_MISMATCH, CONFLICTING_METADATA }
 enum class FinanceViolation { ENTRY_CARDINALITY, ZERO_AMOUNT, WRONG_SIGN, TRANSFER_SAME_ACCOUNT, TRANSFER_CURRENCY_MISMATCH, TRANSFER_NOT_ZERO_SUM }
 enum class XorViolation { DISCRIMINATOR_MISMATCH, MISSING_SUBTYPE, PROJECT_NOT_SUPPORTED, CROSS_TABLE_ID_COLLISION }
 fun close(): Unit
@@ -23,6 +29,9 @@ sealed interface RepositoryResult<out T>
 suspend fun createAccount(account: NewAccount): RepositoryResult<Unit>
 suspend fun getNoteView(id: String): RepositoryResult<NoteView?>
 suspend fun getTransactionView(id: String): RepositoryResult<TransactionView?>
+suspend fun ingestAttachment(source: File, declaredMimeType: String): RepositoryResult<String>
+suspend fun linkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit>
 suspend fun replaceTransactionNoteRelations(transactionId: String, noteIds: Set<String>): RepositoryResult<Unit>
 suspend fun saveNoteAggregate(note: NewNote): RepositoryResult<Unit>
 suspend fun saveTransactionAggregate(tx: NewTransaction): RepositoryResult<Unit>
+suspend fun unlinkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit>

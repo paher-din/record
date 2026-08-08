@@ -161,18 +161,18 @@ class PersistReloadTest {
 
     @Test
     fun builderIllegalArgumentExceptionMapsToUnexpected() {
-        val result = RecordRepository.openWithBuilder(context, TransactionFaultHook.NO_OP) {
+        val result = RecordRepository.openWithBuilder(context, TransactionFaultHook.NO_OP, {
             throw IllegalArgumentException("bad configuration")
-        }
+        })
         assertEquals(Unexpected, result)
     }
 
     @Test
     fun builderCancellationExceptionIsRethrown() {
         assertThrows(CancellationException::class.java) {
-            RecordRepository.openWithBuilder(context, TransactionFaultHook.NO_OP) {
+            RecordRepository.openWithBuilder(context, TransactionFaultHook.NO_OP, {
                 throw CancellationException("cancelled")
-            }
+            })
         }
     }
 }
