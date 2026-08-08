@@ -67,11 +67,11 @@ Keep versioned N-1 and N-2 database fixtures and exported Room schema JSON in ve
 
 P4 uses the binding protocol in [data and storage](../architecture/data-and-storage.md), not a relative-only benchmark:
 
-1. Before test execution, the P4 spec records and freezes the actual reference device or AVD profile, API 34 build, CPU and RAM, and host CPU/RAM when an AVD is used. Missing, incomplete, or changed configuration invalidates the run and fails P4.
-2. Both candidates use the same versioned 10,000-record mixed Chinese/English corpus, fixed query manifest with exact expected IDs/order, and page size 50.
-3. Each query/candidate runs 5 warmups and 30 measured first-page runs; evidence records correctness, p50, p95, and CV.
-4. A candidate must achieve 100% correctness for every expected ID set/order and measured first-page p95 at most 300 ms. A candidate failing either absolute gate is ineligible. If both are ineligible, P4 fails.
-5. If one candidate is eligible, select it. If both are eligible, apply the existing absolute-CV-difference 0.05 rule, then relative-p95-difference 10% rule, then paged `LIKE` complexity tie-break.
+1. Before test execution, the P4 spec records and freezes the actual reference device or AVD profile, actual Android system build/API level, CPU and RAM, and host CPU/RAM when an AVD is used. Android 14 / API 34 remains the product minimum/target baseline; the measurement record names the actual upgraded-device build instead of relabeling it as API 34. Missing, incomplete, or changed configuration invalidates the run and fails P4.
+2. Both candidates use the same versioned 10,000-record mixed Chinese/English corpus, fixed query manifest with exact ordered expected first-page IDs, and page size 50. The oracle obtains those IDs by matching the full corpus, applying the stable order, and taking at most 50; a complete match list is never compared directly to a `LIMIT 50` result.
+3. Each query/candidate runs 5 warmups and 30 measured first-page runs; evidence records correctness, p50, p95, and CV per query. With the 30 samples sorted ascending, p50 and p95 are nearest-rank values at one-based ranks `ceil(0.50 × 30)` and `ceil(0.95 × 30)`. CV is population standard deviation divided by the positive arithmetic mean. The candidate comparison p95 is the maximum per-query p95, and the candidate comparison CV is the maximum per-query CV.
+4. A candidate must return every expected first-page ID list in exact order and have every per-query first-page p95 at most 300 ms. A candidate failing either absolute gate is ineligible; its failure remains required evidence, not a slice-level acceptance failure when the other candidate is eligible. If both are ineligible, P4 fails.
+5. If one candidate is eligible, select it. If both are eligible, compare the candidate-level maximum CV values using the absolute-difference 0.05 rule, then compare the candidate-level maximum p95 values using the symmetric relative difference `abs(a - b) / max(a, b)` at 10%, then use the paged `LIKE` complexity tie-break.
 
 No spec may replace the 300 ms default with “record a budget later.” Changing the stable absolute budget or protocol requires explicit approval and documentation-first architecture/ADR review.
 
