@@ -99,6 +99,8 @@ The three optional identity edges at the top of the diagram are conditional on `
 
 Zero-reference means that no `AttachmentLink` exists anywhere for the canonical Attachment, not merely that one owner or one attempted metadata row has no link. Removing one owner's link cannot make shared content deletion-eligible while any other owner remains linked. The accepted persistence and lifecycle decision is [ADR 0005](decisions/0005-canonical-attachment-content.md).
 
+Persistent implementation note (Tech PoC P3, [ADR 0008](decisions/0008-zero-link-attachment-cleanup-marker.md)): the `Attachment` table carries a nullable `deletedAt` reliability column — the zero-link cleanup-pending marker and grace-period start, set when canonical content is first prepared or last unlinked and cleared only by a verified owner-link transaction — owned by [data and storage](data-and-storage.md) as a reliability state. It is not a domain field, is not a soft-delete transition, and no read surface treats it as one.
+
 ## Finance aggregate
 
 `Transaction` is an independent business fact and the header of a financial business event. It owns the event type, occurrence information, descriptive fields, and the references needed to interpret the event; it is not an account balance.

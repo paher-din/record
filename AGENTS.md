@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none; Tech PoC P3 — attachment failure recovery is only the next candidate and is not authorized implementation
+- Current active spec: none; Tech PoC P3 — attachment failure recovery is `completed` (2026-08-08) and Tech PoC P4 — Chinese search is the next candidate (draft spec only, no implementation)
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules
