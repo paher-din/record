@@ -13,6 +13,11 @@ android {
         minSdk = 34
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    // Tech PoC P4: shared JVM fixtures (corpus generator, normalizer, oracle,
+    // selection rule) consumed by both unit tests and instrumented tests.
+    testFixtures {
+        enable = true
+    }
 }
 
 room {
