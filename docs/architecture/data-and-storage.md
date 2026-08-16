@@ -17,7 +17,7 @@ This document is the stable source of truth for persistence and recovery decisio
 - All schema changes use explicit migrations. Production `fallbackToDestructiveMigration` is forbidden.
 - Migration tests cover both N-1 and N-2 database versions upgrading to the current version.
 - Every migration verifies applicable data invariants, not only the existence of tables.
-- Backup `formatVersion` and `databaseSchemaVersion` are separate version axes. A backup format can remain compatible across internal schema changes, and internal schema compatibility does not imply backup-format compatibility.
+- Backup `formatVersion` and `databaseSchemaVersion` are separate version axes. A backup format can remain compatible across internal schema changes, and internal schema compatibility does not imply backup-format compatibility. The first implementation fixes `formatVersion = 1`; a structural format change is a compatibility decision requiring a new ADR.
 - A catalog normalization implementation, Unicode data-table version, pipeline, or `nameKeyVersion` cannot change through an ordinary dependency update. It requires a new ADR plus explicit database and logical-backup migration evidence.
 
 ### Catalog persistence contract
@@ -112,11 +112,13 @@ The project will not add a server or migrate to Room 3 solely for search. [ADR 0
 
 ## Logical backup
 
-The portable backup is a ZIP with these logical contents:
+The portable backup is a ZIP with these logical contents at the complete MVP contract:
 
 - `manifest.json`;
 - versioned JSONL for entity references (`EntityRef`), accounts, categories (`Category`), transactions, account entries, category allocations, notes, projects, tags, entity tags, transaction-note associations, canonical attachments, and attachment ownership;
 - attachment binaries at `attachments/<sha256>`.
+
+The first executable implementation in Tech PoC P5 runs against the current version-2 Room schema and therefore writes exactly the eight datasets whose tables exist at that point: `EntityRef`, `Account`, `Transaction`, `AccountEntry`, `Note`, `TransactionNoteAssociation`, `Attachment`, and `AttachmentLink`. `Category`, `CategoryAllocation`, `Project`, `Tag`, and `EntityTag` enter the same `formatVersion = 1` as backward-compatible logical-type extensions when their owning M2–M4 schema slices create those facts. A reader rejects a logical type it has not implemented; a later reader may accept an older version-1 backup in which a not-yet-created dataset is absent and restore that later-added dataset as empty. The owning schema slice pins each added record shape and adds its round-trip and invalid-restore evidence before publishing backups that declare that logical type.
 
 Catalog logical records are complete rather than display-only:
 
@@ -164,6 +166,8 @@ MVP excludes the app database, attachment content, activation and migration-reco
 
 When Android code exists, the application must configure API 34 `android:dataExtractionRules`, compatible `android:fullBackupContent` exclusion rules, and manifest backup policy together. The manifest sets `android:allowBackup="false"` as the baseline denial, while both rule files explicitly exclude every applicable app-managed domain from cloud backup and device transfer; the implementation must not rely on `allowBackup` alone where platform or OEM transfer behavior can differ. Source manifest, merged manifest, and final APK policy verification are release requirements.
 
+A platform or compile-SDK update that introduces another system transfer mode is security/compatibility work, not an ordinary toolchain update. Before accepting that baseline, the owning spec must add an explicit exclusion supported by that SDK and extend source/merged/packaged policy verification. P5 stays on compileSdk 36.0; Android 16 QPR2/API 36.1 cross-platform-transfer configuration is therefore not added under P5's frozen toolchain.
+
 The only supported user migration path is the app's explicit complete logical backup and overwrite restore through a user-selected Storage Access Framework destination. CSV, Android cloud backup, system transfer, and copying live SQLite/WAL files are not supported restore paths.
 
 ## Generation-based overwrite restore
@@ -187,9 +191,13 @@ The storage convention is:
 
 - generation-specific database names;
 - `files/vaults/<generationId>/attachments/` for generation-specific content;
-- one app-private, atomically persisted activation/recovery record. Its generation-activation portion contains `activeGenerationId`, nullable `previousGenerationId`, nullable `candidateGenerationId`, nullable `retiringGenerationId`, and `state`, whose only values are `HEALTHY` and `PENDING`. Its independent `migrationRecoveryState` is defined above and is checked first at startup. This record is the active-generation pointer and durable cleanup intent; there is no separately persisted pointer.
+- one app-private, atomically persisted activation/recovery record at `files/recovery/activation-recovery-v1.json`. Its normal P5 form is `recordVersion = 2`: the migration-recovery portion keeps the P3 meanings, and the generation-activation portion contains `activeGenerationId`, nullable `previousGenerationId`, nullable `candidateGenerationId`, nullable `retiringGenerationId`, and `state`, whose only values are `HEALTHY` and `PENDING`. Its independent `migrationRecoveryState` is defined above and is checked first at startup. This record is the active-generation pointer and durable cleanup intent; there is no separately persisted pointer.
 
-Every startup resolves the migration gate and then the generation-activation gate before Room or SQLite opens the active generation. A safe startup may also scan generation directories: it must never delete a directory named by `activeGenerationId`, `previousGenerationId`, `candidateGenerationId`, or `retiringGenerationId`; complete or incomplete directories referenced by no pointer are orphan candidates and are cleaned idempotently under the same per-generation exclusion used by restore. Normal active reads are allowed while only retiring cleanup is pending, but a new restore is not.
+The transition from the P3/P4 root layout and version-1 recovery record follows [ADR 0010](decisions/0010-generation-bootstrap-and-live-session-handoff.md). Version 1 is accepted only by the one-time legacy bootstrap reader. Before conversion, any pending v1 migration recovery and, if required, the approved v1→v2 Room migration complete on the legacy layout. With no Room handle open, bootstrap checkpoints the legacy WAL, records the post-checkpoint source hashes, copies the clean database and root attachment tree into one incomplete-marked unreferenced generation, validates the copied schema/facts/relations/balances/attachment hashes, then atomically publishes the healthy version-2 pointer. The legacy source remains authoritative before that write; the validated generation is authoritative after it. Copy/validation/publication cannot change the post-checkpoint baseline. A missing record with legacy data is bootstrap input, not a fresh install. P5 never deletes the legacy source; cleanup requires separate authorization.
+
+Every startup first classifies and, when required, completes the one-time legacy bootstrap, then resolves the version-2 migration gate and generation-activation gate before Room or SQLite opens the active generation. A safe startup may also scan generation directories: it must never delete a directory named by `activeGenerationId`, `previousGenerationId`, `candidateGenerationId`, or `retiringGenerationId`; complete or incomplete directories referenced by no pointer are orphan candidates and are cleaned idempotently under the same per-generation exclusion used by restore. Normal active reads are allowed while only retiring cleanup is pending, but a new restore is not.
+
+A process-wide internal registry keyed by canonical vault root serializes first open/bootstrap and returns the same production `RecordRepository` for that root; independent live bindings to one vault are forbidden. The app is single-process. Each registered repository coordinates operations through one shared/exclusive gate. Its mutable reference is one complete `VaultBinding` containing Room/DAO, generation path, attachment collaborators, and generation-scoped maintenance collaborators. `stageRestore` returns a process-local receipt-bound handle; confirmation recomputes it, closes the old binding, writes `PENDING`, runs the cold-start resolver, constructs C or O's complete binding, and swaps before return. After `PENDING`, resolution runs non-cancellably.
 
 The activation protocol is:
 
@@ -198,7 +206,7 @@ The activation protocol is:
 | 0. Preflight maintenance | `state=HEALTHY` | A restore is requested. | Require `previousGenerationId=null`, `candidateGenerationId=null`, and `retiringGenerationId=null`. If retiring cleanup is pending, first run it idempotently. A transient cleanup failure returns a typed maintenance error and blocks this restore without affecting reads from `activeGenerationId`; no pointer may be overwritten. |
 | 1. Stage | `activeGenerationId=O`, all three nullable generation fields are null, `state=HEALTHY` | A staging candidate is imported and validated. | The activation record is unchanged; the validated staging generation is not yet referenced. |
 | 2. Activate pending | Old generation `O` is active; validated candidate is `C`. | Commit one activation-record write. | `activeGenerationId=C`, `previousGenerationId=O`, `candidateGenerationId=C`, `retiringGenerationId=null`, `state=PENDING`. |
-| 3. Startup gate | `state=PENDING` | The next startup begins. | Revalidate candidate checksums, catalog name/lifecycle/version rules, historical catalog references, and all other domain invariants before normal use; do not clear `PENDING` early. |
+| 3. Open-and-resolve gate | `state=PENDING` | Foreground confirmation invokes the common resolver immediately, or a later cold startup observes the durable state. | Revalidate candidate checksums, catalog name/lifecycle/version rules, historical catalog references, and all other domain invariants before normal use; do not clear `PENDING` early. |
 | 4. Confirm healthy | Candidate startup validation succeeds. | Commit one activation-record write. | Keep `activeGenerationId=C`, set `retiringGenerationId=O`, clear `previousGenerationId` and `candidateGenerationId`, and set `state=HEALTHY`. This single transition makes the healthy candidate user-visible and persists cleanup intent without retaining a stale rollback pointer. |
 | 5. Roll back | Candidate startup validation or candidate startup fails. | Using `C` and `O` from the complete `PENDING` record, commit one rollback-record write. | Restore `activeGenerationId=O`, set `retiringGenerationId=C`, clear `previousGenerationId` and `candidateGenerationId`, and set `state=HEALTHY`. The original generation is healthy before the failed candidate becomes cleanup-eligible. |
 | 6. Retire | `state=HEALTHY`, `retiringGenerationId=R` | Run synchronous preflight maintenance or deferred maintenance. | Under a per-generation lock and with every handle to `R` closed, re-read the record and require `R` differs from all active/previous/candidate pointers. Delete `R` or confirm it is absent, then atomically clear `retiringGenerationId`. |
@@ -217,6 +225,8 @@ CSV export is a separate analytical/interoperability journey and artifact, never
 
 Future fault-injection coverage is required at these boundaries:
 
+- before/during/after legacy WAL checkpoint, database copy, each root-attachment copy, copied-generation validation, and the atomic version-1-to-version-2 recovery-record write;
+- while a version-1 migration-recovery record is pending and bootstrap must wait for or resume it, and when no record exists with or without legacy data;
 - immediately before the pointer write represented by the activation-record write;
 - after `PENDING` is durable but before startup validation;
 - during startup validation;

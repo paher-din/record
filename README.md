@@ -9,7 +9,8 @@ A private Android timeline connecting money with life context.
 - Tech PoC P2 completed (finance matrix validation and atomic transfer verified on Xiaomi 14 Pro)
 - Tech PoC P3 completed (attachment failure recovery: v1→v2 schema with recoverable-migration coordinator, zero-link attachment lifecycle, 101 device tests green)
 - Tech PoC P4 completed (Chinese search selection: normalized paged LIKE chosen over FTS4 unicode61, [ADR 0009](docs/architecture/decisions/0009-search-candidate-selection.md) accepted, 1,800-sample device evidence retained)
-- Next: Tech PoC P5 — export/restore (candidate)
+- Tech PoC P5 completed (export/restore: non-destructive generation bootstrap per [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md), complete logical ZIP backup and overwrite restore, 154 device tests green)
+- Next: Tech PoC P6 — timeline performance (candidate)
 - Supported baseline: Android 14+
 
 ## Start here

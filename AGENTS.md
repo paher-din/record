@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none; Tech PoC P3 is `completed` (2026-08-08) and Tech PoC P4 — Chinese search is `completed` (2026-08-08, [ADR 0009](docs/architecture/decisions/0009-search-candidate-selection.md) accepted: normalized paged `LIKE` selected). Tech PoC P5 — export/restore is the next candidate (draft spec only).
+- Current active spec: none; Tech PoC P5 — export/restore is `completed` (2026-08-16, [spec](docs/specs/tech-poc/p5-export-restore/spec.md); [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md) accepted). Tech PoC P6 — timeline performance is the next candidate and may enter the lifecycle only through a draft `spec.md`. Tech PoC P0–P4 are `completed`.
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules
