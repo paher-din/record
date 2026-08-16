@@ -4,7 +4,7 @@ This document is the source of truth for module boundaries, dependency direction
 
 ## Module map
 
-The application has exactly seven Gradle modules:
+The production application has exactly seven Gradle modules. This production graph is the product architecture and is exact:
 
 ```mermaid
 flowchart TD
@@ -38,6 +38,15 @@ flowchart TD
 
 An arrow means “depends on.” `:app` composes all three feature modules and owns their application-level wiring. The absence of arrows between feature modules is intentional.
 
+Build tooling may add a Gradle project only through an accepted ADR that defines a test-only owner, dependency edge, release exclusion, machine check, and removal path. [ADR 0011](decisions/0011-macrobenchmark-test-module-boundary.md) authorizes exactly one such project, `:benchmark`, for out-of-process Macrobenchmark execution:
+
+```mermaid
+flowchart LR
+    benchmark[":benchmark (test tool)"] -. "targets benchmark variant only" .-> app[":app"]
+```
+
+`:benchmark` is not an eighth production module. It cannot contribute code, resources, manifest entries, dependencies, or behavior to `main` or `release`; it owns no product journey and exposes no application API. The machine check treats the exact seven-module production graph and the test-tool allowlist as separate sets, permits only the `:benchmark` → `:app` test edge, and rejects every unapproved project or edge.
+
 ## Responsibilities
 
 | Gradle module | Responsibility |
@@ -50,6 +59,12 @@ An arrow means “depends on.” `:app` composes all three feature modules and o
 | `:core:data` | Room, repositories, transactions, attachments, search, migration, import/export, and idempotent maintenance handlers. |
 | `:core:ui` | Design system, amount input, date components, and shared UI states. |
 
+The test-tool project has a separate responsibility:
+
+| Test-tool project | Responsibility |
+|---|---|
+| `:benchmark` | Out-of-process Macrobenchmark runner for an explicitly approved benchmark variant; never an application or feature owner. |
+
 ## Dependency rules
 
 - `:app` is the composition root. It may depend on feature modules and the core modules needed to wire them, but it does not absorb feature behavior.
@@ -58,6 +73,7 @@ An arrow means “depends on.” `:app` composes all three feature modules and o
 - `:core:data` owns persistence and external data operations; `:core:ui` may use public values from `:core:model`, but neither core module owns a product journey.
 - `:feature:timeline` consumes read projections and queries. It never writes finance or notes facts; edits navigate to the owning feature.
 - UI code does not access a DAO, Room Entity, or a physical attachment path. UI may use Android `Context` for legitimate platform UI integration, but never to bypass repositories for persistence, file I/O, or physical-path access. Platform and storage details stay behind application-facing interfaces.
+- A test-tool project may target an application benchmark variant only when an accepted ADR authorizes it. It cannot be on a production module's dependency path, cannot relax production dependency rules, and cannot make benchmark-only declarations visible in `main` or `release`.
 
 ## State and data flow
 
@@ -108,7 +124,7 @@ Do not introduce mechanical table → repository → Use Case layering. A Reposi
 
 ## Future split thresholds
 
-Split an existing module only when all four conditions are true:
+Split an existing production module, or add another production module, only when all four conditions are true:
 
 1. the candidate boundary has a stable public interface;
 2. at least two consumers need that interface;
@@ -116,3 +132,5 @@ Split an existing module only when all four conditions are true:
 4. the split reduces the dependency surface.
 
 Growth in file count, package count, or team preference alone is not a split signal. Until every threshold is met, keep the boundary inside its current module and avoid speculative interfaces or empty modules.
+
+A test-tool project is not a production split and does not use these four thresholds. It instead requires the narrower ADR-controlled boundary above and must remain removable without changing production source, schema, behavior, or release artifacts.

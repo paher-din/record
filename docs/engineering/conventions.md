@@ -78,7 +78,7 @@ Typed errors contain safe categories and retry capabilities, not user content or
 - UI cannot access a DAO, Room Entity, database handle, Android `Context`, provider exception, or physical attachment/database path. A UI-layer `Context` is allowed only for presentation-level platform integration and cannot perform persistence or bypass an application-facing interface.
 - Repository APIs expose domain/application models, typed outcomes, and stable IDs. They do not expose Room entities, cursors, provider URIs as durable identities, or implementation paths.
 - `:feature:timeline` cannot mutate source facts. Rebuildable projections never become write authorities.
-- Add a module only when the four split thresholds in the [architecture overview](../architecture/overview.md) all hold. Empty modules and speculative interfaces are forbidden.
+- Add or split a production module only when the four split thresholds in the [architecture overview](../architecture/overview.md) all hold. Empty modules and speculative interfaces are forbidden. A test-tool Gradle project is a separate exception: it requires an accepted ADR, an explicit allowlist and edge check, complete `main`/`release` exclusion, no product ownership, and a removal path that leaves production behavior unchanged.
 - App Lock uses only Android `BiometricPrompt`/device credential capability and never an app-owned password. The technical recovery coordinator still runs before Room, while the UI applies secure-window protection before any pre-authentication frame and reveals only the generic locked recovery surface until authentication.
 
 ## Platform backup and offline policy
