@@ -14,6 +14,10 @@ sealed interface RepositoryResult<out T> {
         data class AttachmentRejected(val violation: AttachmentViolation) : Failure
         data class AttachmentCorrupted(val detail: CorruptionDetail) : Failure
         data class AttachmentIoFailed(val stage: AttachmentStage) : Failure
+        data class BackupRejected(val violation: BackupViolation) : Failure
+        data class BackupIoFailed(val stage: BackupStage) : Failure
+        data class RestoreRejected(val violation: RestoreViolation) : Failure
+        data class RestoreIoFailed(val stage: RestoreStage) : Failure
         data object DuplicateIdentity : Failure
         data object EndpointRejected : Failure
         data object StorageExhausted : Failure
@@ -21,6 +25,73 @@ sealed interface RepositoryResult<out T> {
         data object CommittedButResponseFailed : Failure
         data object Unexpected : Failure
     }
+}
+
+/** The backup failures of the export surface (spec 4.8, plan Task 4). */
+enum class BackupViolation { PACKAGE_VALIDATION_FAILED }
+
+/** The named file-operation stage of a `BackupIoFailed` outcome (plan Task 4). */
+enum class BackupStage {
+    CONSISTENT_READ,
+    STREAM_JSONL,
+    STREAM_ATTACHMENT,
+    MANIFEST_WRITE,
+    PRIVATE_VALIDATE,
+    PRIVATE_RENAME,
+    PROVIDER_CREATE,
+    PROVIDER_COPY_CHUNK,
+    PROVIDER_FLUSH_CLOSE,
+    PROVIDER_VERIFY,
+    PROVIDER_RENAME,
+    PROVIDER_MARKER_CLEAR,
+}
+
+/** The named stage of a `RestoreIoFailed` outcome (plan Task 6). */
+enum class RestoreStage {
+    PREFLIGHT_DECLARED,
+    PREFLIGHT_STREAMING,
+    STAGING_IMPORT,
+    STAGING_VALIDATE,
+    ACTIVATION_SWITCH,
+    STARTUP_REVALIDATE,
+    ROLLBACK,
+    RETIRE_DELETE,
+    RETIRE_POINTER_CLEAR,
+    ORPHAN_SCAN,
+}
+
+/** The total, first-match deterministic restore rejection classification (spec 4.3, plan). */
+enum class RestoreViolation {
+    FORMAT_UNSUPPORTED,
+    MANIFEST_INVALID,
+    RECORD_INVALID,
+    UNKNOWN_LOGICAL_TYPE,
+    SINGLETON_DUPLICATE,
+    NAME_KEY_VERSION_UNSUPPORTED,
+    CATALOG_INVALID,
+    PATH_INVALID,
+    PATH_TOO_LONG,
+    PATH_DUPLICATE,
+    ENTRY_COUNT_LIMIT,
+    ENTRY_SIZE_LIMIT,
+    AGGREGATE_SIZE_LIMIT,
+    SPACE_BUDGET,
+    COMPRESSION_RATIO_LIMIT,
+    SIZE_UNDER_DECLARED,
+    SHA256_MISMATCH,
+    RECORD_COUNT_MISMATCH,
+    ATTACHMENT_DUPLICATE_IDENTITY,
+    ATTACHMENT_LINK_DANGLING,
+    ATTACHMENT_MISSING,
+    ATTACHMENT_EXTRA,
+    ATTACHMENT_CORRUPT,
+    FOREIGN_KEY_INVALID,
+    XOR_INVALID,
+    FINANCE_INVALID,
+    BALANCE_INVALID,
+    ENDPOINT_INVALID,
+    CANDIDATE_MISMATCH,
+    MAINTENANCE_PENDING,
 }
 
 /**

@@ -14,13 +14,39 @@ import com.paherdin.record.core.data.room.RecordDao
 import com.paherdin.record.core.data.room.RecordDatabase
 import com.paherdin.record.core.data.room.Transaction
 import com.paherdin.record.core.data.room.TransactionNoteRelation
+import com.paherdin.record.core.data.restore.ActivationRecord
+import com.paherdin.record.core.data.restore.ActivationRecordStore
+import com.paherdin.record.core.data.restore.BootstrapResult
+import com.paherdin.record.core.data.restore.ActivationOutcome
+import com.paherdin.record.core.data.restore.GenerationActivation
+import com.paherdin.record.core.data.restore.GenerationManager
+import com.paherdin.record.core.data.restore.GenerationState
+import com.paherdin.record.core.data.restore.LegacyGenerationBootstrap
+import com.paherdin.record.core.data.restore.PreflightResult
+import com.paherdin.record.core.data.restore.RestoreActivationCoordinator
+import com.paherdin.record.core.data.restore.RestoreFaultHook
+import com.paherdin.record.core.data.restore.RestorePreflight
+import com.paherdin.record.core.data.restore.RestoreStager
+import com.paherdin.record.core.data.restore.StagingOutcome
+import com.paherdin.record.core.data.restore.VaultBinding
+import com.paherdin.record.core.data.restore.VaultOperationGate
+import com.paherdin.record.core.data.restore.VaultSessionRegistry
+import com.paherdin.record.core.data.restore.openGenerationDatabase
+import com.paherdin.record.core.data.backup.BackupExporter
+import com.paherdin.record.core.data.backup.BackupFaultHook
+import com.paherdin.record.core.data.backup.BackupIoException
+import com.paherdin.record.core.data.backup.LogicalType
 import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentCorrupted
 import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentIoFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentRejected
+import com.paherdin.record.core.data.RepositoryResult.Failure.BackupIoFailed
+import com.paherdin.record.core.data.RepositoryResult.Failure.BackupRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.CommittedButResponseFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.DuplicateIdentity
 import com.paherdin.record.core.data.RepositoryResult.Failure.EndpointRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.FinanceRejected
+import com.paherdin.record.core.data.RepositoryResult.Failure.RestoreIoFailed
+import com.paherdin.record.core.data.RepositoryResult.Failure.RestoreRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.StorageExhausted
 import com.paherdin.record.core.data.RepositoryResult.Failure.TransactionFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.Unexpected
@@ -28,12 +54,18 @@ import com.paherdin.record.core.data.RepositoryResult.Failure.ValidationRejected
 import com.paherdin.record.core.data.RepositoryResult.Success
 import com.paherdin.record.model.EntityType
 import com.paherdin.record.model.TransactionType
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Same-type ID already exists; nothing committed. */
 private class DuplicateIdentityException : IllegalStateException()
+
+/** The currently staged restore candidate and its exact receipt digest. */
+internal data class StagedCandidate(val candidateId: String, val receiptDigest: String)
 
 /** A referenced endpoint is missing or wrongly typed; nothing committed. */
 private class EndpointRejectedException : IllegalStateException()
@@ -52,102 +84,131 @@ internal class HookFaultException(val fromCommitResponse: Boolean) : RuntimeExce
  * other SQLite exceptions, hook faults, then anything else — raw exceptions
  * never cross the boundary.
  */
-class RecordRepository internal constructor() : Closeable {
+class RecordRepository internal constructor(
+    private val attachmentLocks: AttachmentHashLockRegistry = AttachmentHashLockRegistry(),
+) : Closeable {
 
     internal constructor(
-        database: RecordDatabase,
+        binding: VaultBinding,
+        attachmentLocks: AttachmentHashLockRegistry,
         hook: TransactionFaultHook = TransactionFaultHook.NO_OP,
-        filesDir: File? = null,
-        attachmentHook: AttachmentFaultHook = AttachmentFaultHook.NO_OP,
-    ) : this() {
-        this.database = database
+        appContext: Context? = null,
+        appFilesDir: File? = null,
+    ) : this(attachmentLocks) {
+        this.binding = binding
         this.hook = hook
-        if (filesDir != null) {
-            val io = AttachmentIo(attachmentHook)
-            val store = AttachmentContentStore(filesDir, io)
-            attachmentIo = io
-            attachmentStore = store
-            attachmentIngestor = AttachmentIngestor(
-                store,
-                io,
-                attachmentLocks,
-                database.recordDao(),
-                clock = { System.currentTimeMillis() },
-                hook = attachmentHook,
-            )
-            attachmentLinkManager = AttachmentLinkManager(
-                store,
-                attachmentLocks,
-                database.recordDao(),
-                clock = { System.currentTimeMillis() },
-                hook = attachmentHook,
-            )
-            attachmentCleaner = AttachmentCleaner(
-                store,
-                attachmentLocks,
-                database.recordDao(),
-                clock = { System.currentTimeMillis() },
-                hook = attachmentHook,
-            )
-        }
+        this.appContext = appContext
+        this.appFilesDir = appFilesDir
     }
 
-    private lateinit var database: RecordDatabase
+    @Volatile private var binding: VaultBinding? = null
     private var hook: TransactionFaultHook = TransactionFaultHook.NO_OP
+    private val database: RecordDatabase get() = checkNotNull(binding).database
     private val dao: RecordDao get() = database.recordDao()
+    private val attachmentIo: AttachmentIo get() = checkNotNull(binding).attachmentIo
+    private val attachmentStore: AttachmentContentStore get() = checkNotNull(binding).attachmentStore
+    private val attachmentIngestor: AttachmentIngestor? get() = checkNotNull(binding).attachmentIngestor
+    private val attachmentLinkManager: AttachmentLinkManager? get() = checkNotNull(binding).attachmentLinkManager
+    private val attachmentCleaner: AttachmentCleaner? get() = checkNotNull(binding).attachmentCleaner
     private val financeValidator = FinanceMatrixValidator()
-    private val attachmentLocks = AttachmentHashLockRegistry()
-    private var attachmentIo: AttachmentIo? = null
-    private var attachmentStore: AttachmentContentStore? = null
-    private var attachmentIngestor: AttachmentIngestor? = null
-    private var attachmentLinkManager: AttachmentLinkManager? = null
-    private var attachmentCleaner: AttachmentCleaner? = null
+    private val gate = VaultOperationGate()
+    private var restoreHook: RestoreFaultHook = RestoreFaultHook.NO_OP
+    private var appFilesDir: File? = null
+    private var appContext: Context? = null
+    private var backupHook: BackupFaultHook = BackupFaultHook.NO_OP
+    private var providerChunkBytes: Int = 64 * 1024
+    private val appVersion: String = ""
+    private var currentStaged: StagedCandidate? = null
+    private var sessionRootKey: String? = null
+    @Volatile private var closed: Boolean = false
 
     companion object {
         fun open(context: Context): RepositoryResult<RecordRepository> {
-            // Coordinator gate (Task 3, ADR 0007): resolve the recovery record and
-            // publish a verified snapshot for a v1 live database BEFORE any Room
-            // object exists. A blocked or failed gate maps to TransactionFailed;
-            // raw JSON/SQLite exceptions never cross the public boundary.
-            val coordinator = MigrationCoordinator(
-                context,
-                MigrationRecoveryRecordStore(recoveryRecordFile(context)),
-            )
-            val gate = try {
-                coordinator.startupGate()
+            val root = checkNotNull(context.filesDir.parentFile) { "app data root unavailable" }
+            return VaultSessionRegistry.open(root) { openProduction(context) }
+        }
+
+        private fun openProduction(context: Context): RepositoryResult<RecordRepository> {
+            return try {
+                val recordFile = recoveryRecordFile(context)
+                val legacyStore = MigrationRecoveryRecordStore(recordFile)
+                val activationStore = ActivationRecordStore(recordFile)
+                val generationManager = GenerationManager(context)
+                val bootstrap = LegacyGenerationBootstrap(
+                    context = context,
+                    activationStore = activationStore,
+                    legacyStore = legacyStore,
+                    generationManager = generationManager,
+                    coordinator = MigrationCoordinator(context, legacyStore),
+                )
+
+                val bootstrapResult = generationManager.underLock { bootstrap.classify() }
+                val fresh = bootstrapResult is BootstrapResult.Fresh
+                var record = when (bootstrapResult) {
+                    BootstrapResult.Fresh -> generationManager.underLock {
+                        val created = ActivationRecord(
+                            migrationRecoveryState = MigrationRecoveryState.MIGRATION_HEALTHY,
+                            migration = null,
+                            generationActivation = generationManager.createInitialGeneration(),
+                        )
+                        activationStore.write(created)
+                        created
+                    }
+                    is BootstrapResult.Ready -> bootstrapResult.record
+                    is BootstrapResult.Blocked -> return TransactionFailed
+                }
+                if (record.generationActivation.state == GenerationState.PENDING) {
+                    // Cold-start resolution of a durable PENDING candidate (same resolver as confirm).
+                    val coordinator = RestoreActivationCoordinator(context, activationStore, generationManager, RestoreFaultHook.NO_OP)
+                    record = when (val outcome = runBlocking { coordinator.resolvePending(record) }) {
+                        is ActivationOutcome.Activated -> outcome.record
+                        is ActivationOutcome.RolledBack -> outcome.record
+                        is ActivationOutcome.Blocked -> return TransactionFailed
+                    }
+                }
+                if (record.migrationRecoveryState != MigrationRecoveryState.MIGRATION_HEALTHY) return TransactionFailed
+                if (record.generationActivation.state != GenerationState.HEALTHY) return TransactionFailed
+
+                generationManager.underLock {
+                    generationManager.orphanCandidates(record).forEach { orphan ->
+                        generationManager.deleteGenerationDirectory(orphan.name)
+                    }
+                }
+
+                val generationId = record.generationActivation.activeGenerationId
+                val databaseFile = generationManager.databaseFile(generationId)
+                val resumableFresh = generationManager.isIncomplete(generationId)
+                if (!fresh && !resumableFresh && !databaseFile.isFile) return TransactionFailed
+                val opened = openWithBuilder(
+                    context = context,
+                    hook = TransactionFaultHook.NO_OP,
+                    builder = { ctx -> openGenerationDatabase(ctx, databaseFile) },
+                    attachmentHook = AttachmentFaultHook.NO_OP,
+                    attachmentFilesDir = generationManager.generationDir(generationId),
+                    generationId = generationId,
+                )
+                if (opened is Success && generationManager.isIncomplete(generationId)) {
+                    try {
+                        generationManager.markComplete(generationId)
+                    } catch (e: Throwable) {
+                        opened.value.close()
+                        throw e
+                    }
+                }
+                opened
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: SQLiteFullException) {
+                StorageExhausted
+            } catch (e: SQLiteException) {
+                TransactionFailed
             } catch (e: MigrationGateException) {
-                return TransactionFailed
+                TransactionFailed
+            } catch (e: IllegalArgumentException) {
+                TransactionFailed
             } catch (e: Throwable) {
-                return Unexpected
+                Unexpected
             }
-            if (gate is Blocked) return TransactionFailed
-            val store = MigrationRecoveryRecordStore(recoveryRecordFile(context))
-            val result = openWithBuilder(
-                context,
-                TransactionFaultHook.NO_OP,
-                { ctx ->
-                    Room.databaseBuilder(ctx, RecordDatabase::class.java, DEFAULT_DB_NAME)
-                        .addMigrations(RecordDatabase.MIGRATION_1_2)
-                        .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-                        .build()
-                },
-            )
-            if (result is Success) {
-                // Migration/open completed: normalize the recovery record to
-                // healthy. A failure here is retried on the next startup (the
-                // gate revalidates the still-valid snapshot and Room reopens
-                // v2 without migrating).
-                try {
-                    store.write(MigrationRecord(MigrationRecord.RECORD_VERSION, MigrationRecoveryState.MIGRATION_HEALTHY, null))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    // Best-effort normalization; the next startup retries it.
-                }
-            }
-            return result
         }
 
         /** The app-private activation/recovery record (data and storage, plan Task 3). */
@@ -167,13 +228,17 @@ class RecordRepository internal constructor() : Closeable {
             hook: TransactionFaultHook,
             builder: (Context) -> RecordDatabase,
             attachmentHook: AttachmentFaultHook = AttachmentFaultHook.NO_OP,
+            attachmentFilesDir: File = context.filesDir,
+            generationId: String = "gen-test",
         ): RepositoryResult<RecordRepository> = try {
             val database = builder(context)
             // Task 3: force the writable database before reporting success so a
             // lazy Room builder cannot report success before migration/open
             // completes (plan Task 3 startup order).
             database.openHelper.writableDatabase
-            Success(RecordRepository(database, hook, context.filesDir, attachmentHook))
+            val locks = AttachmentHashLockRegistry()
+            val binding = buildBinding(database, attachmentFilesDir, attachmentHook, locks, generationId)
+            Success(RecordRepository(binding, locks, hook, context, context.filesDir))
         } catch (e: CancellationException) {
             throw e
         } catch (e: SQLiteFullException) {
@@ -184,14 +249,52 @@ class RecordRepository internal constructor() : Closeable {
             Unexpected
         }
 
-        private const val DEFAULT_DB_NAME = "record.db"
+        private fun buildBinding(
+            database: RecordDatabase,
+            attachmentRoot: File,
+            attachmentHook: AttachmentFaultHook,
+            attachmentLocks: AttachmentHashLockRegistry,
+            generationId: String,
+        ): VaultBinding {
+            val io = AttachmentIo(attachmentHook)
+            val store = AttachmentContentStore(attachmentRoot, io)
+            val ingestor = AttachmentIngestor(
+                store, io, attachmentLocks, database.recordDao(),
+                clock = { System.currentTimeMillis() }, hook = attachmentHook,
+            )
+            val linkManager = AttachmentLinkManager(
+                store, attachmentLocks, database.recordDao(),
+                clock = { System.currentTimeMillis() }, hook = attachmentHook,
+            )
+            val cleaner = AttachmentCleaner(
+                store, attachmentLocks, database.recordDao(),
+                clock = { System.currentTimeMillis() }, hook = attachmentHook,
+            )
+            return VaultBinding(generationId, database, io, store, ingestor, linkManager, cleaner)
+        }
     }
 
 
     override fun close() {
-        if (::database.isInitialized) {
-            database.close()
+        synchronized(this) {
+            if (closed) return
+            closed = true
         }
+        // Closing swaps under the exclusive gate so a concurrent confirmation
+        // cannot hand the repository a new binding after the close decision.
+        val closeResources = {
+            binding?.let { it.close() }
+            Unit
+        }
+        val key = sessionRootKey
+        gate.exclusiveBlocking {
+            if (key == null) closeResources() else VaultSessionRegistry.releaseAndClose(key, this, closeResources)
+        }
+    }
+
+    internal fun attachSessionRootKey(key: String) {
+        check(sessionRootKey == null) { "repository already belongs to a vault session" }
+        sessionRootKey = key
     }
 
     /**
@@ -202,7 +305,7 @@ class RecordRepository internal constructor() : Closeable {
      * `deletedAt = ingestedAt`. Returns the canonical `contentIdentity` only
      * after the row/blob pair is durably prepared.
      */
-    suspend fun ingestAttachment(source: File, declaredMimeType: String): RepositoryResult<String> = try {
+    suspend fun ingestAttachment(source: File, declaredMimeType: String): RepositoryResult<String> = gate.shared { try {
         val ingestor = checkNotNull(attachmentIngestor) { "attachment pipeline not assembled" }
         when (val outcome = ingestor.ingest(source, declaredMimeType)) {
             is IngestSuccess -> Success(outcome.contentIdentity)
@@ -214,9 +317,330 @@ class RecordRepository internal constructor() : Closeable {
         throw e
     } catch (e: Throwable) {
         Unexpected
+        }
+        }
+
+    /**
+     * Exports a complete logical ZIP over the active generation (spec 4.1,
+     * plan Task 4): one consistent read, streamed JSONL/attachment entries
+     * hashed as written, manifest last, complete-package validation, then
+     * publication. Private publication is an atomic rename on the same
+     * filesystem after validation; provider publication runs the
+     * `BACKUP_SAF_COPY` protocol (plan Task 5). Success is reported only after
+     * the package is fully validated and published; the vault is never mutated.
+     */
+    suspend fun exportBackup(target: BackupTarget): RepositoryResult<BackupArtifact> = gate.shared {
+        var tempFile: File? = null
+        var published = false
+        try {
+            val snapshot = database.withTransaction { readAllForExport() }
+            val exporter = BackupExporter(
+                snapshot = snapshot,
+                attachmentContentDir = checkNotNull(attachmentStore).contentDir,
+                databaseSchemaVersion = DATABASE_SCHEMA_VERSION,
+                appVersion = appVersion,
+                hook = backupHook,
+            )
+            tempFile = when (target) {
+                is BackupTarget.PrivateFile -> File(target.file.parentFile, ".tmp-${java.util.UUID.randomUUID()}.zip")
+                is BackupTarget.Provider -> File(providerTempDir(), ".tmp-${java.util.UUID.randomUUID()}.zip")
+            }
+            val built = exporter.build(tempFile)
+            if (!exporter.validate(built.file, built.manifest)) {
+                tempFile.delete()
+                return BackupRejected(BackupViolation.PACKAGE_VALIDATION_FAILED)
+            }
+            when (target) {
+                is BackupTarget.PrivateFile -> {
+                    backupHook.beforePrivateRename()
+                    if (!built.file.renameTo(target.file)) {
+                        tempFile = null
+                        return BackupIoFailed(BackupStage.PRIVATE_RENAME)
+                    }
+                    published = true
+                    backupHook.afterPrivateRename()
+                    Success(BackupArtifact(built.manifest.backupId, target.file.absolutePath, built.packageSha256))
+                }
+                is BackupTarget.Provider -> {
+                    val result = publishToProvider(built, target.provider)
+                    if (result is RepositoryResult.Failure) tempFile.delete()
+                    result
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: BackupIoException) {
+            if (!published) tempFile?.delete()
+            BackupIoFailed(e.stage)
+        } catch (e: Throwable) {
+            if (!published) tempFile?.delete()
+            Unexpected
+        }
     }
 
-    suspend fun createAccount(account: NewAccount): RepositoryResult<Unit> = try {
+    /** The `BACKUP_SAF_COPY` protocol (spec 4.1, plan Task 5), with a named stage per step. */
+    private suspend fun publishToProvider(
+        built: com.paherdin.record.core.data.backup.BuiltPackage,
+        provider: BackupProviderTarget,
+    ): RepositoryResult<BackupArtifact> {
+        val created = try {
+            provider.createIncomplete()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            return BackupIoFailed(BackupStage.PROVIDER_CREATE)
+        }
+        if (!created) return BackupIoFailed(BackupStage.PROVIDER_CREATE)
+        providerStep(BackupStage.PROVIDER_COPY_CHUNK) {
+            built.file.inputStream().buffered().use { input ->
+                val buffer = ByteArray(providerChunkBytes)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    provider.writeChunk(buffer.copyOf(read))
+                }
+            }
+        }?.let { return it }
+        providerStep(BackupStage.PROVIDER_FLUSH_CLOSE) { provider.flushAndClose() }?.let { return it }
+        val verified = try {
+            provider.verify()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            return BackupIoFailed(BackupStage.PROVIDER_VERIFY)
+        }
+        if (!verified) return BackupIoFailed(BackupStage.PROVIDER_VERIFY)
+        providerStep(BackupStage.PROVIDER_RENAME) { provider.renameToFinalIfSupported() }?.let { return it }
+        providerStep(BackupStage.PROVIDER_MARKER_CLEAR) { provider.clearIncompleteMarker() }?.let { return it }
+        return Success(BackupArtifact(built.manifest.backupId, built.file.absolutePath, built.packageSha256))
+    }
+
+    /** Runs one provider step; returns the typed failure when the step throws. */
+    private suspend fun providerStep(
+        stage: BackupStage,
+        block: suspend () -> Unit,
+    ): BackupIoFailed? = try {
+        block()
+        null
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        BackupIoFailed(stage)
+    }
+
+    private suspend fun readAllForExport(): Map<LogicalType, List<Any>> = database.withTransaction {
+        mapOf(
+            LogicalType.EntityRef to dao.allEntityRefs(),
+            LogicalType.Account to dao.allAccounts(),
+            LogicalType.Transaction to dao.allTransactions(),
+            LogicalType.AccountEntry to dao.allAccountEntries(),
+            LogicalType.Note to dao.allNotes(),
+            LogicalType.TransactionNoteAssociation to dao.allRelations(),
+            LogicalType.Attachment to dao.allAttachments(),
+            LogicalType.AttachmentLink to dao.allAttachmentLinks(),
+        )
+    }
+
+    private fun providerTempDir(): File {
+        val dir = File(checkNotNull(appFilesDir), "backups")
+        dir.mkdirs()
+        return dir
+    }
+
+    internal fun setBackupHookForTest(hook: BackupFaultHook) {
+        backupHook = hook
+    }
+
+    internal fun setProviderChunkBytesForTest(bytes: Int) {
+        providerChunkBytes = bytes
+    }
+
+    /**
+     * Stages a candidate from a preflighted package into an isolated
+     * unreferenced generation and validates it (spec 4.5, plan Task 7). The
+     * current vault is untouched. The returned handle binds the exact
+     * candidate for `confirmRestore`.
+     */
+    suspend fun stageRestore(source: File): RepositoryResult<StagedRestore> = gate.shared {
+        val context = appContext ?: return RestoreIoFailed(RestoreStage.STAGING_IMPORT)
+        try {
+            val space = appFilesDir?.usableSpace ?: 0L
+            val manifest = when (val preflight = RestorePreflight(source, space).run()) {
+                is PreflightResult.Rejected -> return RestoreRejected(preflight.violation)
+                is PreflightResult.Accepted -> preflight.manifest
+            }
+            // Step-0 preflight maintenance (spec 4.5, plan Task 8): no staging while
+            // activation is pending; pending retirement completes idempotently first.
+            val activationStore = ActivationRecordStore(recoveryRecordFile(context))
+            val current = try {
+                activationStore.read()
+            } catch (e: Exception) {
+                null
+            }
+            if (current != null) {
+                if (current.generationActivation.state == GenerationState.PENDING) {
+                    return RestoreRejected(RestoreViolation.MAINTENANCE_PENDING)
+                }
+                current.generationActivation.retiringGenerationId?.let { retiring ->
+                    val generationManager = GenerationManager(context)
+                    val coordinator = RestoreActivationCoordinator(context, activationStore, generationManager, RestoreFaultHook.NO_OP)
+                    try {
+                        generationManager.underLock { coordinator.retire(retiring) }
+                    } catch (e: Exception) {
+                        return RestoreRejected(RestoreViolation.MAINTENANCE_PENDING)
+                    }
+                }
+            }
+            val stager = RestoreStager(context, GenerationManager(context))
+            when (val outcome = stager.stage(source, manifest, sha256File(source))) {
+                is StagingOutcome.Rejected -> RestoreRejected(outcome.violation)
+                is StagingOutcome.Ready -> {
+                    currentStaged = StagedCandidate(outcome.candidateId, outcome.receipt.digest())
+                    Success(
+                        StagedRestore(
+                            candidateId = outcome.candidateId,
+                            validationDigest = outcome.receipt.digest(),
+                            recordCounts = outcome.recordCounts,
+                            attachmentCount = outcome.attachmentCount,
+                        ),
+                    )
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Unexpected
+        }
+    }
+
+    internal fun currentStagedCandidate(): StagedCandidate? = currentStaged
+
+    internal fun currentGenerationId(): String = checkNotNull(binding).generationId
+
+    internal fun setRestoreHookForTest(hook: RestoreFaultHook) {
+        restoreHook = hook
+    }
+
+    /**
+     * Confirms a staged candidate (spec 4.5, ADR 0010, plan Task 8): verifies
+     * the exact receipt-bound handle, takes the exclusive gate, closes the old
+     * generation binding before `PENDING`, runs the same candidate resolver a
+     * cold startup would run, and atomically swaps the same repository instance
+     * to the healthy candidate (or back to the original on rollback). After
+     * `PENDING` is durable, resolution is non-cancellable.
+     */
+    suspend fun confirmRestore(staged: StagedRestore): RepositoryResult<Unit> {
+        val context = appContext ?: return RestoreIoFailed(RestoreStage.ACTIVATION_SWITCH)
+        return try {
+            gate.exclusive {
+                val current = currentStaged
+                if (current == null || current.candidateId != staged.candidateId || current.receiptDigest != staged.validationDigest) {
+                    return@exclusive RestoreRejected(RestoreViolation.CANDIDATE_MISMATCH)
+                }
+                val generationManager = GenerationManager(context)
+                val activationStore = ActivationRecordStore(recoveryRecordFile(context))
+                val record = try {
+                    activationStore.read()
+                } catch (e: Exception) {
+                    return@exclusive RestoreIoFailed(RestoreStage.ACTIVATION_SWITCH)
+                } ?: return@exclusive RestoreIoFailed(RestoreStage.ACTIVATION_SWITCH)
+                val coordinator = RestoreActivationCoordinator(context, activationStore, generationManager, restoreHook)
+                val isPending = record.generationActivation.state == GenerationState.PENDING
+                if (isPending && record.generationActivation.activeGenerationId != staged.candidateId) {
+                    return@exclusive RestoreRejected(RestoreViolation.CANDIDATE_MISMATCH)
+                }
+                if (!isPending) {
+                    val oldBinding = checkNotNull(binding)
+                    restoreHook.beforeCloseOldBinding()
+                    oldBinding.close()
+                    restoreHook.afterCloseOldBinding()
+                }
+                try {
+                    withContext(NonCancellable) {
+                        val outcome = if (isPending) {
+                            coordinator.resolvePending(record)
+                        } else {
+                            coordinator.confirm(record, staged.candidateId)
+                        }
+                        when (outcome) {
+                            is ActivationOutcome.Activated -> {
+                                binding = buildBindingForRepository(context, generationManager, staged.candidateId)
+                                currentStaged = null
+                                Success(Unit)
+                            }
+                            is ActivationOutcome.RolledBack -> {
+                                binding = buildBindingForRepository(context, generationManager, outcome.record.generationActivation.activeGenerationId)
+                                currentStaged = null
+                                RestoreRejected(RestoreViolation.CANDIDATE_MISMATCH)
+                            }
+                            is ActivationOutcome.Blocked -> RestoreIoFailed(RestoreStage.ACTIVATION_SWITCH)
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // Rebuild the binding from the durable record so the repository
+                    // never holds a closed database after a failed transition.
+                    val durable = try {
+                        activationStore.read()
+                    } catch (e2: Exception) {
+                        null
+                    }
+                    val targetGen = durable?.generationActivation?.activeGenerationId
+                        ?: record.generationActivation.activeGenerationId
+                    try {
+                        binding = buildBindingForRepository(context, generationManager, targetGen)
+                    } catch (e2: Throwable) {
+                        // The durable generation itself is unopenable; surface the failure.
+                    }
+                    Unexpected
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Unexpected
+        }
+    }
+
+    private fun buildBindingForRepository(
+        context: Context,
+        generationManager: GenerationManager,
+        generationId: String,
+    ): VaultBinding {
+        val db = openGenerationDatabase(context, generationManager.databaseFile(generationId))
+        val genDir = generationManager.generationDir(generationId)
+        val io = AttachmentIo(AttachmentFaultHook.NO_OP)
+        val store = AttachmentContentStore(genDir, io)
+        val ingestor = AttachmentIngestor(
+            store, io, attachmentLocks, db.recordDao(),
+            clock = { System.currentTimeMillis() }, hook = AttachmentFaultHook.NO_OP,
+        )
+        val linkManager = AttachmentLinkManager(
+            store, attachmentLocks, db.recordDao(),
+            clock = { System.currentTimeMillis() }, hook = AttachmentFaultHook.NO_OP,
+        )
+        val cleaner = AttachmentCleaner(
+            store, attachmentLocks, db.recordDao(),
+            clock = { System.currentTimeMillis() }, hook = AttachmentFaultHook.NO_OP,
+        )
+        return VaultBinding(generationId, db, io, store, ingestor, linkManager, cleaner)
+    }
+
+    private fun sha256File(file: File): String = file.inputStream().use {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(64 * 1024)
+        while (true) {
+            val read = it.read(buffer)
+            if (read < 0) break
+            digest.update(buffer, 0, read)
+        }
+        digest.digest().joinToString("") { b -> "%02x".format(b) }
+    }
+
+    private val DATABASE_SCHEMA_VERSION = 2
+
+    suspend fun createAccount(account: NewAccount): RepositoryResult<Unit> = gate.shared { try {
         runHook { hook.beforeTransaction() }
         db.withTransaction {
                 if (dao.getAccount(account.id) != null) throw DuplicateIdentityException()
@@ -243,8 +667,9 @@ class RecordRepository internal constructor() : Closeable {
         } catch (e: Throwable) {
             Unexpected
         }
+        }
 
-    suspend fun saveTransactionAggregate(tx: NewTransaction): RepositoryResult<Unit> = try {
+    suspend fun saveTransactionAggregate(tx: NewTransaction): RepositoryResult<Unit> = gate.shared { try {
         runHook { hook.beforeTransaction() }
         db.withTransaction {
                 val transactionExists = dao.getTransaction(tx.id) != null
@@ -310,8 +735,9 @@ class RecordRepository internal constructor() : Closeable {
         } catch (e: Throwable) {
             Unexpected
         }
+        }
 
-    suspend fun saveNoteAggregate(note: NewNote): RepositoryResult<Unit> = try {
+    suspend fun saveNoteAggregate(note: NewNote): RepositoryResult<Unit> = gate.shared { try {
         runHook { hook.beforeTransaction() }
         db.withTransaction {
                 val transactionExists = dao.getTransaction(note.id) != null
@@ -356,8 +782,9 @@ class RecordRepository internal constructor() : Closeable {
         } catch (e: Throwable) {
             Unexpected
         }
+        }
 
-    suspend fun replaceTransactionNoteRelations(transactionId: String, noteIds: Set<String>): RepositoryResult<Unit> = try {
+    suspend fun replaceTransactionNoteRelations(transactionId: String, noteIds: Set<String>): RepositoryResult<Unit> = gate.shared { try {
         runHook { hook.beforeTransaction() }
         db.withTransaction {
                 if (dao.getTransaction(transactionId) == null) throw EndpointRejectedException()
@@ -389,6 +816,7 @@ class RecordRepository internal constructor() : Closeable {
         } catch (e: Throwable) {
             Unexpected
         }
+        }
 
     /**
      * Links an existing Transaction/Note owner to canonical content (spec
@@ -398,7 +826,7 @@ class RecordRepository internal constructor() : Closeable {
      * bytes, or corruption rejects with nothing committed; a non-owner
      * endpoint is `EndpointRejected`.
      */
-    suspend fun linkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit> = try {
+    suspend fun linkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit> = gate.shared { try {
         runHook { hook.beforeTransaction() }
         db.withTransaction {
             if (!isValidAttachmentOwner(ownerEntityRefId)) throw EndpointRejectedException()
@@ -429,7 +857,8 @@ class RecordRepository internal constructor() : Closeable {
         if (e.fromCommitResponse) CommittedButResponseFailed else TransactionFailed
     } catch (e: Throwable) {
         Unexpected
-    }
+        }
+        }
 
     /**
      * Removes the owner link in one transaction; at zero global link count
@@ -437,7 +866,7 @@ class RecordRepository internal constructor() : Closeable {
      * clock.now()`) in the same transaction. Idempotent: unlinking content
      * or a link that does not exist is a no-op success.
      */
-    suspend fun unlinkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit> = try {
+    suspend fun unlinkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit> = gate.shared { try {
         runHook { hook.beforeTransaction() }
         db.withTransaction {
             if (!isValidAttachmentOwner(ownerEntityRefId)) throw EndpointRejectedException()
@@ -458,7 +887,8 @@ class RecordRepository internal constructor() : Closeable {
         if (e.fromCommitResponse) CommittedButResponseFailed else TransactionFailed
     } catch (e: Throwable) {
         Unexpected
-    }
+        }
+        }
 
     /** Internal test seam: runs the cleaner and returns its report. */
     internal suspend fun runAttachmentCleanup(): AttachmentCleaner.Report =
@@ -474,7 +904,7 @@ class RecordRepository internal constructor() : Closeable {
         }
     }
 
-    suspend fun getTransactionView(id: String): RepositoryResult<TransactionView?> = try {
+    suspend fun getTransactionView(id: String): RepositoryResult<TransactionView?> = gate.shared { try {
         db.withTransaction {
             val ref = dao.getEntityRef(id)
             val row = dao.getTransactionWithEntries(id)
@@ -498,9 +928,10 @@ class RecordRepository internal constructor() : Closeable {
         StorageExhausted
     } catch (e: Throwable) {
         Unexpected
-    }
+        }
+        }
 
-    suspend fun getNoteView(id: String): RepositoryResult<NoteView?> = try {
+    suspend fun getNoteView(id: String): RepositoryResult<NoteView?> = gate.shared { try {
         db.withTransaction {
             val ref = dao.getEntityRef(id)
             if (ref == null || dao.getNote(id) == null) {
@@ -521,7 +952,8 @@ class RecordRepository internal constructor() : Closeable {
         StorageExhausted
     } catch (e: Throwable) {
         Unexpected
-    }
+        }
+        }
 
     private fun runHook(afterCommitResponse: Boolean = false, block: () -> Unit) {
         try {

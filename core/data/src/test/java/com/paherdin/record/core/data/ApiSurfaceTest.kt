@@ -64,6 +64,49 @@ class ApiSurfaceTest {
             "com.paherdin.record.core.data.XorInvariantValidator",
             "com.paherdin.record.core.data.FinanceMatrixValidator",
             "com.paherdin.record.core.data.FinanceViolationException",
+            // P5 backup/restore machinery (all module-internal per plan Task 2/3/7/8).
+            "com.paherdin.record.core.data.JsonlCodec",
+            "com.paherdin.record.core.data.JsonValue",
+            "com.paherdin.record.core.data.JsonParseException",
+            "com.paherdin.record.core.data.StagedCandidate",
+            "com.paherdin.record.core.data.backup.LogicalBackupSchema",
+            "com.paherdin.record.core.data.backup.LogicalType",
+            "com.paherdin.record.core.data.backup.Manifest",
+            "com.paherdin.record.core.data.backup.ManifestEntry",
+            "com.paherdin.record.core.data.backup.ManifestCodec",
+            "com.paherdin.record.core.data.backup.BackupExporter",
+            "com.paherdin.record.core.data.backup.BackupFaultHook",
+            "com.paherdin.record.core.data.backup.BackupIoException",
+            "com.paherdin.record.core.data.backup.BuiltPackage",
+            "com.paherdin.record.core.data.restore.ZipPreflightDeclared",
+            "com.paherdin.record.core.data.restore.DeclaredEntry",
+            "com.paherdin.record.core.data.restore.DeclaredInput",
+            "com.paherdin.record.core.data.restore.ZipStreamingPreflight",
+            "com.paherdin.record.core.data.restore.CatalogContractChecker",
+            "com.paherdin.record.core.data.restore.RecordLevelCategory",
+            "com.paherdin.record.core.data.restore.RestoreClassification",
+            "com.paherdin.record.core.data.restore.RestorePreflight",
+            "com.paherdin.record.core.data.restore.PreflightResult",
+            "com.paherdin.record.core.data.restore.StagingReceipt",
+            "com.paherdin.record.core.data.restore.StagingOutcome",
+            "com.paherdin.record.core.data.restore.StagingException",
+            "com.paherdin.record.core.data.restore.RestoreStager",
+            "com.paherdin.record.core.data.restore.GenerationActivation",
+            "com.paherdin.record.core.data.restore.GenerationState",
+            "com.paherdin.record.core.data.restore.ActivationRecord",
+            "com.paherdin.record.core.data.restore.ActivationRecordStore",
+            "com.paherdin.record.core.data.restore.GenerationManager",
+            "com.paherdin.record.core.data.restore.LegacyGenerationBootstrap",
+            "com.paherdin.record.core.data.restore.BootstrapResult",
+            "com.paherdin.record.core.data.restore.BootstrapFaultHook",
+            "com.paherdin.record.core.data.restore.VaultBinding",
+            "com.paherdin.record.core.data.restore.VaultOperationGate",
+            "com.paherdin.record.core.data.restore.VaultSessionRegistry",
+            "com.paherdin.record.core.data.restore.RestoreFaultHook",
+            "com.paherdin.record.core.data.restore.RestoreActivationCoordinator",
+            "com.paherdin.record.core.data.restore.ActivationOutcome",
+            "com.paherdin.record.core.data.restore.StagedGenerationValidator",
+            "com.paherdin.record.core.data.restore.GenerationValidation",
         )
 
         private val ALLOWLIST_FILE = File("api/expected-surface.txt")
@@ -123,7 +166,13 @@ class ApiSurfaceTest {
             val metadata = clazz.getAnnotation(Metadata::class.java)
                 ?: error("no @Metadata on $fqcn — unexpected surface; only the pinned Room-generated FQCN set is exempt")
             when (val km = KotlinClassMetadata.readStrict(metadata)) {
-                is KotlinClassMetadata.Class -> result += fqcn to km.kmClass
+                is KotlinClassMetadata.Class -> {
+                    // Nested classes of an internal parent carry PUBLIC metadata of
+                    // their own; they are not public surface. Only nested classes
+                    // whose whole enclosing chain is public are rendered.
+                    if (fqcn.contains('$') && !enclosingChainIsPublic(fqcn)) return@forEach
+                    result += fqcn to km.kmClass
+                }
                 is KotlinClassMetadata.FileFacade -> {
                     val publicTopLevel = km.kmPackage.functions.filter { it.visibility == Visibility.PUBLIC }
                     check(publicTopLevel.isEmpty()) { "public top-level functions in $fqcn: ${publicTopLevel.map { it.name }}" }
@@ -133,6 +182,31 @@ class ApiSurfaceTest {
             }
         }
         return result
+    }
+
+    /** True when every enclosing class of a nested FQCN is `Visibility.PUBLIC`. */
+    private fun enclosingChainIsPublic(fqcn: String): Boolean {
+        var current = fqcn
+        while (current.contains('$')) {
+            current = current.substringBeforeLast('$')
+            val outer = try {
+                Class.forName(current)
+            } catch (e: ClassNotFoundException) {
+                // Synthetic intermediate names (e.g. an interface `$Companion`)
+                // have no class file; the visibility decision belongs to the
+                // next real enclosing class.
+                continue
+            }
+            val metadata = outer.getAnnotation(Metadata::class.java)
+                ?: error("no @Metadata on enclosing $current")
+            when (val km = KotlinClassMetadata.readStrict(metadata)) {
+                is KotlinClassMetadata.Class -> {
+                    if (km.kmClass.visibility != Visibility.PUBLIC) return false
+                }
+                else -> Unit // synthetic metadata kind; keep walking
+            }
+        }
+        return true
     }
 
     @Test

@@ -47,6 +47,26 @@ internal interface RecordDao {
     @Insert
     suspend fun insertAllRelations(relations: List<TransactionNoteRelation>)
 
+    // ---- bulk inserts for staging import (plan Task 7) ----
+
+    @Insert
+    suspend fun insertAllEntityRefs(refs: List<EntityRef>)
+
+    @Insert
+    suspend fun insertAllAccounts(accounts: List<Account>)
+
+    @Insert
+    suspend fun insertAllTransactions(txs: List<TransactionEntity>)
+
+    @Insert
+    suspend fun insertAllNotes(notes: List<Note>)
+
+    @Insert
+    suspend fun insertAllAttachments(attachments: List<Attachment>)
+
+    @Insert
+    suspend fun insertAllAttachmentLinks(links: List<AttachmentLink>)
+
     @Query("SELECT * FROM EntityRef WHERE id = :id")
     suspend fun getEntityRef(id: String): EntityRef?
 

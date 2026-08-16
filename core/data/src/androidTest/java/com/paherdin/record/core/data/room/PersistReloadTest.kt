@@ -43,7 +43,7 @@ class PersistReloadTest {
     @After
     fun tearDown() {
         names.forEach { context.deleteDatabase(it) }
-        context.deleteDatabase("record.db")
+        resetProductionVault()
     }
 
     private fun dbName(tag: String): String = "persist_reload_$tag.db".also { names += it }
@@ -154,6 +154,9 @@ class PersistReloadTest {
 
     @Test
     fun publicOpenSucceedsAndCloses() {
+        // Production open now owns the P5 generation layout. Isolate this
+        // smoke test from legacy migration fault fixtures in other classes.
+        resetProductionVault()
         val result = RecordRepository.open(context)
         assertTrue("expected Success, got $result", result is Success)
         (result as Success).value.close()
@@ -174,5 +177,13 @@ class PersistReloadTest {
                 throw CancellationException("cancelled")
             })
         }
+    }
+
+    private fun resetProductionVault() {
+        context.deleteDatabase("record.db")
+        java.io.File(context.filesDir, "attachments").deleteRecursively()
+        java.io.File(context.filesDir, "migration").deleteRecursively()
+        java.io.File(context.filesDir, "recovery").deleteRecursively()
+        java.io.File(context.filesDir, "vaults").deleteRecursively()
     }
 }

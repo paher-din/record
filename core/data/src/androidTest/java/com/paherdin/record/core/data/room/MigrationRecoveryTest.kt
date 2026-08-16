@@ -104,9 +104,9 @@ class MigrationRecoveryTest {
         val snapshotSha = sha256(snapshot)
         assertEquals(record.migration!!.snapshotSha256, snapshotSha)
 
-        // Room opens through the public surface: the gate resumes to a verified
-        // snapshot, the migration applies, and v1 facts survive in v2.
-        val result = RecordRepository.open(context)
+        // P3 evidence deliberately stays on the legacy coordinator/store seam:
+        // the migration applies at the root path and v1 facts survive in v2.
+        val result = openLegacyThroughCoordinator()
         assertTrue(result is RepositoryResult.Success)
         result as RepositoryResult.Success
         result.value.close()
@@ -125,7 +125,7 @@ class MigrationRecoveryTest {
     fun freshStartWithNoLiveDatabaseCreatesV2WithoutSnapshot() {
         val gate = coordinator().startupGate()
         assertEquals(ProceedFresh, gate)
-        val result = RecordRepository.open(context)
+        val result = openLegacyThroughCoordinator()
         assertTrue(result is RepositoryResult.Success)
         (result as RepositoryResult.Success).value.close()
         // Assert the v2 tables exist.
@@ -144,7 +144,7 @@ class MigrationRecoveryTest {
 
     @Test
     fun v2LiveDatabaseOpensNormallyWithoutNewSnapshot() {
-        RecordRepository.open(context).let { it as RepositoryResult.Success; it.value.close() }
+        openLegacyThroughCoordinator().let { it as RepositoryResult.Success; it.value.close() }
         File(context.filesDir, "migration").deleteRecursively()
         val gate = coordinator().startupGate()
         assertEquals(ProceedNormal, gate)
@@ -173,7 +173,7 @@ class MigrationRecoveryTest {
             // Restart with the no-op hook: the gate completes.
             val gate = coordinator().startupGate()
             assertEquals("boundary $boundary failed to resume", ProceedAfterSnapshot, gate)
-            val result = RecordRepository.open(context)
+            val result = openLegacyThroughCoordinator()
             assertTrue("boundary $boundary: open failed after restart", result is RepositoryResult.Success)
             (result as RepositoryResult.Success).value.close()
             assertEquals("boundary $boundary: v1 facts lost", 1L, recordCount("record.db", "AccountEntry"))
@@ -202,7 +202,7 @@ class MigrationRecoveryTest {
         // Safety not bypassed: after the failures the gate still completes correctly.
         val gate = coordinator().startupGate()
         assertEquals(ProceedAfterSnapshot, gate)
-        val result = RecordRepository.open(context)
+        val result = openLegacyThroughCoordinator()
         assertTrue(result is RepositoryResult.Success)
         (result as RepositoryResult.Success).value.close()
         assertEquals(1L, recordCount("record.db", "AccountEntry"))
@@ -220,8 +220,8 @@ class MigrationRecoveryTest {
 
         val gate = coordinator().startupGate()
         assertEquals(Blocked::class.java.simpleName, gate::class.java.simpleName)
-        // Room stays closed: open() fails and no migration runs.
-        val result = RecordRepository.open(context)
+        // Room stays closed: the legacy seam fails and no migration runs.
+        val result = openLegacyThroughCoordinator()
         assertEquals(RepositoryResult.Failure.TransactionFailed, result)
         val after = store().read()!!
         assertEquals(MigrationRecoveryState.MIGRATION_RECOVERY_PENDING, after.state)
@@ -247,7 +247,7 @@ class MigrationRecoveryTest {
         // Missing snapshot → redo protocol over the untouched v1 live database.
         val gate = coordinator().startupGate()
         assertEquals(ProceedAfterSnapshot, gate)
-        val result = RecordRepository.open(context)
+        val result = openLegacyThroughCoordinator()
         assertTrue(result is RepositoryResult.Success)
         (result as RepositoryResult.Success).value.close()
         assertEquals(1L, recordCount("record.db", "AccountEntry"))
@@ -279,7 +279,7 @@ class MigrationRecoveryTest {
         // The restored live database is the v1 snapshot: the migration must
         // still run to open v2.
         assertEquals(ProceedAfterSnapshot, gate)
-        val result = RecordRepository.open(context)
+        val result = openLegacyThroughCoordinator()
         assertTrue(result is RepositoryResult.Success)
         (result as RepositoryResult.Success).value.close()
         val restored = store().read()!!
@@ -294,7 +294,7 @@ class MigrationRecoveryTest {
     fun completeThenRepeatIsIdempotent() {
         createV1FixtureAtLivePath()
         assertEquals(ProceedAfterSnapshot, coordinator().startupGate())
-        val result = RecordRepository.open(context)
+        val result = openLegacyThroughCoordinator()
         assertTrue(result is RepositoryResult.Success)
         (result as RepositoryResult.Success).value.close()
         val snapshotCountAfterFirst = File(context.filesDir, "migration").listFiles()?.filter { it.name.startsWith("snapshot-") }?.size ?: 0
@@ -331,7 +331,7 @@ class MigrationRecoveryTest {
         assertEquals(MigrationRecoveryState.MIGRATION_RECOVERY_PENDING, after.state)
         assertEquals(shaBefore, sha256(snapshot))
         // Retry completes.
-        val result = RecordRepository.open(context)
+        val result = openLegacyThroughCoordinator()
         assertTrue(result is RepositoryResult.Success)
         (result as RepositoryResult.Success).value.close()
         assertEquals(1L, recordCount("record.db", "AccountEntry"))
@@ -362,7 +362,7 @@ class MigrationRecoveryTest {
         // Restart with the no-op hook: recovery completes and migrates.
         val gate = coordinator().startupGate()
         assertEquals(ProceedAfterSnapshot, gate)
-        val result = RecordRepository.open(context)
+        val result = openLegacyThroughCoordinator()
         assertTrue(result is RepositoryResult.Success)
         (result as RepositoryResult.Success).value.close()
         assertEquals(1L, recordCount("record.db", "AccountEntry"))
@@ -391,12 +391,40 @@ class MigrationRecoveryTest {
         // Restart completes the isolation and blocks (the snapshot is corrupt).
         val gate = coordinator().startupGate()
         assertEquals(Blocked::class.java.simpleName, gate::class.java.simpleName)
-        val result = RecordRepository.open(context)
+        val result = openLegacyThroughCoordinator()
         assertEquals(RepositoryResult.Failure.TransactionFailed, result)
         assertEquals(MigrationRecoveryState.MIGRATION_RECOVERY_PENDING, store().read()!!.state)
     }
 
     private fun throwFault(active: String, name: String) {
         if (active == name) throw RuntimeException("simulated fault at $name")
+    }
+
+    /**
+     * P3's frozen test seam: resolve the version-1 coordinator, open/migrate
+     * the root database, then normalize the version-1 record. Production
+     * `RecordRepository.open()` now belongs to P5 and may bootstrap the root
+     * layout into a generation, so using it here would rewrite P3 evidence.
+     */
+    private fun openLegacyThroughCoordinator(): RepositoryResult<RecordRepository> {
+        val gate = try {
+            coordinator().startupGate()
+        } catch (e: com.paherdin.record.core.data.MigrationGateException) {
+            return RepositoryResult.Failure.TransactionFailed
+        }
+        if (gate is Blocked) return RepositoryResult.Failure.TransactionFailed
+        val result = RecordRepository.openWithBuilder(
+            context,
+            com.paherdin.record.core.data.TransactionFaultHook.NO_OP,
+            { ctx ->
+                androidx.room.Room.databaseBuilder(ctx, RecordDatabase::class.java, "record.db")
+                    .addMigrations(RecordDatabase.MIGRATION_1_2)
+                    .build()
+            },
+        )
+        if (result is RepositoryResult.Success) {
+            store().write(MigrationRecord(1, MigrationRecoveryState.MIGRATION_HEALTHY, null))
+        }
+        return result
     }
 }

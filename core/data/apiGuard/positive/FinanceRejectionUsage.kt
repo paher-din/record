@@ -10,8 +10,12 @@ import com.paherdin.record.core.data.RepositoryResult.Failure.DuplicateIdentity
 import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentCorrupted
 import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentIoFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.AttachmentRejected
+import com.paherdin.record.core.data.RepositoryResult.Failure.BackupIoFailed
+import com.paherdin.record.core.data.RepositoryResult.Failure.BackupRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.EndpointRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.FinanceRejected
+import com.paherdin.record.core.data.RepositoryResult.Failure.RestoreIoFailed
+import com.paherdin.record.core.data.RepositoryResult.Failure.RestoreRejected
 import com.paherdin.record.core.data.RepositoryResult.Failure.StorageExhausted
 import com.paherdin.record.core.data.RepositoryResult.Failure.TransactionFailed
 import com.paherdin.record.core.data.RepositoryResult.Failure.Unexpected
@@ -35,6 +39,10 @@ class FinanceRejectionUsage {
             is AttachmentRejected -> "attachment:${result.violation}"
             is AttachmentCorrupted -> "corrupt:${result.detail}"
             is AttachmentIoFailed -> "io:${result.stage}"
+            is BackupRejected -> "backup:${result.violation}"
+            is BackupIoFailed -> "backup-io:${result.stage}"
+            is RestoreRejected -> "restore:${result.violation}"
+            is RestoreIoFailed -> "restore-io:${result.stage}"
             is DuplicateIdentity -> "duplicate"
             is EndpointRejected -> "endpoint"
             is StorageExhausted -> "storage"
