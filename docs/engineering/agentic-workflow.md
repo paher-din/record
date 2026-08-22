@@ -33,19 +33,25 @@ The main agent uses the fewest agents that provide useful progress and never exc
 
 ## Mandatory dispatch contract
 
-Every dispatch must contain a self-contained contract with:
+Every dispatch must contain a self-contained contract. Two tiers apply, chosen by the work's shape rather than its size.
+
+A **lightweight dispatch** — a single writable slice, no concurrency with another owner, no shared stable interface, and no dependency on an unfinished result — carries the minimum contract:
 
 - `task_id`, `task_revision`, current `attempt_id`, and a short title;
 - `goal` and `non_goals`;
+- the single `write_scope` and its owner;
+- exact validation commands, required environment, and raw evidence paths or output fields;
+- user-approval redlines and actions the worker must not take.
+
+A **full contract** — required when a dispatch touches multiple writable slices, runs concurrently with another owner, modifies a shared stable interface, or depends on an unfinished result — adds to the lightweight fields:
+
 - the exact acceptance-criteria rows the task supports;
-- `read_scope`, `write_scope`, and the single owner of each writable path slice;
+- `read_scope` and the single owner of each writable path slice;
 - `depends_on` and the on-disk evidence that each dependency is ready;
 - the Record documents the worker must read, including the applicable `AGENTS.md`, `docs/index.md`, active spec and approved plan, relevant owning core documents and accepted ADRs;
 - frozen decisions, environment bindings, and facts the worker may not revise;
 - the known dirty-worktree state, other active owners, and the instruction not to revert or overwrite their work;
 - expected changed files and other artifacts;
-- exact validation commands, required environment, and raw evidence paths or output fields;
-- user-approval redlines and actions the worker must not take;
 - blocker and escalation conditions, including when to stop rather than retry;
 - the required completion-report format.
 
