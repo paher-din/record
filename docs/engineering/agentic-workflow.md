@@ -148,8 +148,11 @@ This rule is the exception to the main agent's non-implementation role.
 ## Long-running and device runs
 
 - Multi-minute Gradle and device suites run in the background and are polled. Agents do not interrupt a healthy run to obtain quicker feedback.
-- Device friction such as install-confirmation dialogs, leftover processes, logcat truncation, disconnected targets, or changed bindings is handled explicitly. The agent records the intervention and re-verifies preconditions before rerunning.
-- A cancelled, timed-out, or externally interrupted run remains incomplete evidence. The worker reports its last observable state and retained artifact path.
+- On Xiaomi/MIUI devices, `INSTALL_FAILED_USER_RESTRICTED` usually means the on-device USB install confirmation dialog was dismissed or timed out, not a code defect. Confirm the install on the device and rerun the same command. If `adb devices -l` is empty, run `adb kill-server` then `adb start-server` before relisting.
+- An interrupted or timed-out device run leaves a stale test process that holds a lock and can hang the next `connectedDebugAndroidTest` for 10+ minutes. Run `adb shell am force-stop <test package>` before rerunning.
+- Instrumented-test evidence does not survive the run: a library module's test APK is uninstalled after the suite, and `InstrumentationRegistry.targetContext` returns a redirected path unreachable via `run-as`. Emit evidence through instrumentation output (println to logcat or a retained result file), never through app-private files on `targetContext` paths.
+- logcat truncates long lines at roughly 3KB mid-string and corrupts JSON. Keep evidence lines under 3KB or chunk at ~3000 chars (`...-CHUNK 1/N ...`) and reassemble on the host.
+- A cancelled, timed-out, or externally interrupted run remains incomplete evidence. The worker reports its last observable state and retained artifact path. After any device intervention (force-stop, server restart, install confirmation), the worker records the intervention and re-verifies preconditions before rerunning.
 
 ## Lifecycle, observability, and persistence
 
