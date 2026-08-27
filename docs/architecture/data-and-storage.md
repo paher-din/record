@@ -110,6 +110,14 @@ The technical proof of concept compares FTS4 with the `unicode61` tokenizer agai
 
 The project will not add a server or migrate to Room 3 solely for search. [ADR 0009](decisions/0009-search-candidate-selection.md) records the corpus and query-manifest versions, reference configuration, complete measurements, and the final choice (normalized paged `LIKE`).
 
+## Timeline projection read boundary
+
+`Timeline` remains a rebuildable read projection and never a fact authority. Its MVP read contract follows Journey 8's retained selected day and accepted [ADR 0013](decisions/0013-timeline-full-materialization-fails-60ms.md): derive `dayStart` and `nextDayStart` from the selected `LocalDate` and the active product `ZoneId`, then read only rows satisfying `occurredAt >= dayStart AND occurredAt < nextDayStart`, ordered by `occurredAt` descending and stable entity ID ascending. The half-open range owns midnight boundary behavior; a requested empty day returns an empty projection rather than borrowing adjacent content.
+
+The complete projection may contain any number of dates, but one Timeline UI state contains only the selected day. A result for an obsolete selected-day revision is discarded under the interaction contract. Adjacent-day prefetch is optional, not part of the required read path: if a later approved implementation adds it, work begins only after the selected day's first correct draw, never blocks `ready` or the selected-day latency trace, and stores prefetched results outside the current-day state.
+
+MVP does not define a cross-day continuous stream. Keyset paging, Paging 3, and a concatenated/infinite cross-day list are therefore not authorized loading strategies. The P6 benchmark-shadow `occurredAt` index and its additive shadow migration are test evidence only; the production Timeline table, physical index, projection update/rebuild path, Room schema version, and any production migration remain owned by the later M5 specification and require their own explicit approval.
+
 ## Logical backup
 
 The portable backup is a ZIP with these logical contents at the complete MVP contract:

@@ -5,6 +5,7 @@ Read [AGENTS.md](../AGENTS.md) and [docs/index.md](index.md) for every task.
 | Task | Required documents |
 |---|---|
 | Any task | AGENTS.md, docs/index.md |
+| Agentic execution (splitting, dispatch, acceptance) | engineering/agentic-workflow.md, active spec if one exists |
 | Product scope | product/vision.md, product/mvp-requirements.md, active spec if one exists |
 | Navigation or interaction | experience/information-architecture.md, experience/interaction-rules.md, active spec if one exists |
 | Domain or finance | architecture/domain-model.md, engineering/testing-strategy.md, active spec if one exists |
@@ -16,7 +17,7 @@ Read [AGENTS.md](../AGENTS.md) and [docs/index.md](index.md) for every task.
 ## Reading rules
 
 - Active means exactly the unique `in-progress` spec under `docs/specs/*`. An `approved` spec is not active, and the project may have no active spec.
-- Current active spec: none. Tech PoC P5 — export/restore is `completed` (2026-08-16, [spec](specs/tech-poc/p5-export-restore/spec.md); ADR 0010 accepted). Tech PoC P6 — timeline performance is the next candidate and may enter the lifecycle only through a draft `spec.md`. Tech PoC P0–P4 are `completed`.
+- Current active spec: none — Tech PoC P6 — timeline performance is `completed` (2026-08-28, [spec](specs/tech-poc/p6-timeline-performance/spec.md); ADR 0011–0015 accepted; Rev4 jank deferral → [ADR 0014](architecture/decisions/0014-native-display-deadline-jank-deferred-to-m5.md), selected-day result → [ADR 0015](architecture/decisions/0015-selected-day-timeline-benchmark-result.md)). Tech PoC P5 — export/restore is `completed` (2026-08-16, [spec](specs/tech-poc/p5-export-restore/spec.md); ADR 0010 accepted). Tech PoC P0–P4 are `completed`.
 - A candidate sits outside the formal lifecycle. It may create only a draft `spec.md`; it cannot create a plan or authorize code, schema, interface, migration, route, dependency, or module work.
 - A Codex-generated or reviewed plan is not approved. The user must explicitly approve it, and the approval date/context must be recorded in plan metadata or the spec status record before the spec can become `in-progress`.
 - Read links relatively. During lifecycle work, read the target draft or approved spec even though it is not active.

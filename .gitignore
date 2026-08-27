@@ -6,3 +6,5 @@ local.properties
 *.iml
 .worktrees/
 *.hprof
+# Local frozen P6 benchmark evidence (Rev3/Rev4/Rev5 raw runs, ~GBs) — untracked, do not commit
+benchmark/p6-frozen/

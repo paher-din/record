@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Tech PoC P6: benchmark-variant-only profileable declaration so the
+             Macrobenchmark tooling can capture profiles from the shell. Absent
+             from main/release. TimelineBenchmarkActivity joins here in Task 4. -->
+        <profileable
+            android:shell="true" />
+
+        <!-- Tech PoC P6 Task 3: benchmark-build-only seed/verify surface. The
+             out-of-process :benchmark harness launches it explicitly (exported)
+             with mode=seed-and-verify. Task 4 adds the render modes. -->
+        <activity
+            android:name="com.paherdin.record.benchmark.TimelineBenchmarkActivity"
+            android:exported="true"
+            android:launchMode="singleTop" />
+    </application>
+
+</manifest>

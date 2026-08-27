@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none; Tech PoC P5 — export/restore is `completed` (2026-08-16, [spec](docs/specs/tech-poc/p5-export-restore/spec.md); [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md) accepted). Tech PoC P6 — timeline performance is the next candidate and may enter the lifecycle only through a draft `spec.md`. Tech PoC P0–P4 are `completed`.
+- Current active spec: none — Tech PoC P6 — timeline performance is `completed` (2026-08-28, [Spec](docs/specs/tech-poc/p6-timeline-performance/spec.md); [ADR 0011](docs/architecture/decisions/0011-macrobenchmark-test-module-boundary.md), [ADR 0012](docs/architecture/decisions/0012-native-display-deadline-jank-benchmark-contract.md), [ADR 0013](docs/architecture/decisions/0013-timeline-full-materialization-fails-60ms.md), [ADR 0014](docs/architecture/decisions/0014-native-display-deadline-jank-deferred-to-m5.md), [ADR 0015](docs/architecture/decisions/0015-selected-day-timeline-benchmark-result.md) accepted). Tech PoC P5 — export/restore is `completed` (2026-08-16, [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md) accepted). Tech PoC P0–P4 are `completed`.
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules
@@ -49,6 +49,7 @@
 - Add Use Cases only for cross-aggregate atomicity, shared behavior, or central invariants.
 - Preserve user changes and unrelated worktree state.
 - Use apply_patch for text edits and run proportional verification after every change.
+- Agentic work splits, dispatches, and verifies per the [agentic execution workflow](docs/engineering/agentic-workflow.md); the main agent accepts only against raw evidence, and a subagent reports blockers without hiding or relabeling them.
 
 ## User approval boundaries
 

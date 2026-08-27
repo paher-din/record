@@ -8,7 +8,7 @@ Accepted
 
 2026-08-16
 
-The user explicitly accepted the separate Macrobenchmark test-module design on 2026-08-16 while reviewing the Tech PoC P6 draft repair: the production graph remains exactly seven modules, `:benchmark` is an allowlisted test-tool project, and the P6 measurement-result ADR becomes ADR 0012.
+The user explicitly accepted the separate Macrobenchmark test-module design on 2026-08-16 while reviewing the Tech PoC P6 draft repair: the production graph remains exactly seven modules and `:benchmark` is an allowlisted test-tool project. ADR 0012 later revised the display/jank measurement contract, so the P6 measurement-result ADR becomes ADR 0013.
 
 ## Context
 
@@ -44,7 +44,7 @@ The check examines benchmark-specific dependency configurations as well as the e
 - The four production-module split thresholds are not weakened. A future test-tool project requires its own accepted ADR and cannot inherit this exception.
 - P6 introduces build/test infrastructure but no production module, schema, product surface, or release dependency.
 - Removing the benchmark capability deletes `:benchmark` and benchmark source/build variants and restores the repository to only the seven production Gradle projects without changing production behavior or data.
-- The P6 result, frozen baseline, and M5 consequence are recorded separately in ADR 0012 so this architecture decision can be accepted before implementation.
+- ADR 0012 owns the later native-display deadline-jank correction. The P6 result, frozen baseline, and M5 consequence are recorded separately in ADR 0013 so this architecture decision remains independent of measurement results.
 
 ## Verification
 

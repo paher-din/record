@@ -13,6 +13,14 @@ android {
         minSdk = 34
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    // Tech PoC P6 (Task 1): benchmark build type for the shadow projection
+    // source set (Task 3+). Release-identical; consumed only via :app's
+    // benchmarkImplementation testFixtures edge.
+    buildTypes {
+        create("benchmark") {
+            initWith(getByName("release"))
+        }
+    }
     // Tech PoC P4: shared JVM fixtures (corpus generator, normalizer, oracle,
     // selection rule) consumed by both unit tests and instrumented tests.
     testFixtures {
@@ -126,6 +134,56 @@ val apiBoundaryCheck = tasks.register("apiBoundaryCheck") {
         println("apiBoundaryCheck: PASS (${File(guardDir, "positive").listFiles().size} positive, " +
             "${File(guardDir, "negative").listFiles().size} negative fixtures)")
     }
+}
+
+/**
+ * Tech PoC P6 (Task 2): host JavaExec over the unit-test runtime that
+ * regenerates the frozen `timeline-v1` fixture and oracle artifacts under
+ * `core/data/build/p6/` — `fixture.sha256`, `oracle.sha256`, `oracle.txt`.
+ * Outputs are build artifacts, never committed. The classpath is taken from
+ * the unit-test `Test` task (AGP wires the module's own testFixtures and
+ * output directly there; a standalone resolution of
+ * `debugUnitTestRuntimeClasspath` is ambiguous between the module's own debug
+ * runtime and testFixtures variants).
+ */
+val emitP6Oracle = tasks.register<JavaExec>("emitP6Oracle") {
+    group = "verification"
+    description = "Regenerates core/data/build/p6 fixture and oracle artifacts from the frozen timeline-v1 fixture"
+    val unitTest = tasks.named<Test>("testDebugUnitTest").get()
+    dependsOn("compileDebugUnitTestKotlin", "compileDebugTestFixturesKotlin")
+    classpath = unitTest.classpath
+    mainClass.set("com.paherdin.record.core.data.timeline.TimelineArtifactEmitterKt")
+    systemProperty("p6OutputDir", layout.buildDirectory.dir("p6").get().asFile.absolutePath)
+    outputs.dir(layout.buildDirectory.dir("p6"))
+}
+
+/**
+ * Tech PoC P6 (Task 6): host JavaExec over the unit-test runtime that runs the
+ * strict Revision 2/3 validator (`TimelineBenchmarkReportValidator`) against
+ * the copied device evidence. Invocation (plan Task 6 Step 8):
+ *
+ * ```
+ * .\gradlew.bat "-Dp6ReportDir=<copied additional output root>" :core:data:validateP6BenchmarkReports
+ * ```
+ *
+ * The `-D` value arrives on the Gradle daemon JVM and is forwarded to the
+ * forked JVM here; an absent value fails with a precise error from the
+ * validator entry point. The task validates only copied host evidence: exact
+ * four blocks, 30 positive unique query samples, 5 valid full-scroll frame
+ * arrays with five positive sub-cap gesture counts (Revision 3: equality not
+ * required; min/max/range reported), 35 RssAnon maxima, 35 distinct
+ * before/after refresh pairs, exact native settings before/after, 35 Perfetto
+ * traces, and the four gates recomputed from raw samples. Pure read: it never
+ * touches the device.
+ */
+val validateP6BenchmarkReports = tasks.register<JavaExec>("validateP6BenchmarkReports") {
+    group = "verification"
+    description = "Validates copied Task 6 benchmark reports against the frozen Revision 2/3 contract and budgets"
+    val unitTest = tasks.named<Test>("testDebugUnitTest").get()
+    dependsOn("compileDebugUnitTestKotlin")
+    classpath = unitTest.classpath
+    mainClass.set("com.paherdin.record.core.data.timeline.TimelineBenchmarkReportValidatorTestKt")
+    System.getProperty("p6ReportDir")?.let { systemProperty("p6ReportDir", it) }
 }
 
 tasks.named("check") {

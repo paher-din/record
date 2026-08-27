@@ -10,7 +10,8 @@ A private Android timeline connecting money with life context.
 - Tech PoC P3 completed (attachment failure recovery: v1→v2 schema with recoverable-migration coordinator, zero-link attachment lifecycle, 101 device tests green)
 - Tech PoC P4 completed (Chinese search selection: normalized paged LIKE chosen over FTS4 unicode61, [ADR 0009](docs/architecture/decisions/0009-search-candidate-selection.md) accepted, 1,800-sample device evidence retained)
 - Tech PoC P5 completed (export/restore: non-destructive generation bootstrap per [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md), complete logical ZIP backup and overwrite restore, 154 device tests green)
-- Next: Tech PoC P6 — timeline performance (candidate)
+- Tech PoC P6 completed (timeline performance: selected-day bounded query per ADR 0013; query-to-first-correct-draw p95 39.26 ms ≤ 60 ms and frame-CPU p95 14.99 ms ≤ 16.67 ms on the Xiaomi 14 Pro; replacement-workload deadline jank 37.96 % recorded as a diagnostic, ≤2 % native-deadline jank gate deferred to M5 per ADR 0014; post-clean Rev5 rerun passed every absolute gate and the one-sided 10 % regression — ADR 0015)
+- Next: MVP M1 — app shell (enters the lifecycle only through a new approved specification)
 - Supported baseline: Android 14+
 
 ## Start here

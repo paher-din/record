@@ -21,4 +21,5 @@ include(
     ":core:model",
     ":core:data",
     ":core:ui",
+    ":benchmark",
 )

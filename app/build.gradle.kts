@@ -18,6 +18,19 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Tech PoC P6 (Task 1): frozen benchmark target variant. Absent from
+    // main/release semantics; only this benchmark variant carries benchmark
+    // source sets, the profileable declaration, and benchmark-only deps.
+    buildTypes {
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            isMinifyEnabled = false
+            matchingFallbacks += listOf("release")
+        }
+    }
 }
 
 dependencies {
@@ -33,4 +46,11 @@ dependencies {
     implementation(libs.activity.compose)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.tooling.preview)
+
+    // Tech PoC P6 (Task 1): benchmark-scoped only. ProfileInstaller performs the
+    // Macrobenchmark profile/reset handshake on the target benchmark variant.
+    // add("benchmarkImplementation", ...) is required because AGP 9 does not
+    // statically generate an accessor for the custom benchmark build type.
+    add("benchmarkImplementation", testFixtures(project(":core:data")))
+    add("benchmarkImplementation", libs.androidx.profileinstaller)
 }
