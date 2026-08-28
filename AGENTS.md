@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none — MVP M1 — app shell is `approved` (2026-08-28, [Spec](docs/specs/mvp/m1-app-shell/spec.md)); its [plan](docs/specs/mvp/m1-app-shell/plan.md) is drafted but not approved, ADR 0016/core-document startup-boundary prerequisite remains open, and implementation is forbidden. Tech PoC P6 — timeline performance is `completed` (2026-08-28, [Spec](docs/specs/tech-poc/p6-timeline-performance/spec.md); ADR 0011–0015 accepted). Tech PoC P5 — export/restore is `completed` (2026-08-16, [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md) accepted). Tech PoC P0–P4 are `completed`.
+- Current active spec: none — MVP M1 — app shell is `approved` (2026-08-28, [Spec](docs/specs/mvp/m1-app-shell/spec.md)); its [plan](docs/specs/mvp/m1-app-shell/plan.md) is independently reviewed but not approved, ADR 0016/core-document startup-boundary prerequisite remains open, and implementation is forbidden. Tech PoC P6 — timeline performance is `completed` (2026-08-28, [Spec](docs/specs/tech-poc/p6-timeline-performance/spec.md); ADR 0011–0015 accepted). Tech PoC P5 — export/restore is `completed` (2026-08-16, [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md) accepted). Tech PoC P0–P4 are `completed`.
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules

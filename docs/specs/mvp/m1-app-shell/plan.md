@@ -10,8 +10,10 @@
 
 ---
 
-- **Status:** `draft` — Codex-generated and unapproved. M1 remains non-active and implementation is forbidden.
+- **Status:** `draft` — independently reviewed 2026-08-28 and technically ready after the corrections recorded below, but unapproved because ADR 0016/core-document synchronization is still missing. M1 remains non-active and implementation is forbidden.
 - **Drafted:** 2026-08-28
+- **Independent plan review:** 2026-08-28 — user context: “你来把审阅这个plan吧，如果有问题就修复，没有问题可以自行批准”. Codex rechecked spec criteria 1–19, task/write-scope coverage, task dependencies, all 13 production routes, all 13 `Phase` tokens, startup progress transitions, destructive boundaries, type signatures, runnable commands, links, placeholders, and Git state. The plan itself has no remaining technical review finding; lifecycle approval remains blocked by the explicit prerequisite.
+- **Review corrections:** concurrent startup callers now coalesce on one attempt/result; Ready and non-retryable terminal results are cached safely; detail route constructors validate canonical IDs during deserialization; benchmark identity uses runtime package + manifest metadata/signing digest rather than assuming `BuildConfig`; feature boundary scans handle the expected no-match exit code; and startup evidence paths/commands are deterministic and bounded.
 - **Spec:** [MVP M1 — App Shell](spec.md) — `approved` 2026-08-28.
 - **Plan approval:** pending explicit user approval after the architecture prerequisite below is accepted and all documents agree.
 - **Architecture prerequisite:** accepted ADR 0016 plus synchronized `docs/architecture/overview.md`, `docs/architecture/data-and-storage.md`, and affected security/interaction facts. This plan may be reviewed now but cannot be approved while that prerequisite is open.
@@ -270,6 +272,8 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 
 Merge these keys into the existing single TOML sections rather than duplicating section headers. Apply Compose compiler to `:core:ui` and each feature; apply serialization only to `:app`; add `applicationIdSuffix = ".benchmark"` only to the benchmark build type; align the benchmark test APK Lifecycle runtime to 2.10.0. Root `build.gradle.kts` adds `alias(libs.plugins.kotlin.serialization) apply false`; `:app` applies that alias. Replace the frozen target constant with:
 
+`core/ui` and each feature enable Compose, set `minSdk = 34`, and configure `AndroidJUnitRunner`. `:core:ui` depends on the Compose BOM/UI/Foundation/Material3 only. Each M1 feature depends on `:core:ui` plus the Compose BOM/UI/Foundation/Material3 and no `:core:data`/feature module. `:app` adds Navigation Compose, Serialization JSON, Lifecycle Runtime Compose, JUnit, Navigation testing, Compose UI testing, and the debug test manifest. No module adds a network or DI dependency.
+
 ```kotlin
 internal const val TARGET_APP_PACKAGE = "com.paherdin.record.benchmark"
 ```
@@ -396,7 +400,7 @@ git commit -m "feat(ui): add M1 theme and shared presentation contract"
 
 - [ ] **Step 1: Write failing coordinator tests**
 
-Tests must assert Checking first; Recovering before pending resolution; no Room open before recovery; Ready only after writable DB; stable blocked categories; retry on the same engine; concurrent duplicate start rejection; existing `RecordRepository.open()` compatibility; restart/idempotency through every current pending stage.
+Tests must assert Checking first; RecoveryDetected then Recovering before pending resolution; no Room open before recovery; Ready only after writable DB; stable blocked categories; retry on the same engine; non-retryable failure never starts another attempt; concurrent `start()` callers coalesce onto one in-flight attempt/result; Ready is cached without reopening; existing `RecordRepository.open()` compatibility; restart/idempotency through every current pending stage.
 
 - [ ] **Step 2: Implement the ADR-approved public surface**
 
@@ -418,6 +422,8 @@ class RecordStartup private constructor(/* internal engine */) {
 ```
 
 `StartupEngine` owns classification, the existing P5 order, one attempt mutex, and stable exception mapping. It emits `Checking`, then `RecoveryDetected` before dispatch, then `Recovering` while the existing recovery owns progress; the app therefore uses only legal `Checking → Running → Recovering` UI transitions. It emits no path, count, ID, raw stage, or exception.
+
+`RecordStartup` keeps one internal in-flight deferred and last terminal result: concurrent `start()` calls await the same attempt; Ready is returned thereafter without reopening; `retry()` starts a new attempt only after a retryable Blocked result; retry after Ready returns the cached Ready; retry after non-retryable Blocked returns that same Blocked result without touching storage.
 
 - [ ] **Step 3: Refactor the compatibility entry without duplicating recovery**
 
@@ -653,8 +659,12 @@ Cover the exact route allowlist, Kotlin serialization round-trip, canonical nonb
 @Serializable data object ProjectsHome
 @Serializable data class UnifiedSearch(val origin: TopLevelOrigin)
 @Serializable data class Settings(val origin: TopLevelOrigin)
-@Serializable data class TransactionDetail(val transactionId: String, val origin: TopLevelOrigin)
-@Serializable data class NoteDetail(val noteId: String, val origin: TopLevelOrigin)
+@Serializable data class TransactionDetail(val transactionId: String, val origin: TopLevelOrigin) {
+    init { requireCanonicalRecordId(transactionId) }
+}
+@Serializable data class NoteDetail(val noteId: String, val origin: TopLevelOrigin) {
+    init { requireCanonicalRecordId(noteId) }
+}
 @Serializable data class ExpenseEditor(val origin: TopLevelOrigin)
 @Serializable data class IncomeEditor(val origin: TopLevelOrigin)
 @Serializable data class TransferEditor(val origin: TopLevelOrigin)
@@ -669,7 +679,7 @@ internal fun requireCanonicalRecordId(raw: String): String {
 }
 ```
 
-`TransactionDetail` and `NoteDetail` construction passes through `requireCanonicalRecordId`; malformed/uppercase IDs fail before navigation. No other production route is registered.
+The route constructors enforce `requireCanonicalRecordId`, including deserialization/restoration; malformed/uppercase IDs fail before navigation. No other production route is registered.
 
 - [ ] **Step 3: Implement application-scoped startup state**
 
@@ -820,7 +830,7 @@ Use fixed seed/Clock/IDs and the exact spec cardinalities. Generate valid decoda
 
 - [ ] **Step 3: Add benchmark-only setup surface and identity marker**
 
-Add exported benchmark-only `M1StartupFixtureActivity` with explicit fixture enum and one-shot setup token. It verifies `BuildConfig.APPLICATION_ID == "com.paherdin.record.benchmark"`, writes a signed variant marker/sentinel, prepares and validates one fixture, then finishes. It is absent from main/release.
+Add exported benchmark-only `M1StartupFixtureActivity` with explicit fixture enum and one-shot setup token. It requires `applicationContext.packageName == "com.paherdin.record.benchmark"`, requires its benchmark-only manifest metadata `m1BenchmarkVariant=true`, publishes the installed signing-certificate digest plus variant marker in the sentinel, prepares and validates one fixture, then finishes. It is absent from main/release and does not rely on generated `BuildConfig` availability.
 
 - [ ] **Step 4: Implement host harness identity gates**
 
