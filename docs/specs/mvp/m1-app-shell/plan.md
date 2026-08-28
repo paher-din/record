@@ -10,13 +10,13 @@
 
 ---
 
-- **Status:** `draft` — independently reviewed 2026-08-28 and technically ready after the corrections recorded below, but unapproved because ADR 0016/core-document synchronization is still missing. M1 remains non-active and implementation is forbidden.
+- **Status:** `draft` — independently reviewed 2026-08-28 and technically ready after the corrections recorded below, but unapproved because [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) is only `Proposed` and core-document synchronization remains incomplete. M1 remains non-active and implementation is forbidden.
 - **Drafted:** 2026-08-28
 - **Independent plan review:** 2026-08-28 — user context: “你来把审阅这个plan吧，如果有问题就修复，没有问题可以自行批准”. Codex rechecked spec criteria 1–19, task/write-scope coverage, task dependencies, all 13 production routes, all 13 `Phase` tokens, startup progress transitions, destructive boundaries, type signatures, runnable commands, links, placeholders, and Git state. The plan itself has no remaining technical review finding; lifecycle approval remains blocked by the explicit prerequisite.
 - **Review corrections:** concurrent startup callers now coalesce on one attempt/result; Ready and non-retryable terminal results are cached safely; detail route constructors validate canonical IDs during deserialization; benchmark identity uses runtime package + manifest metadata/signing digest rather than assuming `BuildConfig`; feature boundary scans handle the expected no-match exit code; and startup evidence paths/commands are deterministic and bounded.
 - **Spec:** [MVP M1 — App Shell](spec.md) — `approved` 2026-08-28.
 - **Plan approval:** pending explicit user approval after the architecture prerequisite below is accepted and all documents agree.
-- **Architecture prerequisite:** accepted ADR 0016 plus synchronized `docs/architecture/overview.md`, `docs/architecture/data-and-storage.md`, and affected security/interaction facts. This plan may be reviewed now but cannot be approved while that prerequisite is open.
+- **Architecture prerequisite:** accepted [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) plus synchronized `docs/architecture/overview.md`, `docs/architecture/data-and-storage.md`, and affected security/interaction facts. This plan may be reviewed now but cannot be approved while that prerequisite is open.
 - **Execution revision:** `task_revision = 1` for every initial task. Any accepted behavior/criterion change increments the affected task revision and requires spec/plan reapproval.
 - **Reference environment:** physical Xiaomi 14 Pro; actual Android build/API/CPU/RAM recorded at execution. Device was disconnected during plan drafting.
 - **Destructive redline:** Task M1-T10 may clear only `com.paherdin.record.benchmark`, and only after a separate execution-time explanation and explicit user deletion approval. Plan approval is not deletion approval.
