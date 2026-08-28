@@ -3,7 +3,8 @@
 - **Status:** `approved` — 2026-08-28. The user explicitly delegated an independent Codex review, correction of any findings, and spec approval when no blocker remained. The review passed after the contrast, launch-identity, benchmark-isolation, and AGP built-in-Kotlin compatibility-gate corrections recorded below. M1 is not active; `plan.md` may be drafted, but implementation remains forbidden until the architecture prerequisite and explicit plan approval are recorded.
 - **Drafted:** 2026-08-28
 - **Spec approved:** 2026-08-28 — user context: “你自己来审阅一遍，如果有问题就修复，没问题可以自行批准并进入plan撰写”. Codex independently rechecked core-document consistency, scope, dependencies, benchmark isolation, lifecycle rules, every acceptance row, relative links, and accessibility color contrast; no blocker remained after inline corrections.
-- **Independent review corrections:** changed the light warm accent from `#9B6741` (4.26:1) to `#925D39` (4.89:1); added the missing adaptive/monochrome launcher identity and platform starting-window contract; bound destructive startup fixtures to `com.paherdin.record.benchmark` with separate execution-time deletion approval; and made AGP 9.3 built-in Kotlin + Serialization plus Lifecycle benchmark alignment the first active implementation gate.
+- **Plan draft:** 2026-08-28 — [plan.md](plan.md) is written and self-reviewed but unapproved. ADR 0016/core-document synchronization remains a blocking prerequisite to plan approval; no implementation authority exists.
+- **Independent review corrections:** changed the light warm accent from `#9B6741` (4.26:1) to `#925D39` (4.89:1); added the missing adaptive/monochrome launcher identity and platform starting-window contract; bound destructive startup fixtures to `com.paherdin.record.benchmark` with separate execution-time deletion approval; made AGP 9.3 built-in Kotlin + Serialization plus Lifecycle benchmark alignment the first active implementation gate; and preserved the owning interaction transition table by routing pending startup through legal `Phase.Checking → Phase.Running → Phase.Recovering` transitions.
 - **Design inputs confirmed:** 2026-08-28 — during pre-spec brainstorming, the user confirmed the Simplified Chinese UI baseline, visual direction A (warm editorial), theme strategy A1 (system-following light/dark), product-grade empty-shell completion level, tappable typed global-create placeholders, Navigation Compose approach A, the startup budgets, and all five design sections. These confirmations are design inputs, not approval of this written `spec.md`.
 - **Roadmap:** [MVP M1 — App shell](../../../roadmap.md)
 - **Product:** [Product vision](../../../product/vision.md), [MVP requirements](../../../product/mvp-requirements.md)
@@ -208,7 +209,7 @@ Required retention paths are tab switch, tab reselect, child/detail round trip, 
 The P5 recovery protocol remains authoritative and unchanged, but its current all-in-one `RecordRepository.open()` surface is insufficient for M1 UI ordering. Before implementation, the owning data/storage and architecture documents plus ADR 0016 must define a narrow application-facing startup coordinator that:
 
 1. reads/classifies the app-private recovery record before Room/SQLite helper initialization;
-2. exposes a data-free pending/blocked classification quickly enough for `:app` to draw the correct recovery destination;
+2. exposes data-free `Checking`, `RecoveryDetected`, and `Recovering` progress quickly enough for `:app` to move through the existing legal phase transitions and draw the correct recovery destination;
 3. continues the existing bootstrap → migration recovery → generation activation → startup validation → Room-open sequence under one owner;
 4. emits the successful repository binding only after the complete safe boundary passes;
 5. exposes safe retry capability and stable failure category without exposing internal records, stages that leak paths, counts, IDs, DAO/Room types, or recovery mutation methods.
@@ -222,6 +223,7 @@ The startup UI uses the exact interaction phases:
 | Core startup outcome | UI phase | Allowed surface |
 |---|---|---|
 | Classification/open in progress with no known pending work | `Phase.Checking` | Data-free launch/checking surface; no shell |
+| Durable pending work was classified and resolution is being dispatched | `Phase.Running` | Data-free launch surface; no shell; named `RecoveryDetected` event only |
 | Existing migration/activation recovery is being resolved | `Phase.Recovering` | `RestoreRecoveryRoute`; no shell |
 | Complete safe repository binding available | transient `Phase.Completed` | Construct shell and enter retained/default Timeline |
 | Safe explicit retry can continue the same protocol | `Phase.RecoverableFailure` | `RestoreRecoveryRoute` with Retry |
