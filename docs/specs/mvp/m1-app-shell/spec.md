@@ -1,7 +1,9 @@
 # MVP M1 — App Shell
 
-- **Status:** `draft` — this is the only formal state a roadmap candidate may enter directly. The written specification has not yet received lifecycle approval; no `plan.md`, implementation, route, dependency, schema, migration, or module change is authorized.
+- **Status:** `approved` — 2026-08-28. The user explicitly delegated an independent Codex review, correction of any findings, and spec approval when no blocker remained. The review passed after the contrast, launch-identity, benchmark-isolation, and AGP built-in-Kotlin compatibility-gate corrections recorded below. M1 is not active; `plan.md` may be drafted, but implementation remains forbidden until the architecture prerequisite and explicit plan approval are recorded.
 - **Drafted:** 2026-08-28
+- **Spec approved:** 2026-08-28 — user context: “你自己来审阅一遍，如果有问题就修复，没问题可以自行批准并进入plan撰写”. Codex independently rechecked core-document consistency, scope, dependencies, benchmark isolation, lifecycle rules, every acceptance row, relative links, and accessibility color contrast; no blocker remained after inline corrections.
+- **Independent review corrections:** changed the light warm accent from `#9B6741` (4.26:1) to `#925D39` (4.89:1); added the missing adaptive/monochrome launcher identity and platform starting-window contract; bound destructive startup fixtures to `com.paherdin.record.benchmark` with separate execution-time deletion approval; and made AGP 9.3 built-in Kotlin + Serialization plus Lifecycle benchmark alignment the first active implementation gate.
 - **Design inputs confirmed:** 2026-08-28 — during pre-spec brainstorming, the user confirmed the Simplified Chinese UI baseline, visual direction A (warm editorial), theme strategy A1 (system-following light/dark), product-grade empty-shell completion level, tappable typed global-create placeholders, Navigation Compose approach A, the startup budgets, and all five design sections. These confirmations are design inputs, not approval of this written `spec.md`.
 - **Roadmap:** [MVP M1 — App shell](../../../roadmap.md)
 - **Product:** [Product vision](../../../product/vision.md), [MVP requirements](../../../product/mvp-requirements.md)
@@ -26,7 +28,7 @@ The repository begins M1 with these verified facts:
 - `:app` renders only the P0 `MaterialTheme { Text("P0 engineering skeleton") }` surface. `:core:ui` and the three feature modules have no production Kotlin source.
 - The source manifest and both backup-rule files already contain the P5 system-backup exclusion contract and no network permission.
 - `RecordRepository.open(context)` runs the real bootstrap → migration recovery → activation recovery → Room-open sequence, but it is synchronous and collapses a pending or blocked recovery into a repository failure. That public shape cannot render an early `RestoreRecoveryRoute`, cannot expose truthful recovery progress, and cannot meet the M1 pending-startup contract without a new narrow application-facing boundary.
-- No active spec exists. This candidate may create only this draft. M1 implementation remains forbidden until the complete lifecycle and prerequisite in section 16 pass.
+- No active spec exists. This specification is approved but not `in-progress`; a plan may now be drafted/reviewed. M1 implementation remains forbidden until the complete lifecycle and prerequisite in section 16 pass.
 
 ## 3. Scope
 
@@ -43,7 +45,8 @@ M1 delivers:
 7. Shared accessible `loading`, `empty`, `error`, and `ready` body presentations that remain orthogonal to the exact `Phase.*` operation contract.
 8. Independent retained tab/back-stack/UI state, including the real Timeline selected-day and Today behavior.
 9. A real application-facing startup boundary over the existing P5 recovery machinery, with no shell or Room-backed frame before one complete vault is verified safe.
-10. Repeatable Compose, navigation, startup, accessibility, manifest, packaged-policy, dependency, and network-isolation evidence.
+10. A local-vector adaptive/monochrome launcher icon and system starting window that use the A/A1 theme, expose no user data, and close the P0 skeleton's `MissingApplicationIcon` exception.
+11. Repeatable Compose, navigation, startup, accessibility, manifest, packaged-policy, dependency, and network-isolation evidence.
 
 ### 3.2 Non-goals
 
@@ -56,6 +59,7 @@ M1 does not:
 - add a DI framework, feature-to-feature dependency, new production module, speculative Use Case, business repository wrapper, or empty API/implementation module split;
 - read domain data to populate M1 production surfaces or seed synthetic product data;
 - add dynamic color, an in-app theme selector, an app-owned font dependency, custom password, network permission, analytics, crash reporting, ads, telemetry, or cloud behavior;
+- create a broader brand kit, letter-based logo, finance-only symbol, remote image/font asset, or animated custom splash flow beyond the M1 local-vector launcher mark and platform starting window;
 - change the production/debug application ID, reset the installed production/debug app, or read/copy/delete its vault while preparing M1 fixtures;
 - claim App Lock, encryption, production Timeline performance, thumbnail performance, aggregation performance, restore completion, or Journeys 1–13 as M1 outcomes.
 
@@ -77,7 +81,7 @@ M1 does not:
 
 ### 5.1 Language boundary
 
-- User-visible M1 copy is Simplified Chinese.
+- User-visible functional M1 copy is Simplified Chinese. `Record` remains the proper product/launcher name and is stored in `@string/app_name`, not hard-coded in the manifest.
 - Kotlin types, route keys, semantic token names, test IDs, commands, and variables remain English.
 - Every production string is an Android string resource. M1 adds no language switch and makes no claim that another locale is complete.
 - Route semantics retain the English identities from the information architecture even when their visible labels are Chinese.
@@ -93,7 +97,7 @@ The semantic palette is frozen by role rather than by arbitrary per-screen color
 | App background | `#F6F2E9` | `#171C1A` | Root shell and starting-window continuity |
 | Primary surface | `#EEE6D7` | `#222A27` | Navigation and grouped shared surfaces |
 | Primary action/accent | `#145C4B` | `#8BD0BB` | Selected navigation, primary action, focus emphasis |
-| Warm secondary accent | `#9B6741` | `#D2A987` | Timeline/empty-state secondary emphasis only |
+| Warm secondary accent | `#925D39` | `#D2A987` | Timeline/empty-state secondary emphasis only; the light value is darkened from the visual exploration reference so normal text reaches 4.89:1 on the app background |
 | Primary content | `#24342F` | `#E9EEE9` | High-emphasis text and icons |
 | On-primary content | `#FFF9EE` | `#0D392F` | Content placed on the primary action/accent |
 
@@ -103,6 +107,7 @@ Implementation derives the remaining Material color roles from these references 
 - Android dynamic color is disabled so device wallpaper cannot replace the approved product palette.
 - Typography uses the Android/system sans family; no downloadable or bundled font is introduced. Text styles, spacing, shapes, elevation, and icon sizes are semantic `:core:ui` tokens.
 - Top-level bars, bottom navigation, modal create chooser, shared presentations, M1 placeholders, and Android starting-window background use the same tokens.
+- The launcher mark is a text-free local vector: one continuous timeline thread connecting two circular events inside the adaptive safe zone. It uses the warm background plus primary green, supplies foreground/background/monochrome resources, contains no finance-only glyph, and is the only mark used by the platform starting window. M1 uses the API 34 platform starting-window contract rather than a second custom splash Activity or timer.
 - M1 does not depend on decorative animation for comprehension. Navigation and content transitions respect platform animation settings and preserve readable intermediate frames.
 
 ### 5.3 Accessibility
@@ -242,6 +247,8 @@ M1 may add only the dependencies needed for the selected typed-navigation/lifecy
 
 Existing Compose BOM, Material 3, Activity Compose, AndroidX Test, JUnit, Benchmark, and ProfileInstaller remain version-controlled by the catalog. The implementation plan must verify resolved dependency/manifest graphs and may remove a listed dependency when evidence proves it unnecessary; it cannot substitute another version/library without revising and reapproving this spec or its approved dependency record.
 
+The repository has not yet compiled the Kotlin Serialization plugin together with AGP 9.3 built-in Kotlin. The first active implementation task is therefore a build-only compatibility gate: apply only the approved catalog/plugin/dependency delta, compile one typed-route serialization smoke source/test, and run the module/dependency checks before feature code. Failure blocks route/UI work and requires an evidence-based spec/plan revision; opting out of built-in Kotlin or changing `.env`/`gradle.properties` is not an authorized workaround. Because the existing benchmark test APK pins Lifecycle 2.9.4 while M1 selects Lifecycle Runtime Compose 2.10.0, the same gate must align the benchmark test runtime to 2.10.0 and rerun the P6 wiring/self-check regression before accepting the dependency baseline.
+
 No navigation framework migration, Navigation 3, Hilt/Koin/Dagger, adaptive-navigation library, icon pack with unnecessary surface, analytics, crash SDK, or network library is authorized.
 
 ## 11. Startup benchmark contract
@@ -301,6 +308,7 @@ Fixture preparation occurs only inside `com.paherdin.record.benchmark` after the
 - Assert global create contains exactly 支出、收入、转账、笔记; each choice opens the correct typed owner placeholder; no generic Entry semantic/source token exists.
 - Assert bottom-navigation visibility for roots/details/Search/Settings, hidden behavior for every M1 Editor, hidden/blocked behavior for test-only progress, and complete shell absence for startup checking/recovery.
 - Render every shared presentation under light/dark schemes and 100%/200% font scale; assert heading, state, selection, Retry, focus order, touch target, no required-text clipping/overlap, and no raw-error semantics.
+- Inspect/render the adaptive foreground/background/monochrome launcher resources and platform starting window in light/dark launch conditions; assert the safe-zone mark is visible and no previous/user-data frame appears.
 - Assert M1 `main`/`release` routes and screens contain no synthetic ready data, domain-data dependency, Save action, form field, or future production route.
 
 ### 12.3 Device, artifact, and offline checks
@@ -320,7 +328,7 @@ M1 can become `completed` only when `verification.md` contains raw evidence for 
 
 1. **Lifecycle and architecture prerequisite:** the written spec and plan have explicit recorded approval, M1 is the unique `in-progress` spec during implementation, the startup-boundary ADR is accepted, and owning core documents are synchronized.
 2. **Module boundary:** the exact seven production modules and allowed edges remain unchanged; no feature-to-feature/core-to-feature edge or new production/test project exists beyond accepted `:benchmark`.
-3. **Theme/localization:** A/A1 semantic tokens drive every M1 shell/shared surface in complete system-following light/dark schemes; dynamic color is disabled; all production copy is Simplified Chinese resources and internal typed names remain English.
+3. **Theme/localization/launch identity:** A/A1 semantic tokens drive every M1 shell/shared surface in complete system-following light/dark schemes; dynamic color is disabled; functional production copy is Simplified Chinese resources, `Record` is a resource-backed proper product name, internal typed names remain English, and the local-vector adaptive/monochrome mark plus platform starting window pass packaged-resource and no-data-preframe checks.
 4. **Accessibility:** shell/shared presentations pass the heading, state, selected-tab, focus, 48-dp target, 200%-font, no-clipping, and contrast gates in section 5.3.
 5. **Shared presentation:** representative screens switch correctly through `loading`, `empty`, `error`, and `ready`; error is never empty, partial is never ready, stable Retry semantics are correct, and production fixtures contain no synthetic business data.
 6. **Operation phases:** the exact `Phase.*` closed set/legal transitions are represented once; shared presentations neither replace nor contradict them, and scans/tests find no hidden alias flags.
@@ -347,6 +355,7 @@ M1 can become `completed` only when `verification.md` contains raw evidence for 
 - **False empty claim:** because M1 reads no domain data, its production feature bodies must say the capability is not yet connected. Only an actual later data query may claim an empty record set.
 - **State-restoration overreach:** test-only probes prove the shell container; they do not authorize future domain filters, routes, or interfaces.
 - **Navigation/version drift:** Navigation Compose 2.9.8 is the accepted M1 choice. A different navigation generation or dependency version requires explicit review rather than an opportunistic upgrade.
+- **AGP/Kotlin plugin compatibility:** built-in Kotlin plus the serialization compiler plugin is not yet proven in this repository. The build-only entry gate must pass without changing `gradle.properties`; failure stops feature work and revises the approved dependency decision.
 - **Budget failure:** an exceeded budget remains a failed M1 contract. The project must optimize within scope or revise/reapprove the written spec and plan.
 
 ## 15. Documentation and ADR synchronization
@@ -362,9 +371,9 @@ M1 implementation changes that expose a conflict with a core document stop befor
 
 ## 16. Lifecycle path
 
-1. **`draft` (current):** this file clarifies behavior, boundaries, dependencies, startup prerequisite, and acceptance. No plan or implementation is authorized.
-2. **`approved`:** the user explicitly reviews and approves this written `spec.md`; the approval date/context is recorded here. `plan.md` may then be drafted/reviewed while the documentation/ADR prerequisite completes, but the plan cannot be approved until the accepted ADR, owning core documents, spec, and plan agree.
+1. **`draft` (completed 2026-08-28):** behavior, boundaries, dependencies, startup prerequisite, and acceptance were clarified without plan or implementation authority.
+2. **`approved` (current):** the user explicitly authorized independent review/correction and approval of this written `spec.md`; the approval date/context is recorded above. `plan.md` may be drafted/reviewed while the documentation/ADR prerequisite completes, but the plan cannot be approved until the accepted ADR, owning core documents, spec, and plan agree.
 3. **`in-progress`:** the startup ADR/core docs are accepted, the user explicitly approves the implementation plan, both approval facts are recorded, and M1 becomes the unique active spec. Functional work is dispatched through the agentic execution workflow.
 4. **`completed`:** every section 13 criterion and the roadmap M1 exit gate has raw evidence in `verification.md`, all affected core documents/ADR are synchronized, and no blocker remains.
 
-Approval of this draft's design discussion, a Codex review, or a generated future plan is not lifecycle approval. The user must explicitly approve the written artifact at each required gate.
+The recorded user delegation above is the explicit spec approval. A generated or Codex-reviewed future plan is still not approved; the user must explicitly approve that written plan after the architecture prerequisite is accepted and synchronized.
