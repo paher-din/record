@@ -12,7 +12,7 @@
 - **Architecture:** [Architecture overview](../../../architecture/overview.md), [Data and storage](../../../architecture/data-and-storage.md), [ADR 0010](../../../architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md)
 - **Engineering:** [Engineering conventions](../../../engineering/conventions.md), [Testing strategy](../../../engineering/testing-strategy.md), [Security and privacy](../../../engineering/security-and-privacy.md), [Agentic execution workflow](../../../engineering/agentic-workflow.md)
 - **Predecessor:** [Tech PoC P6 — Timeline performance](../../tech-poc/p6-timeline-performance/spec.md) is `completed`; P0–P6 are complete and no other spec is `in-progress`.
-- **Architecture prerequisite before plan approval:** the application-facing startup classification/recovery handoff in section 9 affects a recovery boundary. Before an M1 implementation plan may be approved, the owning data/storage and architecture facts must be synchronized and a proposed ADR 0016 must be accepted. This draft does not create or pre-accept that ADR.
+- **Architecture prerequisite before plan approval:** the application-facing startup classification/recovery handoff in section 9 affects a recovery boundary. Before an M1 implementation plan may be approved, the owning data/storage and architecture facts must be synchronized and a proposed ADR 0016 must be accepted. This specification does not create or pre-accept that ADR.
 
 ## 1. Purpose
 
