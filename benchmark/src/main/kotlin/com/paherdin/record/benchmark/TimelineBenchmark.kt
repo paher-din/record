@@ -413,7 +413,7 @@ class TimelineBenchmark {
         setAirplaneMode(true)
 
         // Foreground-control the target.
-        val out = shell("am start -W -n $targetPackage/.MainActivity")
+        val out = shell("am start -W -n $targetPackage/$TARGET_MAIN_ACTIVITY_CLASS")
         check(out.contains("Status: ok") || out.contains("LaunchState")) {
             "foreground launch of target failed: $out"
         }

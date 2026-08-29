@@ -120,6 +120,21 @@ fun refreshSettingWriteViolations(rootDir: File): List<Pair<File, String>> {
     }
 }
 
+/** M1-T01: benchmark launches must name the target Activity independently of applicationId. */
+fun applicationIdRelativeTargetActivityViolations(rootDir: File): List<Pair<File, String>> {
+    val pattern = Regex(Regex.escape("\$targetPackage/.MainActivity"))
+    val roots = listOf(
+        File(rootDir, "benchmark/src/main"),
+        File(rootDir, "app/src/benchmark"),
+    )
+    return roots.flatMap { dir ->
+        if (!dir.isDirectory) return@flatMap emptyList()
+        dir.walkTopDown().filter { it.isFile && it.extension == "kt" }.flatMap { f ->
+            pattern.findAll(f.readText()).map { f to it.value }
+        }.toList()
+    }
+}
+
 tasks.register("checkModuleDependencies") {
     group = "verification"
     description = "Enforces the exact production module set/edges and the ADR 0011 test-tool allowlist"
@@ -161,10 +176,18 @@ tasks.register("checkModuleDependencies") {
                     refreshWrites.joinToString(", ") { "${it.first}: ${it.second}" },
             )
         }
+        val relativeTargetActivities = applicationIdRelativeTargetActivityViolations(rootProject.projectDir)
+        if (relativeTargetActivities.isNotEmpty()) {
+            throw GradleException(
+                "Forbidden applicationId-relative target Activity reference(s) found: " +
+                    relativeTargetActivities.joinToString(", ") { "${it.first}: ${it.second}" },
+            )
+        }
         println(
             "checkModuleDependencies: PASS (${
                 productionModules.size
-            } production modules, test-tool = $testToolAllowlist, refresh-write scan clean)",
+            } production modules, test-tool = $testToolAllowlist, refresh-write scan clean, " +
+                "target-activity scan clean)",
         )
     }
 }
