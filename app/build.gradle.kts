@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -13,6 +14,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
@@ -25,6 +27,7 @@ android {
     buildTypes {
         create("benchmark") {
             initWith(getByName("release"))
+            applicationIdSuffix = ".benchmark"
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
@@ -44,8 +47,19 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
+    implementation(libs.navigation.compose)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.lifecycle.runtime.compose)
+
+    testImplementation(libs.junit)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.navigation.testing)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.test.manifest)
 
     // Tech PoC P6 (Task 1): benchmark-scoped only. ProfileInstaller performs the
     // Macrobenchmark profile/reset handshake on the target benchmark variant.

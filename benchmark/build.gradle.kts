@@ -51,10 +51,10 @@ dependencies {
     // Version-alignment fix (Task 3 deviation): the AndroidJUnitRunner's
     // MonitoringInstrumentation (androidx.test:monitor 1.7.2) references
     // androidx.lifecycle.ReportFragment.Companion, which needs lifecycle-runtime
-    // >= 2.8, but benchmark-macro 1.4.1 pulls 2.3.1. Align to the version the
-    // :app benchmark variant already resolves via the Compose BOM (2.9.4) so the
-    // instrumented app process never loads the old ReportFragment.
-    implementation("androidx.lifecycle:lifecycle-runtime:2.9.4")
+    // >= 2.8, but benchmark-macro 1.4.1 pulls 2.3.1. Align to the M1-selected
+    // Lifecycle 2.10.0 catalog version so the instrumented app process never
+    // loads the old ReportFragment.
+    implementation(libs.lifecycle.runtime)
     // Task 4 alignment (same class of fix): benchmark-macro:1.4.1 resolves
     // androidx.core:core:1.9.0 / androidx.collection:collection:1.0.0 into the
     // test APK, which shadow the target app's newer androidx classes in the

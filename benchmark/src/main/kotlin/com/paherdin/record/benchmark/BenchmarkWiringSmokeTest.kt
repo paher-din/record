@@ -51,7 +51,7 @@ class BenchmarkWiringSmokeTest {
 
         // 2. Launch the target app's production entry point via shell (MIUI
         // aborts background activity starts from the instrumented process).
-        val launchOut = shell("am start -W -n $targetPackage/.MainActivity")
+        val launchOut = shell("am start -W -n $targetPackage/$TARGET_MAIN_ACTIVITY_CLASS")
         assertTrue(
             "target app must launch: $launchOut",
             launchOut.contains("Status: ok") || launchOut.contains("LaunchState"),

@@ -21,7 +21,8 @@ import org.json.JSONObject
  * `getString(key, default)` mirrors the `SharedPreferences` call shape so the
  * Task 3/4/5 test call sites change mechanically.
  */
-internal const val TARGET_APP_PACKAGE = "com.paherdin.record"
+internal const val TARGET_APP_PACKAGE = "com.paherdin.record.benchmark"
+internal const val TARGET_MAIN_ACTIVITY_CLASS = "com.paherdin.record.MainActivity"
 
 internal object TimelineSentinelBridge {
 
