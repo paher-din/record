@@ -13,13 +13,13 @@
 | `task_revision` / `attempt_id` | 1 / `M1-T01-A1` |
 | Owner / write scope | `/root/m1_t01_build`; exact plan M1-T01 build/catalog/benchmark-target/smoke-test paths only |
 | Dependencies / ready evidence | M1-T00 and M1-S01 accepted; main-agent full `check` PASS; Xiaomi 14 Pro `23116PN5BC` attached as `device`, API 36, fingerprint recorded below |
-| Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | serialization red test → approved dependency/build delta → host/module/API gates → focused P6 benchmark regression → worker report → two-stage review → main acceptance |
-| Next command | failing `SerializationPluginSmokeTest` command from plan M1-T01 Step 3 |
-| `blocked-on` | none |
+| Status / dispatch failures | `blocked` / 0 |
+| Remaining steps | relocate ignored smoke test to approved `/compat/` path → user enables Xiaomi USB installation and accepts on-device confirmation → create M1-T01-A2 → rerun focused P6 regression → final schema/diff gate → worker commit/report → two-stage review → main acceptance |
+| Next command | after changed conditions, rerun plan M1-T01 focused `:benchmark:connectedBenchmarkAndroidTest` command under attempt A2 |
+| `blocked-on` | (1) Xiaomi USB installation permission/on-device confirmation; (2) user approval to remove the ignored untracked `app/src/test/java/com/paherdin/record/build/SerializationPluginSmokeTest.kt` after recreating it at `/compat/` |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
 | Contract references | plan M1-T01; spec criteria 2, 14, 15, 17, 18; accepted ADR 0016 |
-| Last raw evidence | accepted worktree baseline plus successful M1-T01 device identity preflight below |
+| Last raw evidence | M1-T01-A1 BLOCKED device report plus successful host/build/package evidence below |
 | Last updated | 2026-08-29 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -39,7 +39,7 @@
 | 11 | Independent retention | pending | none |
 | 12 | Timeline date | pending | none |
 | 13 | Safe startup | pending | none |
-| 14 | Startup budgets and isolation | pending | none |
+| 14 | Startup budgets and isolation | BLOCKED | target/test package metadata isolated; mandatory focused device regression ran 0 tests due `INSTALL_FAILED_USER_RESTRICTED` |
 | 15 | Dependency review | pending | none |
 | 16 | Offline routes | pending | none |
 | 17 | Network/system-backup policy | pending | none |
@@ -52,7 +52,7 @@
 |---|---:|---|---|---|---:|---|---|
 | M1-T00 | 1 | `M1-T00-A1` | main agent | done | 0 | yes | accepted ADR/core docs, lifecycle/link/schema/diff checks below |
 | M1-S01 | 1 | `M1-S01-A1` | `/root/m1_s01_line_endings` | done | 0 | yes | commit `979bc816`; spec/quality APPROVED; main focused/full checks PASS |
-| M1-T01 | 1 | `M1-T01-A1` | `/root/m1_t01_build` | in_progress | 0 | no | M1-S01 accepted; approved Xiaomi reference device ready |
+| M1-T01 | 1 | `M1-T01-A1` | `/root/m1_t01_build` | blocked | 0 | no | host gates usable; device install cancelled by user, 0 tests; no commit |
 | M1-T02–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -167,6 +167,22 @@ $adb = 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe'
 
 **Result:** PASS — serial `c55ad7e4`, state `device`, product/device `shennong`, model `23116PN5BC`, market name `Xiaomi 14 Pro`, API 36, release fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`. M1-T01-A1 may dispatch.
 
+### M1-T01-A1 — build compatibility evidence and device blocker
+
+**Worker:** `/root/m1_t01_build`
+
+**RED:** approved Serialization smoke test compiled before the dependency delta and failed as expected (exit 1, 46.9 s) with unresolved `serializer`, `Json`, and `junit` references.
+
+**GREEN:** the exact serialization/module/API command passed on rerun (exit 0, 5.3 s); smoke XML reports 1 test, 0 skipped, 0 failures, 0 errors; `checkModuleDependencies` reports the exact seven production modules plus `:benchmark`; `apiBoundaryCheck` reports 4 positive and 25 negative fixtures.
+
+**Host combined result:** full `check` exit 0 in 2m38s (252 tasks); app/benchmark dependency reports and `:app:assembleBenchmark :benchmark:assembleBenchmark` exit 0. Resolved versions are Navigation 2.9.8, Serialization 1.9.0, Lifecycle 2.10.0. Target metadata is `com.paherdin.record.benchmark`; test metadata is `com.paherdin.record.benchmark.test`; target benchmark APK is non-debuggable/profileable and has no INTERNET permission. The AndroidX test-tool APK retains test-only permissions including INTERNET; criterion 17 remains production-target scoped and pending final artifact verification.
+
+**Mandatory device command result:** BLOCKED — exit 1 in 36.7 s with `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`; UTP started/finished 0 tests. Report: `benchmark/build/reports/androidTests/connected/benchmark/index.html`. Per device rules the worker stopped immediately, did not rerun, did not commit, and did not execute `pm clear` or manual deletion.
+
+**Preserved owned changes:** nine tracked build/catalog/target files plus one ignored smoke-test source. The approved plan path is corrected from package segment `/build/` (matched by `.gitignore` `**/build/`) to `/compat/`; attempt A2 must recreate/copy the same test at `app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt` and may remove the ignored old file only after explicit deletion approval.
+
+**Acceptance mapping:** criterion 2 has worker PASS evidence but awaits main review; criterion 14 BLOCKED; criterion 15 has worker PASS evidence but awaits review; criterion 17 has production-target partial evidence; criterion 18 remains unverified because the mandatory stop preceded final schema/diff gates.
+
 ## Deviations and remaining risk
 
 - No plan deviation in M1-T00.
@@ -174,5 +190,7 @@ $adb = 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe'
 - M1-S01 is an accepted unplanned but bounded test-infrastructure repair required to establish the clean worktree baseline. It does not count as an M1 functional task or change an approved contract.
 - The physical reference device was disconnected during plan drafting; M1-T01 must recheck it before any build-file change.
 - M1-T01-A1 was initially blocked by an empty device list; the user connected the approved Xiaomi reference device and the fresh identity/state preflight passed. No dispatch failure was counted.
+- M1-T01-A1 then became externally blocked by Xiaomi USB-install confirmation/cancellation. This is not counted as a dispatch failure and cannot be retried until the user changes the device permission state.
+- Plan path correction: the smoke-test package changes from `/build/` to `/compat/` solely because repository `.gitignore` treats any `/build/` segment as generated output. The test content/behavior and acceptance command remain unchanged apart from its class name package.
 - The separate destructive approval for clearing `com.paherdin.record.benchmark` has not been requested or granted; it is required only at M1-T10.
 - M1 remains incomplete; criteria 2–19 are pending except the initialized lifecycle record in criterion 1.

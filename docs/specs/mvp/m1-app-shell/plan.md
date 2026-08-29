@@ -207,7 +207,7 @@ git commit -m "docs: start MVP M1 app shell execution"
 - Modify: all five Android production module build files that need Compose/tests
 - Modify: `benchmark/build.gradle.kts`
 - Modify: `benchmark/.../TimelineSentinelBridge.kt`
-- Create: `app/src/test/java/com/paherdin/record/build/SerializationPluginSmokeTest.kt`
+- Create: `app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt`
 
 - [ ] **Step 1: Verify reference device without mutation**
 
@@ -220,7 +220,7 @@ Expected: exactly the approved Xiaomi device is `device`. Empty/unauthorized out
 - [ ] **Step 2: Write the failing serialization smoke test**
 
 ```kotlin
-package com.paherdin.record.build
+package com.paherdin.record.compat
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -241,7 +241,7 @@ class SerializationPluginSmokeTest {
 - [ ] **Step 3: Run the test and retain the expected failure**
 
 ```powershell
-& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.build.SerializationPluginSmokeTest --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.compat.SerializationPluginSmokeTest --console=plain
 ```
 
 Expected: FAIL because serialization plugin/runtime and test setup are not yet declared.
@@ -283,7 +283,7 @@ Do not change `gradle.properties`, production `applicationId`, compile/target/mi
 - [ ] **Step 5: Prove the smoke test and build graph**
 
 ```powershell
-& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.build.SerializationPluginSmokeTest checkModuleDependencies :core:data:apiBoundaryCheck --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.compat.SerializationPluginSmokeTest checkModuleDependencies :core:data:apiBoundaryCheck --console=plain
 ```
 
 Expected: smoke test PASS; exact 7-module + one test-tool check PASS; API guard PASS. Any plugin incompatibility stops all later tasks and triggers spec/plan revision; do not disable built-in Kotlin.
@@ -301,7 +301,7 @@ Expected: tests PASS; target package `com.paherdin.record.benchmark`; test packa
 - [ ] **Step 7: Commit the accepted build baseline**
 
 ```powershell
-git add gradle/libs.versions.toml build.gradle.kts app/build.gradle.kts core/ui/build.gradle.kts feature/finance/build.gradle.kts feature/notes/build.gradle.kts feature/timeline/build.gradle.kts benchmark/build.gradle.kts benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineSentinelBridge.kt app/src/test/java/com/paherdin/record/build/SerializationPluginSmokeTest.kt
+git add gradle/libs.versions.toml build.gradle.kts app/build.gradle.kts core/ui/build.gradle.kts feature/finance/build.gradle.kts feature/notes/build.gradle.kts feature/timeline/build.gradle.kts benchmark/build.gradle.kts benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineSentinelBridge.kt app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt
 git commit -m "build: establish M1 Compose navigation baseline"
 ```
 
