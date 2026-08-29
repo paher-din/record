@@ -11,15 +11,15 @@
 |---|---|
 | Current task | M1-T01 — dependency/build baseline and benchmark package isolation |
 | `task_revision` / `attempt_id` | 1 / `M1-T01-A1` |
-| Owner / write scope | worker not dispatched; planned build scope remains untouched |
-| Dependencies / ready evidence | M1-T00 accepted; isolated worktree baseline accepted after M1-S01; main-agent full `check` PASS |
-| Status / dispatch failures | `blocked` / 0 |
-| Remaining steps | reconnect approved Xiaomi reference device → rerun `adb devices -l` → dispatch build worker → serialization red/green → build/API/device gates |
-| Next command | `C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe devices -l` |
-| `blocked-on` | approved physical Xiaomi reference device is not attached (`adb devices -l` returned an empty list) |
-| Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
+| Owner / write scope | `/root/m1_t01_build`; exact plan M1-T01 build/catalog/benchmark-target/smoke-test paths only |
+| Dependencies / ready evidence | M1-T00 and M1-S01 accepted; main-agent full `check` PASS; Xiaomi 14 Pro `23116PN5BC` attached as `device`, API 36, fingerprint recorded below |
+| Status / dispatch failures | `in_progress` / 0 |
+| Remaining steps | serialization red test → approved dependency/build delta → host/module/API gates → focused P6 benchmark regression → worker report → two-stage review → main acceptance |
+| Next command | failing `SerializationPluginSmokeTest` command from plan M1-T01 Step 3 |
+| `blocked-on` | none |
+| Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
 | Contract references | plan M1-T01; spec criteria 2, 14, 15, 17, 18; accepted ADR 0016 |
-| Last raw evidence | main-agent `check` PASS after M1-S01; XML aggregate and reviews below |
+| Last raw evidence | accepted worktree baseline plus successful M1-T01 device identity preflight below |
 | Last updated | 2026-08-29 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -52,7 +52,7 @@
 |---|---:|---|---|---|---:|---|---|
 | M1-T00 | 1 | `M1-T00-A1` | main agent | done | 0 | yes | accepted ADR/core docs, lifecycle/link/schema/diff checks below |
 | M1-S01 | 1 | `M1-S01-A1` | `/root/m1_s01_line_endings` | done | 0 | yes | commit `979bc816`; spec/quality APPROVED; main focused/full checks PASS |
-| M1-T01 | 1 | `M1-T01-A1` | main-agent read-only preflight; worker not dispatched | blocked | 0 | no | M1-S01 accepted; `adb devices -l` remains empty on 2026-08-29 |
+| M1-T01 | 1 | `M1-T01-A1` | `/root/m1_t01_build` | in_progress | 0 | no | M1-S01 accepted; approved Xiaomi reference device ready |
 | M1-T02–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -154,12 +154,25 @@ $adb = 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe'
 
 **Result:** BLOCKED unchanged — the absent daemon was started successfully, then the relisted device table remained empty. The blocker is an unattached/unavailable external reference device, not a stale ADB server.
 
+**Resume preflight after user connected the device:**
+
+```powershell
+$adb = 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+& $adb devices -l
+& $adb shell getprop ro.product.model
+& $adb shell getprop ro.product.marketname
+& $adb shell getprop ro.build.version.sdk
+& $adb shell getprop ro.build.fingerprint
+```
+
+**Result:** PASS — serial `c55ad7e4`, state `device`, product/device `shennong`, model `23116PN5BC`, market name `Xiaomi 14 Pro`, API 36, release fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`. M1-T01-A1 may dispatch.
+
 ## Deviations and remaining risk
 
 - No plan deviation in M1-T00.
 - Environment-command correction: all plan Gradle commands now bind Temurin JDK 17.0.20+8 rather than the incompatible JDK 25 Android JBR; no behavior/criterion changed.
 - M1-S01 is an accepted unplanned but bounded test-infrastructure repair required to establish the clean worktree baseline. It does not count as an M1 functional task or change an approved contract.
 - The physical reference device was disconnected during plan drafting; M1-T01 must recheck it before any build-file change.
-- Fresh M1-T01-A1 preflight on 2026-08-29 confirmed no attached device; this is an external prerequisite blocker, not a dispatch failure and not permission to skip the device gate.
+- M1-T01-A1 was initially blocked by an empty device list; the user connected the approved Xiaomi reference device and the fresh identity/state preflight passed. No dispatch failure was counted.
 - The separate destructive approval for clearing `com.paherdin.record.benchmark` has not been requested or granted; it is required only at M1-T10.
 - M1 remains incomplete; criteria 2–19 are pending except the initialized lifecycle record in criterion 1.
