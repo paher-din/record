@@ -69,6 +69,25 @@ class QueryManifestTest {
     }
 
     @Test
+    fun frozenArtifactHashCanonicalizesCheckoutLineEndings() {
+        val lfSource = "package example\nval label = \"清单-v1\"\n"
+        val crlfSource = lfSource.replace("\n", "\r\n")
+        val crSource = lfSource.replace("\n", "\r")
+
+        val lfHashInput = canonicalUtf8BytesForFrozenHash(lfSource.toByteArray(Charsets.UTF_8))
+        val crlfHashInput = canonicalUtf8BytesForFrozenHash(crlfSource.toByteArray(Charsets.UTF_8))
+        val crHashInput = canonicalUtf8BytesForFrozenHash(crSource.toByteArray(Charsets.UTF_8))
+        assertTrue(lfHashInput.contentEquals(crlfHashInput))
+        assertTrue(lfHashInput.contentEquals(crHashInput))
+
+        val lfSha = MessageDigest.getInstance("SHA-256").digest(lfHashInput)
+        val crlfSha = MessageDigest.getInstance("SHA-256").digest(crlfHashInput)
+        val crSha = MessageDigest.getInstance("SHA-256").digest(crHashInput)
+        assertTrue(lfSha.contentEquals(crlfSha))
+        assertTrue(lfSha.contentEquals(crSha))
+    }
+
+    @Test
     fun frozenArtifactHashIsStable() {
         // The committed artifact hash is recorded in verification.md (Task 4);
         // this test pins the artifact as the comparison oracle for freshness.
@@ -77,9 +96,16 @@ class QueryManifestTest {
             "src/testFixtures/kotlin/com/paherdin/record/core/data/search/ExpectedManifestV1.kt",
         )
         assertTrue("committed ExpectedManifestV1.kt exists", source.isFile)
-        val sha = MessageDigest.getInstance("SHA-256").digest(source.readBytes())
+        val hashInput = canonicalUtf8BytesForFrozenHash(source.readBytes())
+        val sha = MessageDigest.getInstance("SHA-256").digest(hashInput)
             .joinToString("") { "%02x".format(it) }
         println("ExpectedManifestV1.kt SHA-256: $sha")
         assertEquals(FROZEN_MANIFEST_V1_SHA256, sha)
     }
+
+    private fun canonicalUtf8BytesForFrozenHash(sourceBytes: ByteArray): ByteArray =
+        sourceBytes.toString(Charsets.UTF_8)
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .toByteArray(Charsets.UTF_8)
 }
