@@ -11,15 +11,15 @@
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
 | `task_revision` / `attempt_id` | 1 / `M1-T02-A1` |
-| Owner / write scope | pending `/root/m1_t02_core_ui` dispatch; `core/ui/**` only |
+| Owner / write scope | `/root/m1_t02_core_ui`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
-| Status / dispatch failures | `pending` / 0 |
+| Status / dispatch failures | `in_progress` / 0 |
 | Remaining steps | dispatch T02 → red phase/chrome/palette tests → implement core UI contract → pure/Compose tests → commit/report → two-stage review → main acceptance |
 | Next command | plan M1-T02 Step 1 failing pure tests under Temurin 17 |
 | `blocked-on` | none |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | M1-T01 accepted evidence below |
+| Last raw evidence | M1-T01 accepted evidence below; T02 dispatch contract revision 1 |
 | Last updated | 2026-08-29 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -58,7 +58,7 @@
 | M1-T01 | 2 | `M1-T01-A4` | main-agent acceptance | blocked | 0 | no | host check PASS; device install cancelled/restricted, XML 0 tests |
 | M1-T01 | 2 | `M1-T01-A5` | main-agent integration | failed | 0 | no | retained device XML 32/0/0/0 and spec APPROVED; quality review found full benchmark relative Activity launch |
 | M1-T01 | 3 | `M1-T01-A6` | `/root/m1_t01_build` | done | 0 | yes | commits `2b0f1ed` + `98a522a`; A5 XML 32/0/0/0; reviews/main checks PASS |
-| M1-T02 | 1 | `M1-T02-A1` | pending dispatch | pending | 0 | no | ready after accepted M1-T01 |
+| M1-T02 | 1 | `M1-T02-A1` | `/root/m1_t02_core_ui` | in_progress | 0 | no | ready after accepted M1-T01 |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
