@@ -10,13 +10,13 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T01 — dependency/build baseline and benchmark package isolation |
-| `task_revision` / `attempt_id` | 1 / `M1-T01-A1` |
+| `task_revision` / `attempt_id` | 1 / `M1-T01-A2` |
 | Owner / write scope | `/root/m1_t01_build`; exact plan M1-T01 build/catalog/benchmark-target/smoke-test paths only |
 | Dependencies / ready evidence | M1-T00 and M1-S01 accepted; main-agent full `check` PASS; Xiaomi 14 Pro `23116PN5BC` attached as `device`, API 36, fingerprint recorded below |
-| Status / dispatch failures | `blocked` / 0 |
-| Remaining steps | relocate ignored smoke test to approved `/compat/` path → user enables Xiaomi USB installation and accepts on-device confirmation → create M1-T01-A2 → rerun focused P6 regression → final schema/diff gate → worker commit/report → two-stage review → main acceptance |
-| Next command | after changed conditions, rerun plan M1-T01 focused `:benchmark:connectedBenchmarkAndroidTest` command under attempt A2 |
-| `blocked-on` | (1) Xiaomi USB installation permission/on-device confirmation; (2) user approval to remove the ignored untracked `app/src/test/java/com/paherdin/record/build/SerializationPluginSmokeTest.kt` after recreating it at `/compat/` |
+| Status / dispatch failures | `in_progress` / 0 |
+| Remaining steps | recreate identical smoke test at approved `/compat/` path → verify then delete approved old ignored `/build/` file → rerun green/final schema-diff gates → rerun focused P6 device regression with on-device confirmation → worker commit/report → two-stage review → main acceptance |
+| Next command | relocate/verify the approved smoke-test source, then rerun plan M1-T01 focused `:benchmark:connectedBenchmarkAndroidTest` command |
+| `blocked-on` | none; user enabled USB installation and explicitly approved the bounded test-file relocation/deletion on 2026-08-29 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
 | Contract references | plan M1-T01; spec criteria 2, 14, 15, 17, 18; accepted ADR 0016 |
 | Last raw evidence | M1-T01-A1 BLOCKED device report plus successful host/build/package evidence below |
@@ -53,6 +53,7 @@
 | M1-T00 | 1 | `M1-T00-A1` | main agent | done | 0 | yes | accepted ADR/core docs, lifecycle/link/schema/diff checks below |
 | M1-S01 | 1 | `M1-S01-A1` | `/root/m1_s01_line_endings` | done | 0 | yes | commit `979bc816`; spec/quality APPROVED; main focused/full checks PASS |
 | M1-T01 | 1 | `M1-T01-A1` | `/root/m1_t01_build` | blocked | 0 | no | host gates usable; device install cancelled by user, 0 tests; no commit |
+| M1-T01 | 1 | `M1-T01-A2` | `/root/m1_t01_build` | in_progress | 0 | no | changed conditions: USB install enabled; exact ignored-file relocation/deletion approved |
 | M1-T02–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -182,6 +183,12 @@ $adb = 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe'
 **Preserved owned changes:** nine tracked build/catalog/target files plus one ignored smoke-test source. The approved plan path is corrected from package segment `/build/` (matched by `.gitignore` `**/build/`) to `/compat/`; attempt A2 must recreate/copy the same test at `app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt` and may remove the ignored old file only after explicit deletion approval.
 
 **Acceptance mapping:** criterion 2 has worker PASS evidence but awaits main review; criterion 14 BLOCKED; criterion 15 has worker PASS evidence but awaits review; criterion 17 has production-target partial evidence; criterion 18 remains unverified because the mandatory stop preceded final schema/diff gates.
+
+### M1-T01-A2 — retry authorization
+
+**Changed conditions recorded 2026-08-29:** the user stated “已允许 USB 安装，同意迁移并删除旧测试文件”. This authorizes only the following bounded file operation: recreate identical smoke-test content/package at `app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt`, verify the new file, then remove the ignored untracked `app/src/test/java/com/paherdin/record/build/SerializationPluginSmokeTest.kt`. Risk is limited to the agent-created untracked smoke source; no user/production data is in scope.
+
+The same task revision resumes under attempt A2 because behavior and acceptance are unchanged. The worker must not repeat destructive device/package operations, must not run `pm clear`, and must still stop if the device install prompt is cancelled or restricted again.
 
 ## Deviations and remaining risk
 
