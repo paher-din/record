@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T01 — dependency/build baseline and benchmark package isolation |
-| `task_revision` / `attempt_id` | 2 / `M1-T01-A4` |
-| Owner / write scope | main-agent acceptance run only; revision-2 implementation changes remain preserved and uncommitted |
+| `task_revision` / `attempt_id` | 3 / `M1-T01-A6` |
+| Owner / write scope | `/root/m1_t01_build`; revision-2 scope plus `benchmark/.../TimelineBenchmark.kt`; root build file already owned for machine scan |
 | Dependencies / ready evidence | M1-T00 and M1-S01 accepted; main-agent full `check` PASS; Xiaomi 14 Pro `23116PN5BC` attached as `device`, API 36, fingerprint recorded below |
-| Status / dispatch failures | `blocked` / 0 |
-| Remaining steps | user keeps Xiaomi unlocked and accepts the next USB-install prompt → create A5 → rerun corrected focused suite and retain XML before any further run → exact commit → two-stage review → main acceptance |
-| Next command | after explicit prompt-ready confirmation, rerun revision-2 focused device command with first/last/empty hash args |
-| `blocked-on` | MIUI USB-install confirmation remains transient: main-agent A4 returned `INSTALL_FAILED_USER_RESTRICTED`, 0 tests, and overwrote the prior unretained pass XML |
+| Status / dispatch failures | `in_progress` / 0 |
+| Remaining steps | add negative source scan → retain red check → fix full TimelineBenchmark Activity class → host checks/compile → follow-up commit → re-run code-quality review → main acceptance |
+| Next command | revision-3 red `checkModuleDependencies` after adding the relative-Activity source scan and before fixing `TimelineBenchmark.kt` |
+| `blocked-on` | none; user stated “已解锁，准备确认安装” |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
 | Contract references | plan M1-T01; spec criteria 2, 14, 15, 17, 18; accepted ADR 0016 |
-| Last raw evidence | main-agent host `check` PASS; A4 device XML records 0 tests plus `INSTALL_FAILED_USER_RESTRICTED` |
+| Last raw evidence | revision-2 spec review APPROVED; quality review CHANGES_REQUIRED on `TimelineBenchmark.kt:416`; retained A5 XML and host PASS remain usable |
 | Last updated | 2026-08-29 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -39,7 +39,7 @@
 | 11 | Independent retention | pending | none |
 | 12 | Timeline date | pending | none |
 | 13 | Safe startup | pending | none |
-| 14 | Startup budgets and isolation | BLOCKED | A2 revision-1 failed 9/32; A3 worker observed revision-2 32/32 but quota interruption prevented retained handoff and A4 overwrote XML with a 0-test install restriction result; fresh retained pass required |
+| 14 | Startup budgets and isolation | pending main acceptance | retained A5 revision-2 device XML 32/0/0/0; isolated target/test packages; startup budget suite itself remains M1-T10 |
 | 15 | Dependency review | pending | none |
 | 16 | Offline routes | pending | none |
 | 17 | Network/system-backup policy | pending | none |
@@ -56,6 +56,8 @@
 | M1-T01 | 1 | `M1-T01-A2` | `/root/m1_t01_build` | failed | 0 | no | install succeeded; 32 tests / 9 failures from incomplete revision-1 wiring/command; no commit |
 | M1-T01 | 2 | `M1-T01-A3` | `/root/m1_t01_build` | cancelled | 0 | no | worker reported corrected 32/32, then quota interruption prevented final report/commit; raw pass XML was later overwritten |
 | M1-T01 | 2 | `M1-T01-A4` | main-agent acceptance | blocked | 0 | no | host check PASS; device install cancelled/restricted, XML 0 tests |
+| M1-T01 | 2 | `M1-T01-A5` | main-agent integration | failed | 0 | no | retained device XML 32/0/0/0 and spec APPROVED; quality review found full benchmark relative Activity launch |
+| M1-T01 | 3 | `M1-T01-A6` | `/root/m1_t01_build` | in_progress | 0 | no | quality correction: full benchmark consumer + machine source scan |
 | M1-T02–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -214,7 +216,25 @@ The same task revision resumes under attempt A2 because behavior and acceptance 
 
 **Main-agent corrected device command:** emitted/validated all three P6 hashes, then invoked the revision-2 focused suite. Installation returned `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`; UTP ran 0 tests and overwrote the prior device XML with a 0-test result. No `pm clear`, manual uninstall, or source mutation occurred.
 
-**Current evidence rule:** the unretained A3 message cannot substitute for raw XML after A4 overwrote it. A fresh corrected run must pass and its XML must be copied/read before any other device run. Until then criterion 14 remains BLOCKED.
+**Evidence resolution:** the unretained A3 message did not substitute for raw XML after A4 overwrote it. A5 supplied the required fresh corrected pass and the XML was copied/read before any further device run.
+
+### M1-T01-A5 — retained revision-2 pass and integration commit
+
+**User condition:** device unlocked and ready for the install prompt.
+
+**Corrected command result:** PASS — oracle emission succeeded; first hash `7432b2796ab8de33c6c6bbf54ac86a8f81db500f7b904c813b9f5149a885511d`, last hash `7c055c9a0bdd0e1976b0e847fbecda5a0fc9039c643d5e2cc4c98c5ce9c10fd5`, empty hash `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`; focused suite exit 0, `BUILD SUCCESSFUL in 40s`.
+
+**Retained raw evidence:** `.superpowers/evidence/m1-t01-a5/TEST-23116PN5BC-16-benchmark.xml`; 32 tests, 0 failures, 0 errors, 0 skipped, time 18.004 s; SHA-256 `5AB2E23E5059FAE3C562429031B93EE68EB0EFCCB8647A9DECA5C023C5A37FC8`.
+
+**Main host combined result:** full `check` PASS — `BUILD SUCCESSFUL in 43s`, 252 actionable tasks (7 executed, 245 up-to-date), module check PASS.
+
+**Implementation commit:** `2b0f1ed` (`build: establish M1 Compose navigation baseline`), exactly 11 authorized paths. Post-commit scope comparison, `git show --check`, schema no-diff, and retained XML parse all PASS.
+
+**Integration deviation:** the first pre-commit ownership script contained a malformed PowerShell `throw` token and therefore did not enforce its observed extra main-owned verification path. Only the explicit 11-file list was staged; the commit was subsequently checked from `diff-tree` against the exact allowlist and passed. The malformed check is not used as evidence.
+
+**Spec-compliance review:** APPROVED — revision-2 commit exactly matched all 11 authorized paths and criteria 2/14-isolation/15/17-production/18 boundaries.
+
+**Code-quality review:** CHANGES_REQUIRED — `benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineBenchmark.kt:416` still launched `$targetPackage/.MainActivity`, which resolves to nonexistent `com.paherdin.record.benchmark.MainActivity` during the full benchmark. Revision 3 must use `TARGET_MAIN_ACTIVITY_CLASS` there and add a root source scan preventing recurrence. No other quality finding was reported.
 
 ## Deviations and remaining risk
 

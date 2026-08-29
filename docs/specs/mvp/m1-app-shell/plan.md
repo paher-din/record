@@ -19,6 +19,7 @@
 - **Architecture prerequisite:** satisfied 2026-08-29 — accepted [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) plus synchronized `docs/architecture/overview.md`, `docs/architecture/data-and-storage.md`, interaction, conventions, and security facts.
 - **Execution revision:** `task_revision = 1` for every initial task. Any accepted behavior/criterion change increments the affected task revision and requires spec/plan reapproval.
 - **M1-T01 execution correction:** `task_revision = 2` from 2026-08-29. Revision 1 proved host/package isolation but its device command omitted the three frozen P6 day hashes, and `BenchmarkWiringSmokeTest` used an applicationId-relative Activity name invalid after the approved benchmark suffix. Revision 2 adds only the test-tool wiring file and corrected evidence command; task goal and acceptance criteria are unchanged, so no spec/plan behavior reapproval is required.
+- **M1-T01 quality correction:** `task_revision = 3` from 2026-08-30. Revision 2 passed its focused device gate, but code-quality review found the full `TimelineBenchmark` lifecycle still launching `$targetPackage/.MainActivity`. Revision 3 adds that existing benchmark consumer plus a root machine scan rejecting applicationId-relative target-Activity launches. Goal and acceptance criteria remain unchanged.
 - **Reference environment:** physical Xiaomi 14 Pro; actual Android build/API/CPU/RAM recorded at execution. Device was disconnected during plan drafting.
 - **Destructive redline:** Task M1-T10 may clear only `com.paherdin.record.benchmark`, and only after a separate execution-time explanation and explicit user deletion approval. Plan approval is not deletion approval.
 - **Schema boundary:** no schema, Room Entity/DAO, database version, migration, backup format, recovery-record shape, or production generation layout change is authorized.
@@ -209,6 +210,7 @@ git commit -m "docs: start MVP M1 app shell execution"
 - Modify: `benchmark/build.gradle.kts`
 - Modify: `benchmark/.../TimelineSentinelBridge.kt`
 - Modify: `benchmark/.../BenchmarkWiringSmokeTest.kt`
+- Modify: `benchmark/.../TimelineBenchmark.kt`
 - Create: `app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt`
 
 - [ ] **Step 1: Verify reference device without mutation**
@@ -299,6 +301,14 @@ Expected: smoke test PASS; exact 7-module + one test-tool check PASS; API guard 
 val launchOut = shell("am start -W -n $targetPackage/$TARGET_MAIN_ACTIVITY_CLASS")
 ```
 
+The full `TimelineBenchmark` lifecycle uses the same constant:
+
+```kotlin
+val out = shell("am start -W -n $targetPackage/$TARGET_MAIN_ACTIVITY_CLASS")
+```
+
+Extend the root module check with a source scan over `benchmark/src/main` and `app/src/benchmark` that fails when a Kotlin source contains the literal ``$targetPackage/.MainActivity``. Run the scan before fixing `TimelineBenchmark` and retain the expected negative result; after the fix, `checkModuleDependencies` must pass. This prevents a later partial applicationId-isolation update.
+
 Generate the frozen P6 oracle, extract the exact first/last/empty selected-day hashes, then run the focused device classes against the new target ID:
 
 ```powershell
@@ -318,7 +328,7 @@ Expected: tests PASS; target package `com.paherdin.record.benchmark`; test packa
 - [ ] **Step 7: Commit the accepted build baseline**
 
 ```powershell
-git add gradle/libs.versions.toml build.gradle.kts app/build.gradle.kts core/ui/build.gradle.kts feature/finance/build.gradle.kts feature/notes/build.gradle.kts feature/timeline/build.gradle.kts benchmark/build.gradle.kts benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineSentinelBridge.kt benchmark/src/main/kotlin/com/paherdin/record/benchmark/BenchmarkWiringSmokeTest.kt app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt
+git add gradle/libs.versions.toml build.gradle.kts app/build.gradle.kts core/ui/build.gradle.kts feature/finance/build.gradle.kts feature/notes/build.gradle.kts feature/timeline/build.gradle.kts benchmark/build.gradle.kts benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineSentinelBridge.kt benchmark/src/main/kotlin/com/paherdin/record/benchmark/BenchmarkWiringSmokeTest.kt benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineBenchmark.kt app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt
 git commit -m "build: establish M1 Compose navigation baseline"
 ```
 
