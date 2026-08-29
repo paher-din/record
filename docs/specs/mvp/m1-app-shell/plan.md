@@ -18,6 +18,7 @@
 - **Plan approved:** 2026-08-29 — the user delegated independent correction/approval on 2026-08-28 and explicitly accepted ADR 0016 on 2026-08-29; the synchronized core-doc checks passed before this status change.
 - **Architecture prerequisite:** satisfied 2026-08-29 — accepted [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) plus synchronized `docs/architecture/overview.md`, `docs/architecture/data-and-storage.md`, interaction, conventions, and security facts.
 - **Execution revision:** `task_revision = 1` for every initial task. Any accepted behavior/criterion change increments the affected task revision and requires spec/plan reapproval.
+- **M1-T01 execution correction:** `task_revision = 2` from 2026-08-29. Revision 1 proved host/package isolation but its device command omitted the three frozen P6 day hashes, and `BenchmarkWiringSmokeTest` used an applicationId-relative Activity name invalid after the approved benchmark suffix. Revision 2 adds only the test-tool wiring file and corrected evidence command; task goal and acceptance criteria are unchanged, so no spec/plan behavior reapproval is required.
 - **Reference environment:** physical Xiaomi 14 Pro; actual Android build/API/CPU/RAM recorded at execution. Device was disconnected during plan drafting.
 - **Destructive redline:** Task M1-T10 may clear only `com.paherdin.record.benchmark`, and only after a separate execution-time explanation and explicit user deletion approval. Plan approval is not deletion approval.
 - **Schema boundary:** no schema, Room Entity/DAO, database version, migration, backup format, recovery-record shape, or production generation layout change is authorized.
@@ -207,6 +208,7 @@ git commit -m "docs: start MVP M1 app shell execution"
 - Modify: all five Android production module build files that need Compose/tests
 - Modify: `benchmark/build.gradle.kts`
 - Modify: `benchmark/.../TimelineSentinelBridge.kt`
+- Modify: `benchmark/.../BenchmarkWiringSmokeTest.kt`
 - Create: `app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt`
 
 - [ ] **Step 1: Verify reference device without mutation**
@@ -276,6 +278,7 @@ Merge these keys into the existing single TOML sections rather than duplicating 
 
 ```kotlin
 internal const val TARGET_APP_PACKAGE = "com.paherdin.record.benchmark"
+internal const val TARGET_MAIN_ACTIVITY_CLASS = "com.paherdin.record.MainActivity"
 ```
 
 Do not change `gradle.properties`, production `applicationId`, compile/target/min SDK, Room, schema, or module registrations.
@@ -290,10 +293,24 @@ Expected: smoke test PASS; exact 7-module + one test-tool check PASS; API guard 
 
 - [ ] **Step 6: Prove benchmark isolation and P6 harness compatibility**
 
-Run the focused device classes against the new target ID:
+`BenchmarkWiringSmokeTest` launches the fully qualified Activity class rather than an applicationId-relative class:
+
+```kotlin
+val launchOut = shell("am start -W -n $targetPackage/$TARGET_MAIN_ACTIVITY_CLASS")
+```
+
+Generate the frozen P6 oracle, extract the exact first/last/empty selected-day hashes, then run the focused device classes against the new target ID:
 
 ```powershell
-& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :benchmark:connectedBenchmarkAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.paherdin.record.benchmark.BenchmarkWiringSmokeTest,com.paherdin.record.benchmark.TimelineHarnessSelfCheckTest" --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:data:emitP6Oracle --console=plain
+$recordP6DayManifest = Import-Csv 'core/data/build/p6/day-oracles/manifest.tsv' -Delimiter "`t"
+$recordP6FirstHash = ($recordP6DayManifest | Where-Object date -eq '2023-01-01').sha256
+$recordP6LastHash = ($recordP6DayManifest | Where-Object date -eq '2025-09-26').sha256
+$recordP6EmptyHash = ($recordP6DayManifest | Where-Object date -eq '2022-12-31').sha256
+foreach ($recordP6Hash in @($recordP6FirstHash,$recordP6LastHash,$recordP6EmptyHash)) {
+    if ($recordP6Hash -notmatch '^[0-9a-f]{64}$') { throw "invalid P6 day hash: $recordP6Hash" }
+}
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :benchmark:connectedBenchmarkAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.paherdin.record.benchmark.BenchmarkWiringSmokeTest,com.paherdin.record.benchmark.TimelineHarnessSelfCheckTest" "-Pandroid.testInstrumentationRunnerArguments.p6ExpectedFirstDayHash=$recordP6FirstHash" "-Pandroid.testInstrumentationRunnerArguments.p6ExpectedLastDayHash=$recordP6LastHash" "-Pandroid.testInstrumentationRunnerArguments.p6ExpectedEmptyDayHash=$recordP6EmptyHash" --console=plain
 ```
 
 Expected: tests PASS; target package `com.paherdin.record.benchmark`; test package remains `com.paherdin.record.benchmark.test`; no command targets `com.paherdin.record`.
@@ -301,7 +318,7 @@ Expected: tests PASS; target package `com.paherdin.record.benchmark`; test packa
 - [ ] **Step 7: Commit the accepted build baseline**
 
 ```powershell
-git add gradle/libs.versions.toml build.gradle.kts app/build.gradle.kts core/ui/build.gradle.kts feature/finance/build.gradle.kts feature/notes/build.gradle.kts feature/timeline/build.gradle.kts benchmark/build.gradle.kts benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineSentinelBridge.kt app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt
+git add gradle/libs.versions.toml build.gradle.kts app/build.gradle.kts core/ui/build.gradle.kts feature/finance/build.gradle.kts feature/notes/build.gradle.kts feature/timeline/build.gradle.kts benchmark/build.gradle.kts benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineSentinelBridge.kt benchmark/src/main/kotlin/com/paherdin/record/benchmark/BenchmarkWiringSmokeTest.kt app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt
 git commit -m "build: establish M1 Compose navigation baseline"
 ```
 

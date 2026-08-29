@@ -10,13 +10,13 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T01 — dependency/build baseline and benchmark package isolation |
-| `task_revision` / `attempt_id` | 1 / `M1-T01-A2` |
-| Owner / write scope | `/root/m1_t01_build`; exact plan M1-T01 build/catalog/benchmark-target/smoke-test paths only |
+| `task_revision` / `attempt_id` | 2 / `M1-T01-A3` |
+| Owner / write scope | `/root/m1_t01_build`; plan M1-T01 revision-2 paths, adding only `BenchmarkWiringSmokeTest.kt` to the prior build/catalog/target/smoke scope |
 | Dependencies / ready evidence | M1-T00 and M1-S01 accepted; main-agent full `check` PASS; Xiaomi 14 Pro `23116PN5BC` attached as `device`, API 36, fingerprint recorded below |
 | Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | recreate identical smoke test at approved `/compat/` path → verify then delete approved old ignored `/build/` file → rerun green/final schema-diff gates → rerun focused P6 device regression with on-device confirmation → worker commit/report → two-stage review → main acceptance |
-| Next command | relocate/verify the approved smoke-test source, then rerun plan M1-T01 focused `:benchmark:connectedBenchmarkAndroidTest` command |
-| `blocked-on` | none; user enabled USB installation and explicitly approved the bounded test-file relocation/deletion on 2026-08-29 |
+| Remaining steps | fix fully qualified main-Activity wiring → generate/validate three P6 day hashes → rerun corrected focused device suite → final diff/schema/ownership gates → worker commit/report → two-stage review → main acceptance |
+| Next command | plan M1-T01 revision-2 `:core:data:emitP6Oracle`, then corrected focused device command with first/last/empty hash args |
+| `blocked-on` | none; A2 failure changed by corrected validation contract/write scope; USB installation is enabled |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
 | Contract references | plan M1-T01; spec criteria 2, 14, 15, 17, 18; accepted ADR 0016 |
 | Last raw evidence | M1-T01-A1 BLOCKED device report plus successful host/build/package evidence below |
@@ -39,7 +39,7 @@
 | 11 | Independent retention | pending | none |
 | 12 | Timeline date | pending | none |
 | 13 | Safe startup | pending | none |
-| 14 | Startup budgets and isolation | BLOCKED | target/test package metadata isolated; mandatory focused device regression ran 0 tests due `INSTALL_FAILED_USER_RESTRICTED` |
+| 14 | Startup budgets and isolation | FAIL | A1 ran 0 tests from install restriction; A2 installed but focused regression failed 9/32 because revision-1 wiring/command were incomplete; revision 2 pending |
 | 15 | Dependency review | pending | none |
 | 16 | Offline routes | pending | none |
 | 17 | Network/system-backup policy | pending | none |
@@ -53,7 +53,8 @@
 | M1-T00 | 1 | `M1-T00-A1` | main agent | done | 0 | yes | accepted ADR/core docs, lifecycle/link/schema/diff checks below |
 | M1-S01 | 1 | `M1-S01-A1` | `/root/m1_s01_line_endings` | done | 0 | yes | commit `979bc816`; spec/quality APPROVED; main focused/full checks PASS |
 | M1-T01 | 1 | `M1-T01-A1` | `/root/m1_t01_build` | blocked | 0 | no | host gates usable; device install cancelled by user, 0 tests; no commit |
-| M1-T01 | 1 | `M1-T01-A2` | `/root/m1_t01_build` | in_progress | 0 | no | changed conditions: USB install enabled; exact ignored-file relocation/deletion approved |
+| M1-T01 | 1 | `M1-T01-A2` | `/root/m1_t01_build` | failed | 0 | no | install succeeded; 32 tests / 9 failures from incomplete revision-1 wiring/command; no commit |
+| M1-T01 | 2 | `M1-T01-A3` | `/root/m1_t01_build` | in_progress | 0 | no | revised contract: full Activity class + generated first/last/empty P6 hashes |
 | M1-T02–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -189,6 +190,18 @@ $adb = 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe'
 **Changed conditions recorded 2026-08-29:** the user stated “已允许 USB 安装，同意迁移并删除旧测试文件”. This authorizes only the following bounded file operation: recreate identical smoke-test content/package at `app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt`, verify the new file, then remove the ignored untracked `app/src/test/java/com/paherdin/record/build/SerializationPluginSmokeTest.kt`. Risk is limited to the agent-created untracked smoke source; no user/production data is in scope.
 
 The same task revision resumes under attempt A2 because behavior and acceptance are unchanged. The worker must not repeat destructive device/package operations, must not run `pm clear`, and must still stop if the device install prompt is cancelled or restricted again.
+
+### M1-T01-A2 — failed device infrastructure contract
+
+**Host/final gates:** compat smoke GREEN PASS (1/0/0); full `check` PASS; schema diff and `git diff --check` PASS; exact owned scope PASS; package/permission/dependency assertions PASS.
+
+**Device command:** installation succeeded, then the revision-1 focused suite failed: `tests=32`, `failures=9`, `errors=0`, `skipped=0`, time 123.474 s. Raw XML: `benchmark/build/outputs/androidTest-results/connected/benchmark/TEST-23116PN5BC - 16-_benchmark-.xml`.
+
+**Root cause 1:** `BenchmarkWiringSmokeTest.kt` launched `$targetPackage/.MainActivity`; with target `com.paherdin.record.benchmark`, Android resolved nonexistent `com.paherdin.record.benchmark.MainActivity`. APK metadata/badging shows the actual class remains `com.paherdin.record.MainActivity`.
+
+**Root cause 2:** revision-1 command passed only the class argument. `TimelineHarnessSelfCheckTest` requires `p6ExpectedFirstDayHash`, `p6ExpectedLastDayHash`, and `p6ExpectedEmptyDayHash`; preparation failed before seed, leaving the isolated shadow DB at 0 rows and causing the remaining failures.
+
+**Classification:** test-infrastructure/plan contract failure, not a product or P6 technical conclusion. The same command cannot be retried unchanged. M1-T01 revision 2 adds the wiring-test file to scope and restores the P6-approved oracle/hash preparation command. Goal and acceptance criteria are unchanged; no spec behavior revision is required.
 
 ## Deviations and remaining risk
 
