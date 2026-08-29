@@ -51,12 +51,12 @@ flowchart LR
 
 | Gradle module | Responsibility |
 |---|---|
-| `:app` | Application, navigation, dependency injection, theme, deep links, and the system share entry. |
+| `:app` | Application, navigation, dependency injection, theme, deep links, the system share entry, and application-scoped startup progress plus recovery/shell routing. |
 | `:feature:finance` | Accounts, transactions, categories, balances, and basic statistics. |
 | `:feature:notes` | Markdown notes, images, and transaction-note interaction. |
 | `:feature:timeline` | Day timeline, project aggregation, and unified search results. |
 | `:core:model` | Pure Kotlin domain IDs, `Money`, enums, and public value objects. |
-| `:core:data` | Room, repositories, transactions, attachments, search, migration, import/export, and idempotent maintenance handlers. |
+| `:core:data` | Room, repositories, transactions, attachments, search, migration, import/export, the single startup/recovery coordinator, and idempotent maintenance handlers. |
 | `:core:ui` | Design system, amount input, date components, and shared UI states. |
 
 The test-tool project has a separate responsibility:
@@ -91,10 +91,26 @@ Read flow:
 
 ```mermaid
 flowchart LR
-    ReadSource["Room Flow / query projection"] --> Repository
+ReadSource["Room Flow / query projection"] --> Repository
     Repository --> State["StateFlow&lt;UiState&gt;"]
     State --> ComposeUI["Compose UI"]
 ```
+
+Startup flow:
+
+```mermaid
+flowchart LR
+    Launch["App launch"] --> AppState[":app startup state holder"]
+    AppState --> Startup[":core:data RecordStartup"]
+    Startup --> Record["Recovery-record classification"]
+    Record --> Resolver["Bootstrap / migration / activation resolver"]
+    Startup -- "data-free progress / stable blocked result" --> AppState
+    Resolver -- "verified repository binding" --> Startup
+    AppState -- "Ready only" --> Shell["Application shell"]
+    AppState -- "pending / blocked" --> Recovery["Recovery or locked-recovery surface"]
+```
+
+`:app` owns one application-scoped startup-state lifetime and invokes the suspend `:core:data` coordinator off the main thread. `:core:data` remains the sole owner of recovery records, ordering, mutation, validation, and repository construction. Progress contains no persistence representation and cannot be used as completion evidence. The shell is constructed only from the coordinator's verified Ready result.
 
 Each ViewModel exposes an immutable `StateFlow<UiState>`. The UI sends events and renders state; it does not receive persistence representations. A ViewModel keeps all entered fields and selected media in draft state until the complete durable save succeeds. Failure leaves the draft available for correction or retry and does not surface a success state. The precise user-visible durability contract is defined by the [MVP requirements](../product/mvp-requirements.md).
 
@@ -102,7 +118,7 @@ Each ViewModel exposes an immutable `StateFlow<UiState>`. The UI sends events an
 
 AndroidX WorkManager is part of the approved native stack. It schedules only delayed, idempotent, non-user-blocking maintenance whose correctness preconditions are already durably represented: zero-reference attachment cleanup after its grace period, retry of retiring-generation cleanup, and another maintenance operation only after explicit architecture approval.
 
-WorkManager never owns user Save, CSV export, logical backup, overwrite restore, migration, generation activation/rollback, startup validation, or another correctness-critical path. `:app` synchronously resolves migration and activation startup gates before Room and the shell; foreground operations remain in their owning ViewModel/repository state machine. Workers call `:core:data` maintenance handlers through unique work keyed by persisted operation/content identity and may retry only typed transient failures under bounded policy.
+WorkManager never owns user Save, CSV export, logical backup, overwrite restore, migration, generation activation/rollback, startup validation, or another correctness-critical path. `:app` owns the foreground startup lifetime and invokes the single `:core:data` coordinator; the gate remains synchronous with respect to correctness—migration/activation resolution finishes before Room-backed normal use and the shell—even though suspend work runs off the main thread and emits data-free progress. Foreground operations remain in their owning ViewModel/repository state machine. Workers call `:core:data` maintenance handlers through unique work keyed by persisted operation/content identity and may retry only typed transient failures under bounded policy.
 
 ## Use Case policy
 

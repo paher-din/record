@@ -10,26 +10,26 @@
 
 ---
 
-- **Status:** `draft` — independently reviewed 2026-08-28 and technically ready after the corrections recorded below, but unapproved because [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) is only `Proposed` and core-document synchronization remains incomplete. M1 remains non-active and implementation is forbidden.
+- **Status:** `in-progress` — approved 2026-08-29 under the user's prior independent-review/approval delegation after ADR 0016 acceptance and core-document synchronization removed the last prerequisite. Execution starts at M1-T01; actual state/evidence lives in `verification.md`.
 - **Drafted:** 2026-08-28
-- **Independent plan review:** 2026-08-28 — user context: “你来把审阅这个plan吧，如果有问题就修复，没有问题可以自行批准”. Codex rechecked spec criteria 1–19, task/write-scope coverage, task dependencies, all 13 production routes, all 13 `Phase` tokens, startup progress transitions, destructive boundaries, type signatures, runnable commands, links, placeholders, and Git state. The plan itself has no remaining technical review finding; lifecycle approval remains blocked by the explicit prerequisite.
+- **Independent plan review:** 2026-08-28 — user context: “你来把审阅这个plan吧，如果有问题就修复，没有问题可以自行批准”. Codex rechecked spec criteria 1–19, task/write-scope coverage, task dependencies, all 13 production routes, all 13 `Phase` tokens, startup progress transitions, destructive boundaries, type signatures, runnable commands, links, placeholders, and Git state. The plan itself had no remaining technical review finding; approval waited only for the now-satisfied ADR/core-doc prerequisite.
 - **Review corrections:** concurrent startup callers now coalesce on one attempt/result; Ready and non-retryable terminal results are cached safely; detail route constructors validate canonical IDs during deserialization; benchmark identity uses runtime package + manifest metadata/signing digest rather than assuming `BuildConfig`; feature boundary scans handle the expected no-match exit code; and startup evidence paths/commands are deterministic and bounded.
-- **Spec:** [MVP M1 — App Shell](spec.md) — `approved` 2026-08-28.
-- **Plan approval:** pending explicit user approval after the architecture prerequisite below is accepted and all documents agree.
-- **Architecture prerequisite:** accepted [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) plus synchronized `docs/architecture/overview.md`, `docs/architecture/data-and-storage.md`, and affected security/interaction facts. This plan may be reviewed now but cannot be approved while that prerequisite is open.
+- **Spec:** [MVP M1 — App Shell](spec.md) — approved 2026-08-28 and `in-progress` from 2026-08-29.
+- **Plan approved:** 2026-08-29 — the user delegated independent correction/approval on 2026-08-28 and explicitly accepted ADR 0016 on 2026-08-29; the synchronized core-doc checks passed before this status change.
+- **Architecture prerequisite:** satisfied 2026-08-29 — accepted [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) plus synchronized `docs/architecture/overview.md`, `docs/architecture/data-and-storage.md`, interaction, conventions, and security facts.
 - **Execution revision:** `task_revision = 1` for every initial task. Any accepted behavior/criterion change increments the affected task revision and requires spec/plan reapproval.
 - **Reference environment:** physical Xiaomi 14 Pro; actual Android build/API/CPU/RAM recorded at execution. Device was disconnected during plan drafting.
 - **Destructive redline:** Task M1-T10 may clear only `com.paherdin.record.benchmark`, and only after a separate execution-time explanation and explicit user deletion approval. Plan approval is not deletion approval.
 - **Schema boundary:** no schema, Room Entity/DAO, database version, migration, backup format, recovery-record shape, or production generation layout change is authorized.
 
-## Pre-approval documentation prerequisite (outside task execution)
+## Plan-approval documentation prerequisite (satisfied 2026-08-29)
 
-Before this plan can be approved:
+The following prerequisite is complete:
 
-1. Create `docs/architecture/decisions/0016-application-facing-startup-gate-handoff.md` as a proposed ADR containing: current synchronous `RecordRepository.open()` limitation; considered blocking-open, duplicate-app-recovery, and coordinator-observer options; selected single-owner coordinator; public outcome/error/privacy surface; idempotent Retry; no-schema/no-record-format impact; compatibility/removal path.
-2. Update `docs/architecture/overview.md` and `docs/architecture/data-and-storage.md` so one `:core:data` coordinator classifies/emits safe progress, retains ownership of the P5 protocol, and yields a repository only after the complete gate. Update `docs/engineering/security-and-privacy.md` only if ADR review changes the data-free recovery disclosure.
-3. Obtain explicit ADR acceptance. Synchronize `spec.md` and this plan with the accepted wording; if behavior, types, ownership, or acceptance changes, record a spec revision and explicit reapproval.
-4. Record plan approval metadata, then move M1 to the unique `in-progress` state and update `AGENTS.md`, `docs/index.md`, and `docs/roadmap.md` before any functional dispatch.
+1. `docs/architecture/decisions/0016-application-facing-startup-gate-handoff.md` records the synchronous-open limitation, rejected alternatives, selected single-owner coordinator, public outcome/error/privacy surface, idempotent Retry, no-persistence impact, and compatibility/removal path; the user accepted it on 2026-08-29.
+2. `docs/architecture/overview.md`, `docs/architecture/data-and-storage.md`, `docs/experience/interaction-rules.md`, `docs/engineering/conventions.md`, and `docs/engineering/security-and-privacy.md` are synchronized to the accepted decision.
+3. `spec.md` and this plan use the accepted `Checking → RecoveryDetected → Recovering` contract and matching public type shape; no behavior or acceptance revision was required.
+4. Plan approval and unique `in-progress` lifecycle metadata are recorded before functional dispatch.
 
 ## Execution and evidence rules
 
@@ -128,11 +128,11 @@ M1-T04, M1-T05, and M1-T06 may run concurrently with separate full dispatch cont
 - Modify: `docs/index.md`
 - Modify: `docs/roadmap.md`
 
-- [ ] **Step 1: Verify approvals and architecture prerequisite**
+- [x] **Step 1: Verify approvals and architecture prerequisite**
 
 Read the accepted ADR 0016, synchronized core documents, spec approval, and explicit plan approval. Assert zero other `in-progress` specs. Expected: every prerequisite recorded; otherwise M1 remains `approved` and execution stops.
 
-- [ ] **Step 2: Write the verification skeleton**
+- [x] **Step 2: Write the verification skeleton**
 
 Create `verification.md` with this exact top-level structure:
 
@@ -183,11 +183,11 @@ Create `verification.md` with this exact top-level structure:
 ## Deviations and remaining risk
 ```
 
-- [ ] **Step 3: Move lifecycle state to active**
+- [x] **Step 3: Move lifecycle state to active**
 
 Set spec/plan to `in-progress`, record both approval contexts, and update the three routers to name M1 as the unique active spec. Do not change behavior or acceptance text.
 
-- [ ] **Step 4: Validate and commit lifecycle activation**
+- [x] **Step 4: Validate and commit lifecycle activation**
 
 Run link/status scans plus `git diff --check`. Expected: exactly one `in-progress` spec and clean checks.
 

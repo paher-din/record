@@ -1,9 +1,9 @@
 # MVP M1 — App Shell
 
-- **Status:** `approved` — 2026-08-28. The user explicitly delegated an independent Codex review, correction of any findings, and spec approval when no blocker remained. The review passed after the contrast, launch-identity, benchmark-isolation, and AGP built-in-Kotlin compatibility-gate corrections recorded below. M1 is not active; `plan.md` may be drafted, but implementation remains forbidden until the architecture prerequisite and explicit plan approval are recorded.
+- **Status:** `in-progress` — 2026-08-29. ADR 0016 was explicitly accepted, the owning core documents were synchronized, and the independently reviewed plan was approved under the user's prior delegation. M1 is the project's unique active specification; execution starts at M1-T01 under `verification.md`.
 - **Drafted:** 2026-08-28
 - **Spec approved:** 2026-08-28 — user context: “你自己来审阅一遍，如果有问题就修复，没问题可以自行批准并进入plan撰写”. Codex independently rechecked core-document consistency, scope, dependencies, benchmark isolation, lifecycle rules, every acceptance row, relative links, and accessibility color contrast; no blocker remained after inline corrections.
-- **Plan draft:** 2026-08-28 — [plan.md](plan.md) is written and independently reviewed with no remaining technical finding, but unapproved. [Proposed ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) and core-document synchronization remain blocking prerequisites to plan approval; no implementation authority exists.
+- **Plan approved:** 2026-08-29 — [plan.md](plan.md) was independently reviewed under the user's 2026-08-28 delegation (“你来把审阅这个plan吧，如果有问题就修复，没有问题可以自行批准”). The last blocker was removed when the user explicitly accepted ADR 0016 on 2026-08-29; core-document synchronization passed before activation.
 - **Independent review corrections:** changed the light warm accent from `#9B6741` (4.26:1) to `#925D39` (4.89:1); added the missing adaptive/monochrome launcher identity and platform starting-window contract; bound destructive startup fixtures to `com.paherdin.record.benchmark` with separate execution-time deletion approval; made AGP 9.3 built-in Kotlin + Serialization plus Lifecycle benchmark alignment the first active implementation gate; and preserved the owning interaction transition table by routing pending startup through legal `Phase.Checking → Phase.Running → Phase.Recovering` transitions.
 - **Design inputs confirmed:** 2026-08-28 — during pre-spec brainstorming, the user confirmed the Simplified Chinese UI baseline, visual direction A (warm editorial), theme strategy A1 (system-following light/dark), product-grade empty-shell completion level, tappable typed global-create placeholders, Navigation Compose approach A, the startup budgets, and all five design sections. These confirmations are design inputs, not approval of this written `spec.md`.
 - **Roadmap:** [MVP M1 — App shell](../../../roadmap.md)
@@ -12,7 +12,7 @@
 - **Architecture:** [Architecture overview](../../../architecture/overview.md), [Data and storage](../../../architecture/data-and-storage.md), [ADR 0010](../../../architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md)
 - **Engineering:** [Engineering conventions](../../../engineering/conventions.md), [Testing strategy](../../../engineering/testing-strategy.md), [Security and privacy](../../../engineering/security-and-privacy.md), [Agentic execution workflow](../../../engineering/agentic-workflow.md)
 - **Predecessor:** [Tech PoC P6 — Timeline performance](../../tech-poc/p6-timeline-performance/spec.md) is `completed`; P0–P6 are complete and no other spec is `in-progress`.
-- **Architecture prerequisite before plan approval:** the application-facing startup classification/recovery handoff in section 9 affects a recovery boundary. Before an M1 implementation plan may be approved, the owning data/storage and architecture facts must be synchronized and [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) must be accepted. ADR 0016 is currently `Proposed`; this specification does not pre-accept it.
+- **Architecture prerequisite satisfied:** 2026-08-29 — [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) is `Accepted`; architecture, data/storage, interaction, conventions, and security facts are synchronized. No schema, migration, recovery-record, backup-format, or generation-layout decision changed.
 
 ## 1. Purpose
 
@@ -374,8 +374,8 @@ M1 implementation changes that expose a conflict with a core document stop befor
 ## 16. Lifecycle path
 
 1. **`draft` (completed 2026-08-28):** behavior, boundaries, dependencies, startup prerequisite, and acceptance were clarified without plan or implementation authority.
-2. **`approved` (current):** the user explicitly authorized independent review/correction and approval of this written `spec.md`; the approval date/context is recorded above. `plan.md` may be drafted/reviewed while the documentation/ADR prerequisite completes, but the plan cannot be approved until the accepted ADR, owning core documents, spec, and plan agree.
-3. **`in-progress`:** the startup ADR/core docs are accepted, the user explicitly approves the implementation plan, both approval facts are recorded, and M1 becomes the unique active spec. Functional work is dispatched through the agentic execution workflow.
+2. **`approved` (completed 2026-08-29):** the written spec remained approved while the plan and ADR prerequisite were reviewed.
+3. **`in-progress` (current):** ADR 0016/core docs are accepted and synchronized, the plan approval delegation is recorded above, and M1 is the unique active spec. Functional work is dispatched through the agentic execution workflow.
 4. **`completed`:** every section 13 criterion and the roadmap M1 exit gate has raw evidence in `verification.md`, all affected core documents/ADR are synchronized, and no blocker remains.
 
-The recorded user delegation above is the explicit spec approval. A generated or Codex-reviewed future plan is still not approved; the user must explicitly approve that written plan after the architecture prerequisite is accepted and synchronized.
+The recorded user delegations are the explicit spec and plan approvals. Any later behavior/acceptance revision still requires explicit reapproval before the affected task revision executes.

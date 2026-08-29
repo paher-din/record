@@ -2,13 +2,13 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
-2026-08-28
+2026-08-29
 
-This ADR is proposed by the approved [MVP M1 app-shell specification](../../specs/mvp/m1-app-shell/spec.md). It has not been accepted and does not authorize implementation or plan approval.
+The user explicitly accepted ADR 0016 on 2026-08-29 by replying “接受 ADR 0016”. The owning core documents were synchronized before M1 plan approval and activation.
 
 ## Context
 
@@ -157,9 +157,9 @@ Removing the new handoff would remove only public coordinator/progress code and 
 - Startup Macrobenchmark proves healthy TTID/TTFD and pending recovery-route TTID against the approved M1 budgets; a fast shell that bypasses recovery fails.
 - Schema JSON, database version, recovery-record bytes/shape, backup format, and generation layout remain unchanged.
 
-## Core-document synchronization after acceptance
+## Core-document synchronization
 
-If accepted, synchronize these owning facts before plan approval:
+The accepted decision synchronizes these owning facts before plan approval:
 
 1. `architecture/overview.md`: distinguish synchronous correctness ordering from main-thread blocking; add the single `:core:data` coordinator → immutable app startup state → recovery/shell flow.
 2. `architecture/data-and-storage.md`: add the application-facing startup handoff, exact progress/result privacy boundary, single-attempt/cached-result/Retry rules, compatibility wrapper, and explicit no-persistence change.

@@ -749,9 +749,11 @@ A new user-initiated restore starts in `Phase.Selecting` with no candidate, no s
 
 Every app startup evaluates the architecture-owned migration-recovery gate first and then any generation-activation verification or restore recovery required by [data and storage](../architecture/data-and-storage.md), all before Room initialization. If none is pending, the App Lock access decision runs before the normal shell may open. If recovery is pending and App Lock is off or already authenticated, navigation enters `RestoreRecoveryRoute`. If App Lock is enabled and unauthenticated, the app renders only `LockedRecoverySurface` until authentication; the technical recovery coordinator may continue safely, but protected details and terminal routing wait behind authentication.
 
+Before classification completes, the app exposes only a data-free `Phase.Checking` launch surface. When the coordinator emits the named `RecoveryDetected` event, the UI moves to `Phase.Running` while recovery routing is dispatched; when the existing resolver owns progress, route entry moves to `Phase.Recovering`. This is the existing legal `Phase.Checking → Phase.Running → Phase.Recovering` path—there is no direct Checking-to-Recovering transition and no new phase token.
+
 **Entry state**
 
-After any required App Lock authentication, `RestoreRecoveryRoute` starts in `Phase.Recovering` while safe verification or recovery is progressing, or `Phase.BlockingFailure` when progress requires explicit user action. Bottom navigation and all normal shell destinations are absent. The screen exposes only a non-sensitive status, the current user-meaningful phase, and actions that are safe for that verified state. Before authentication, only the generic locked recovery surface is allowed.
+After any required App Lock authentication, `RestoreRecoveryRoute` starts in `Phase.Recovering` while safe verification or recovery is progressing, or `Phase.BlockingFailure` when progress requires explicit user action. Bottom navigation and all normal shell destinations are absent. The screen exposes only a non-sensitive status, the current user-meaningful phase, and actions that are safe for that verified state. Before authentication, only the generic locked recovery surface is allowed. `Checking`, `RecoveryDetected`, `Recovering`, and Blocked results contain no record count, ID, path, filename, raw stage, or exception text.
 
 **Fields and selections**
 
