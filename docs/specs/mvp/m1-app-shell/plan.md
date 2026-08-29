@@ -213,7 +213,7 @@ git commit -m "docs: start MVP M1 app shell execution"
 - Modify: `benchmark/.../TimelineBenchmark.kt`
 - Create: `app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt`
 
-- [ ] **Step 1: Verify reference device without mutation**
+- [x] **Step 1: Verify reference device without mutation**
 
 ```powershell
 & 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe' devices -l
@@ -221,7 +221,7 @@ git commit -m "docs: start MVP M1 app shell execution"
 
 Expected: exactly the approved Xiaomi device is `device`. Empty/unauthorized output is `BLOCKED`, not a build failure.
 
-- [ ] **Step 2: Write the failing serialization smoke test**
+- [x] **Step 2: Write the failing serialization smoke test**
 
 ```kotlin
 package com.paherdin.record.compat
@@ -242,7 +242,7 @@ class SerializationPluginSmokeTest {
 }
 ```
 
-- [ ] **Step 3: Run the test and retain the expected failure**
+- [x] **Step 3: Run the test and retain the expected failure**
 
 ```powershell
 & 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.compat.SerializationPluginSmokeTest --console=plain
@@ -250,7 +250,7 @@ class SerializationPluginSmokeTest {
 
 Expected: FAIL because serialization plugin/runtime and test setup are not yet declared.
 
-- [ ] **Step 4: Apply only the approved catalog/build delta**
+- [x] **Step 4: Apply only the approved catalog/build delta**
 
 Add exact catalog entries for Navigation 2.9.8, Serialization 1.9.0/plugin 2.2.10, Lifecycle 2.10.0, Compose Foundation/test artifacts, and aliases:
 
@@ -285,7 +285,7 @@ internal const val TARGET_MAIN_ACTIVITY_CLASS = "com.paherdin.record.MainActivit
 
 Do not change `gradle.properties`, production `applicationId`, compile/target/min SDK, Room, schema, or module registrations.
 
-- [ ] **Step 5: Prove the smoke test and build graph**
+- [x] **Step 5: Prove the smoke test and build graph**
 
 ```powershell
 & 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.compat.SerializationPluginSmokeTest checkModuleDependencies :core:data:apiBoundaryCheck --console=plain
@@ -293,7 +293,7 @@ Do not change `gradle.properties`, production `applicationId`, compile/target/mi
 
 Expected: smoke test PASS; exact 7-module + one test-tool check PASS; API guard PASS. Any plugin incompatibility stops all later tasks and triggers spec/plan revision; do not disable built-in Kotlin.
 
-- [ ] **Step 6: Prove benchmark isolation and P6 harness compatibility**
+- [x] **Step 6: Prove benchmark isolation and P6 harness compatibility**
 
 `BenchmarkWiringSmokeTest` launches the fully qualified Activity class rather than an applicationId-relative class:
 
@@ -325,7 +325,7 @@ foreach ($recordP6Hash in @($recordP6FirstHash,$recordP6LastHash,$recordP6EmptyH
 
 Expected: tests PASS; target package `com.paherdin.record.benchmark`; test package remains `com.paherdin.record.benchmark.test`; no command targets `com.paherdin.record`.
 
-- [ ] **Step 7: Commit the accepted build baseline**
+- [x] **Step 7: Commit the accepted build baseline**
 
 ```powershell
 git add gradle/libs.versions.toml build.gradle.kts app/build.gradle.kts core/ui/build.gradle.kts feature/finance/build.gradle.kts feature/notes/build.gradle.kts feature/timeline/build.gradle.kts benchmark/build.gradle.kts benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineSentinelBridge.kt benchmark/src/main/kotlin/com/paherdin/record/benchmark/BenchmarkWiringSmokeTest.kt benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineBenchmark.kt app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt

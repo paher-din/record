@@ -9,17 +9,17 @@
 
 | Field | Value |
 |---|---|
-| Current task | M1-T01 — dependency/build baseline and benchmark package isolation |
-| `task_revision` / `attempt_id` | 3 / `M1-T01-A6` |
-| Owner / write scope | `/root/m1_t01_build`; revision-2 scope plus `benchmark/.../TimelineBenchmark.kt`; root build file already owned for machine scan |
-| Dependencies / ready evidence | M1-T00 and M1-S01 accepted; main-agent full `check` PASS; Xiaomi 14 Pro `23116PN5BC` attached as `device`, API 36, fingerprint recorded below |
-| Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | add negative source scan → retain red check → fix full TimelineBenchmark Activity class → host checks/compile → follow-up commit → re-run code-quality review → main acceptance |
-| Next command | revision-3 red `checkModuleDependencies` after adding the relative-Activity source scan and before fixing `TimelineBenchmark.kt` |
-| `blocked-on` | none; user stated “已解锁，准备确认安装” |
-| Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
-| Contract references | plan M1-T01; spec criteria 2, 14, 15, 17, 18; accepted ADR 0016 |
-| Last raw evidence | revision-2 spec review APPROVED; quality review CHANGES_REQUIRED on `TimelineBenchmark.kt:416`; retained A5 XML and host PASS remain usable |
+| Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
+| `task_revision` / `attempt_id` | 1 / `M1-T02-A1` |
+| Owner / write scope | pending `/root/m1_t02_core_ui` dispatch; `core/ui/**` only |
+| Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
+| Status / dispatch failures | `pending` / 0 |
+| Remaining steps | dispatch T02 → red phase/chrome/palette tests → implement core UI contract → pure/Compose tests → commit/report → two-stage review → main acceptance |
+| Next command | plan M1-T02 Step 1 failing pure tests under Temurin 17 |
+| `blocked-on` | none |
+| Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
+| Contract references | plan M1-T02; spec criteria 3–6 and 10 |
+| Last raw evidence | M1-T01 accepted evidence below |
 | Last updated | 2026-08-29 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -27,7 +27,7 @@
 | ID | Criterion | Status | Raw evidence |
 |---:|---|---|---|
 | 1 | Lifecycle and architecture prerequisite | PASS | ADR 0016 accepted; five core docs synchronized; spec/plan/router lifecycle scans and M1-T00 commands below |
-| 2 | Module boundary | pending | none |
+| 2 | Module boundary | PASS | M1-T01 module check, exact commit scope, spec review, and main full check |
 | 3 | Theme/localization/launch identity | pending | none |
 | 4 | Accessibility | pending | none |
 | 5 | Shared presentation | pending | none |
@@ -39,11 +39,11 @@
 | 11 | Independent retention | pending | none |
 | 12 | Timeline date | pending | none |
 | 13 | Safe startup | pending | none |
-| 14 | Startup budgets and isolation | pending main acceptance | retained A5 revision-2 device XML 32/0/0/0; isolated target/test packages; startup budget suite itself remains M1-T10 |
-| 15 | Dependency review | pending | none |
+| 14 | Startup budgets and isolation | pending | M1-T01 isolated package/device subgate PASS via retained A5 XML; numeric startup budgets remain M1-T10 |
+| 15 | Dependency review | PASS | approved versions resolved; host/dependency scans, smoke test, spec/quality reviews, and production-target manifest checks pass |
 | 16 | Offline routes | pending | none |
-| 17 | Network/system-backup policy | pending | none |
-| 18 | No premature domain work | pending | none |
+| 17 | Network/system-backup policy | pending | M1-T01 production target has no INTERNET and retains allowBackup=false; full source/merged/final gate remains T11 |
+| 18 | No premature domain work | pending | M1-T01 schema/domain/module-scope subgate PASS; cumulative final gate remains T11 |
 | 19 | Verification record | pending | this file initialized; completion requires all actual task/device/artifact evidence |
 
 ## Task log
@@ -57,8 +57,9 @@
 | M1-T01 | 2 | `M1-T01-A3` | `/root/m1_t01_build` | cancelled | 0 | no | worker reported corrected 32/32, then quota interruption prevented final report/commit; raw pass XML was later overwritten |
 | M1-T01 | 2 | `M1-T01-A4` | main-agent acceptance | blocked | 0 | no | host check PASS; device install cancelled/restricted, XML 0 tests |
 | M1-T01 | 2 | `M1-T01-A5` | main-agent integration | failed | 0 | no | retained device XML 32/0/0/0 and spec APPROVED; quality review found full benchmark relative Activity launch |
-| M1-T01 | 3 | `M1-T01-A6` | `/root/m1_t01_build` | in_progress | 0 | no | quality correction: full benchmark consumer + machine source scan |
-| M1-T02–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
+| M1-T01 | 3 | `M1-T01-A6` | `/root/m1_t01_build` | done | 0 | yes | commits `2b0f1ed` + `98a522a`; A5 XML 32/0/0/0; reviews/main checks PASS |
+| M1-T02 | 1 | `M1-T02-A1` | pending dispatch | pending | 0 | no | ready after accepted M1-T01 |
+| M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
 
@@ -235,6 +236,20 @@ The same task revision resumes under attempt A2 because behavior and acceptance 
 **Spec-compliance review:** APPROVED — revision-2 commit exactly matched all 11 authorized paths and criteria 2/14-isolation/15/17-production/18 boundaries.
 
 **Code-quality review:** CHANGES_REQUIRED — `benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineBenchmark.kt:416` still launched `$targetPackage/.MainActivity`, which resolves to nonexistent `com.paherdin.record.benchmark.MainActivity` during the full benchmark. Revision 3 must use `TARGET_MAIN_ACTIVITY_CLASS` there and add a root source scan preventing recurrence. No other quality finding was reported.
+
+### M1-T01-A6 — quality correction and final acceptance
+
+**Worker commit:** `98a522a4f1c959eead1984aedff3cd9777a5227b` (`test(benchmark): enforce fully qualified target activity`), exactly `build.gradle.kts` and `benchmark/src/main/kotlin/com/paherdin/record/benchmark/TimelineBenchmark.kt`.
+
+**RED/GREEN:** the new machine scan first failed on the exact `$targetPackage/.MainActivity` occurrence; after the one-line consumer fix, `checkModuleDependencies` passed with module, refresh-write, and target-activity scans clean. `:benchmark:assembleBenchmark`, full `check`, schema no-diff, `git diff --check`, and exact two-file ownership checks passed.
+
+**Revision-3 spec review:** APPROVED — exact two-file scope, no P6 logic change, retained A5 XML valid.
+
+**Revision-3 quality review:** APPROVED — the prior Important finding is closed; no Critical, Important, or Minor findings remain in the delta or combined T01 state.
+
+**Main-agent fresh combined result:** full `check` PASS — `BUILD SUCCESSFUL in 7s`, 252 actionable tasks (7 executed, 245 up-to-date), module/refresh/target-activity scans clean.
+
+**Main acceptance:** M1-T01 revision 3 accepted. Criteria 2 and 15 are PASS; criterion 14 package-isolation subgate, criterion 17 production-target subgate, and criterion 18 no-domain/schema subgate are retained for their later cumulative gates.
 
 ## Deviations and remaining risk
 
