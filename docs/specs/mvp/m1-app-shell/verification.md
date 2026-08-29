@@ -143,6 +143,17 @@ git diff --check
 
 **Result:** BLOCKED — ADB server started successfully, but the device list is empty. No build file, package, device setting, or app data was changed. M1-T01 functional dispatch remains withheld until the approved Xiaomi reference device is connected and reports state `device`.
 
+**Recovery check:**
+
+```powershell
+$adb = 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe'
+& $adb kill-server
+& $adb start-server
+& $adb devices -l
+```
+
+**Result:** BLOCKED unchanged — the absent daemon was started successfully, then the relisted device table remained empty. The blocker is an unattached/unavailable external reference device, not a stale ADB server.
+
 ## Deviations and remaining risk
 
 - No plan deviation in M1-T00.
