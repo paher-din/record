@@ -11,15 +11,15 @@
 |---|---|
 | Current task | M1-T01 — dependency/build baseline and benchmark package isolation |
 | `task_revision` / `attempt_id` | 1 / `M1-T01-A1` |
-| Owner / write scope | pending build-worker dispatch; `gradle/libs.versions.toml`, root and named module build files, benchmark target constant, serialization smoke test only |
-| Dependencies / ready evidence | M1-T00 accepted; ADR 0016 accepted; five owning core documents synchronized; spec and plan approvals recorded |
-| Status / dispatch failures | `pending` / 0 |
-| Remaining steps | reference-device read-only preflight → failing serialization test → approved dependency delta → host gates → focused P6 benchmark regression → evidence acceptance |
+| Owner / write scope | worker not dispatched; planned build scope remains untouched |
+| Dependencies / ready evidence | M1-T00 accepted; isolated worktree baseline accepted after M1-S01; main-agent full `check` PASS |
+| Status / dispatch failures | `blocked` / 0 |
+| Remaining steps | reconnect approved Xiaomi reference device → rerun `adb devices -l` → dispatch build worker → serialization red/green → build/API/device gates |
 | Next command | `C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe devices -l` |
-| `blocked-on` | none; reference device state not yet checked for M1-T01 |
-| Frozen environment | physical Xiaomi 14 Pro; `minSdk/targetSdk = 34`, `compileSdk = 36`, AGP 9.3.0, built-in Kotlin 2.2.10; no schema/migration change |
+| `blocked-on` | approved physical Xiaomi reference device is not attached (`adb devices -l` returned an empty list) |
+| Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
 | Contract references | plan M1-T01; spec criteria 2, 14, 15, 17, 18; accepted ADR 0016 |
-| Last raw evidence | M1-T00 commands/results below |
+| Last raw evidence | main-agent `check` PASS after M1-S01; XML aggregate and reviews below |
 | Last updated | 2026-08-29 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -51,7 +51,8 @@
 | Task | Revision | Attempt | Owner | State | Dispatch failures | Main-agent accepted | Evidence |
 |---|---:|---|---|---|---:|---|---|
 | M1-T00 | 1 | `M1-T00-A1` | main agent | done | 0 | yes | accepted ADR/core docs, lifecycle/link/schema/diff checks below |
-| M1-T01 | 1 | `M1-T01-A1` | pending dispatch | pending | 0 | no | none |
+| M1-S01 | 1 | `M1-S01-A1` | `/root/m1_s01_line_endings` | done | 0 | yes | commit `979bc816`; spec/quality APPROVED; main focused/full checks PASS |
+| M1-T01 | 1 | `M1-T01-A1` | main-agent read-only preflight; worker not dispatched | blocked | 0 | no | M1-S01 accepted; `adb devices -l` remains empty on 2026-08-29 |
 | M1-T02–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -82,9 +83,72 @@ git diff --check
 
 **Remaining risk:** reference-device availability and every functional/benchmark acceptance row remain unverified. No functional source, dependency, schema, migration, environment, secret, CI/CD, publication, or deletion action occurred in M1-T00.
 
+### M1-S01 — worktree baseline diagnosis
+
+**Command:** initial isolated-worktree `check` using `D:\Android\jbr\bin\java.exe`.
+
+**Result:** FAIL before project tests — JDK 25 caused Java target 25 / Kotlin fallback target 24 incompatibility. Classified environment binding, not repository failure.
+
+**Command:** full isolated-worktree `check` using `C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe` after mirroring the ignored SDK-only `local.properties`.
+
+**Result:** FAIL — 293 tests, 1 failure: `QueryManifestTest.frozenArtifactHashIsStable`; expected `14b381...efb1`, worktree bytes `a0a3ea...2719`. Module graph and API boundary checks passed.
+
+**Raw evidence:** `core/data/build/test-results/testDebugUnitTest/TEST-com.paherdin.record.core.data.search.QueryManifestTest.xml` in the isolated worktree.
+
+**Command:** same focused test on the clean main checkout with Temurin JDK 17.
+
+```powershell
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:data:testDebugUnitTest --tests com.paherdin.record.core.data.search.QueryManifestTest.frozenArtifactHashIsStable --console=plain
+```
+
+**Result:** PASS — main checkout source bytes hash to the frozen LF value. `Get-FileHash` proves main=`14b381...efb1`, worktree CRLF checkout=`a0a3ea...2719`, while the Git blob canonical LF bytes equal the frozen value.
+
+**Classification:** pure cross-platform test-infrastructure defect exposed by required worktree isolation. M1-S01 may normalize CRLF to LF only before hashing and add regression coverage. It may not change the frozen constant, committed fixture content, generator semantics, production code, schema, or M1 acceptance.
+
+### M1-S01 — accepted repair evidence
+
+**Changed file:** `core/data/src/test/kotlin/com/paherdin/record/core/data/search/QueryManifestTest.kt` only.
+
+**Commit:** `979bc816e743140e47d534cf08d9e4afe34b7954` (`test(search): canonicalize frozen manifest hash line endings`).
+
+**Worker red/green evidence:** original focused failure reproduced; new regression first failed because `canonicalUtf8BytesForFrozenHash` was absent; after implementation the complete `QueryManifestTest` class reports 5 tests, 0 failures, 0 errors, 0 skipped. Worker full `check` reports BUILD SUCCESSFUL and 31 XML suites / 294 tests / 0 failures / 0 errors.
+
+**Spec-compliance review:** APPROVED — LF/CRLF/lone-CR equivalence, UTF-8 boundary, private helper, unchanged frozen constant, and one-file scope all match.
+
+**Code-quality review:** APPROVED — no Critical, Important, or Minor findings; normalization order does not double-handle CRLF or alter non-line content.
+
+**Main-agent focused command:**
+
+```powershell
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:data:testDebugUnitTest --tests com.paherdin.record.core.data.search.QueryManifestTest --console=plain
+```
+
+**Result:** PASS, exit 0.
+
+**Main-agent combined command:**
+
+```powershell
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain check --console=plain
+```
+
+**Result:** PASS — `BUILD SUCCESSFUL in 41s`, 249 actionable tasks (7 executed, 242 up-to-date), `checkModuleDependencies: PASS`, no test failure.
+
+### M1-T01-A1 — reference-device preflight
+
+**Command:**
+
+```powershell
+& 'C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe' devices -l
+```
+
+**Result:** BLOCKED — ADB server started successfully, but the device list is empty. No build file, package, device setting, or app data was changed. M1-T01 functional dispatch remains withheld until the approved Xiaomi reference device is connected and reports state `device`.
+
 ## Deviations and remaining risk
 
 - No plan deviation in M1-T00.
+- Environment-command correction: all plan Gradle commands now bind Temurin JDK 17.0.20+8 rather than the incompatible JDK 25 Android JBR; no behavior/criterion changed.
+- M1-S01 is an accepted unplanned but bounded test-infrastructure repair required to establish the clean worktree baseline. It does not count as an M1 functional task or change an approved contract.
 - The physical reference device was disconnected during plan drafting; M1-T01 must recheck it before any build-file change.
+- Fresh M1-T01-A1 preflight on 2026-08-29 confirmed no attached device; this is an external prerequisite blocker, not a dispatch failure and not permission to skip the device gate.
 - The separate destructive approval for clearing `com.paherdin.record.benchmark` has not been requested or granted; it is required only at M1-T10.
 - M1 remains incomplete; criteria 2–19 are pending except the initialized lifecycle record in criterion 1.

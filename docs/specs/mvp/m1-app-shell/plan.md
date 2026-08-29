@@ -39,7 +39,7 @@ The following prerequisite is complete:
 - All Gradle commands use the known JDK directly, without mutating `PATH`, `JAVA_HOME`, `.env`, or `gradle.properties`:
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain check --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain check --console=plain
 ```
 
 - Device commands use `C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe`. Multi-minute suites run in the background and are polled; cancelled/timed-out runs are incomplete evidence.
@@ -241,7 +241,7 @@ class SerializationPluginSmokeTest {
 - [ ] **Step 3: Run the test and retain the expected failure**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.build.SerializationPluginSmokeTest --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.build.SerializationPluginSmokeTest --console=plain
 ```
 
 Expected: FAIL because serialization plugin/runtime and test setup are not yet declared.
@@ -283,7 +283,7 @@ Do not change `gradle.properties`, production `applicationId`, compile/target/mi
 - [ ] **Step 5: Prove the smoke test and build graph**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.build.SerializationPluginSmokeTest checkModuleDependencies :core:data:apiBoundaryCheck --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest --tests com.paherdin.record.build.SerializationPluginSmokeTest checkModuleDependencies :core:data:apiBoundaryCheck --console=plain
 ```
 
 Expected: smoke test PASS; exact 7-module + one test-tool check PASS; API guard PASS. Any plugin incompatibility stops all later tasks and triggers spec/plan revision; do not disable built-in Kotlin.
@@ -293,7 +293,7 @@ Expected: smoke test PASS; exact 7-module + one test-tool check PASS; API guard 
 Run the focused device classes against the new target ID:
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :benchmark:connectedBenchmarkAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.paherdin.record.benchmark.BenchmarkWiringSmokeTest,com.paherdin.record.benchmark.TimelineHarnessSelfCheckTest" --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :benchmark:connectedBenchmarkAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.paherdin.record.benchmark.BenchmarkWiringSmokeTest,com.paherdin.record.benchmark.TimelineHarnessSelfCheckTest" --console=plain
 ```
 
 Expected: tests PASS; target package `com.paherdin.record.benchmark`; test package remains `com.paherdin.record.benchmark.test`; no command targets `com.paherdin.record`.
@@ -369,7 +369,7 @@ Use only the approved palette, system light/dark selection, local `ImageVector` 
 - [ ] **Step 5: Run pure and Compose tests**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:ui:testDebugUnitTest :core:ui:connectedDebugAndroidTest --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:ui:testDebugUnitTest :core:ui:connectedDebugAndroidTest --console=plain
 ```
 
 Expected: all phase/palette/chrome tests PASS; shared states pass light/dark, semantics, Retry, and 200% font cases.
@@ -436,7 +436,7 @@ Add the exact public declarations to `api/expected-surface.txt`, add a positive 
 - [ ] **Step 5: Run all core-data gates and schema no-diff check**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:data:testDebugUnitTest :core:data:apiBoundaryCheck :core:data:connectedDebugAndroidTest --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:data:testDebugUnitTest :core:data:apiBoundaryCheck :core:data:connectedDebugAndroidTest --console=plain
 git diff --exit-code -- core/data/schemas
 ```
 
@@ -484,7 +484,7 @@ Ready copy states that Finance arrives in M2. No ID, amount, account, category, 
 - [ ] **Step 3: Run tests and boundary scan**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :feature:finance:testDebugUnitTest :feature:finance:connectedDebugAndroidTest --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :feature:finance:testDebugUnitTest :feature:finance:connectedDebugAndroidTest --console=plain
 $recordFinanceBoundary = git grep -n -E "Room|Dao|Entity|RecordRepository|Save" -- feature/finance/src/main
 if ($LASTEXITCODE -eq 0) { throw "Finance boundary leak:`n$recordFinanceBoundary" }
 if ($LASTEXITCODE -ne 1) { throw "Finance boundary scan failed with exit $LASTEXITCODE" }
@@ -528,7 +528,7 @@ data object NotesAvailability
 - [ ] **Step 3: Run tests and boundary scan**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :feature:notes:testDebugUnitTest :feature:notes:connectedDebugAndroidTest --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :feature:notes:testDebugUnitTest :feature:notes:connectedDebugAndroidTest --console=plain
 $recordNotesBoundary = git grep -n -E "Room|Dao|Entity|RecordRepository|Markdown|Save" -- feature/notes/src/main
 if ($LASTEXITCODE -eq 0) { throw "Notes boundary leak:`n$recordNotesBoundary" }
 if ($LASTEXITCODE -ne 1) { throw "Notes boundary scan failed with exit $LASTEXITCODE" }
@@ -612,7 +612,7 @@ sealed interface TimelineContent {
 - [ ] **Step 4: Run unit/Compose tests and projection-write scan**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :feature:timeline:testDebugUnitTest :feature:timeline:connectedDebugAndroidTest --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :feature:timeline:testDebugUnitTest :feature:timeline:connectedDebugAndroidTest --console=plain
 $recordTimelineBoundary = git grep -n -E "Room|Dao|Entity|RecordRepository|insert|update|delete" -- feature/timeline/src/main
 if ($LASTEXITCODE -eq 0) { throw "Timeline boundary leak:`n$recordTimelineBoundary" }
 if ($LASTEXITCODE -ne 1) { throw "Timeline boundary scan failed with exit $LASTEXITCODE" }
@@ -748,7 +748,7 @@ Create resource-backed Chinese functional strings, `Record` app name, A/A1 XML c
 - [ ] **Step 7: Run host tests/build and commit**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease checkModuleDependencies --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease checkModuleDependencies --console=plain
 ```
 
 Expected: PASS; release package remains `com.paherdin.record`; benchmark package is isolated; no manifest permission.
@@ -793,7 +793,7 @@ Render Loading/Empty/Error/Ready in light/dark and fontScale 1.0/2.0. Assert hea
 - [ ] **Step 5: Run every UI module suite and commit**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:ui:connectedDebugAndroidTest :feature:finance:connectedDebugAndroidTest :feature:notes:connectedDebugAndroidTest :feature:timeline:connectedDebugAndroidTest :app:connectedDebugAndroidTest --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:ui:connectedDebugAndroidTest :feature:finance:connectedDebugAndroidTest :feature:notes:connectedDebugAndroidTest :feature:timeline:connectedDebugAndroidTest :app:connectedDebugAndroidTest --console=plain
 ```
 
 Expected: all XML results have `failures="0" errors="0"` and named acceptance tests present.
@@ -847,7 +847,7 @@ Parse copied benchmark JSON/Perfetto metadata; require 30 unique positive sample
 - [ ] **Step 7: Run pure/build self-checks and commit**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:data:testDebugUnitTest :app:assembleBenchmark :benchmark:assembleBenchmark --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :core:data:testDebugUnitTest :app:assembleBenchmark :benchmark:assembleBenchmark --console=plain
 ```
 
 Expected: fixture/hash/parser/harness tests PASS; no device clear is run in T09.
@@ -887,7 +887,7 @@ Expected: `Success`. The harness may repeat only this exact command at the decla
 - [ ] **Step 3: Run the binding suite in background**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :benchmark:connectedBenchmarkAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.paherdin.record.benchmark.M1StartupBenchmark" --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain :benchmark:connectedBenchmarkAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.paherdin.record.benchmark.M1StartupBenchmark" --console=plain
 ```
 
 Expected: every fixture block completes with 30 valid measurements; no unexpected exit. Poll rather than interrupting a healthy run.
@@ -905,7 +905,7 @@ $recordM1AdditionalRoot = Resolve-Path -LiteralPath 'benchmark\build\outputs\con
 $recordM1DeviceOutput = Get-ChildItem -LiteralPath $recordM1AdditionalRoot -Directory | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
 if ($null -eq $recordM1DeviceOutput) { throw 'M1 AndroidX additional output directory is missing' }
 Copy-Item -LiteralPath $recordM1DeviceOutput.FullName -Destination $recordM1ReportDir -Recurse
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain "-Dm1ReportDir=$recordM1ReportDir" :core:data:validateM1StartupReports --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain "-Dm1ReportDir=$recordM1ReportDir" :core:data:validateM1StartupReports --console=plain
 ```
 
 The worker records the resolved source and destination directories in `verification.md`; the evidence root remains bounded to `benchmark/m1-frozen`. Expected: PASS with each p95 and budget printed.
@@ -932,7 +932,7 @@ Report raw paths/hashes, test XML counts, metrics, stability, command-target log
 - [ ] **Step 2: Build all final artifacts and run host gates**
 
 ```powershell
-& 'D:\Android\jbr\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain clean check :app:assembleDebug :app:assembleRelease :app:assembleBenchmark :benchmark:assembleBenchmark --console=plain
+& 'C:\Users\p3148\tools\jdk\jdk-17.0.20+8\bin\java.exe' -classpath 'gradle\wrapper\gradle-wrapper.jar' org.gradle.wrapper.GradleWrapperMain clean check :app:assembleDebug :app:assembleRelease :app:assembleBenchmark :benchmark:assembleBenchmark --console=plain
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-m1-artifacts.ps1 -ProjectRoot 'D:\record'
 ```
 
