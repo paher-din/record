@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T01 — dependency/build baseline and benchmark package isolation |
-| `task_revision` / `attempt_id` | 2 / `M1-T01-A3` |
-| Owner / write scope | `/root/m1_t01_build`; plan M1-T01 revision-2 paths, adding only `BenchmarkWiringSmokeTest.kt` to the prior build/catalog/target/smoke scope |
+| `task_revision` / `attempt_id` | 2 / `M1-T01-A4` |
+| Owner / write scope | main-agent acceptance run only; revision-2 implementation changes remain preserved and uncommitted |
 | Dependencies / ready evidence | M1-T00 and M1-S01 accepted; main-agent full `check` PASS; Xiaomi 14 Pro `23116PN5BC` attached as `device`, API 36, fingerprint recorded below |
-| Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | fix fully qualified main-Activity wiring → generate/validate three P6 day hashes → rerun corrected focused device suite → final diff/schema/ownership gates → worker commit/report → two-stage review → main acceptance |
-| Next command | plan M1-T01 revision-2 `:core:data:emitP6Oracle`, then corrected focused device command with first/last/empty hash args |
-| `blocked-on` | none; A2 failure changed by corrected validation contract/write scope; USB installation is enabled |
+| Status / dispatch failures | `blocked` / 0 |
+| Remaining steps | user keeps Xiaomi unlocked and accepts the next USB-install prompt → create A5 → rerun corrected focused suite and retain XML before any further run → exact commit → two-stage review → main acceptance |
+| Next command | after explicit prompt-ready confirmation, rerun revision-2 focused device command with first/last/empty hash args |
+| `blocked-on` | MIUI USB-install confirmation remains transient: main-agent A4 returned `INSTALL_FAILED_USER_RESTRICTED`, 0 tests, and overwrote the prior unretained pass XML |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; Temurin 17.0.20+8; Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`; `minSdk/targetSdk=34`, `compileSdk=36`; no schema/migration change |
 | Contract references | plan M1-T01; spec criteria 2, 14, 15, 17, 18; accepted ADR 0016 |
-| Last raw evidence | M1-T01-A1 BLOCKED device report plus successful host/build/package evidence below |
+| Last raw evidence | main-agent host `check` PASS; A4 device XML records 0 tests plus `INSTALL_FAILED_USER_RESTRICTED` |
 | Last updated | 2026-08-29 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -39,7 +39,7 @@
 | 11 | Independent retention | pending | none |
 | 12 | Timeline date | pending | none |
 | 13 | Safe startup | pending | none |
-| 14 | Startup budgets and isolation | FAIL | A1 ran 0 tests from install restriction; A2 installed but focused regression failed 9/32 because revision-1 wiring/command were incomplete; revision 2 pending |
+| 14 | Startup budgets and isolation | BLOCKED | A2 revision-1 failed 9/32; A3 worker observed revision-2 32/32 but quota interruption prevented retained handoff and A4 overwrote XML with a 0-test install restriction result; fresh retained pass required |
 | 15 | Dependency review | pending | none |
 | 16 | Offline routes | pending | none |
 | 17 | Network/system-backup policy | pending | none |
@@ -54,7 +54,8 @@
 | M1-S01 | 1 | `M1-S01-A1` | `/root/m1_s01_line_endings` | done | 0 | yes | commit `979bc816`; spec/quality APPROVED; main focused/full checks PASS |
 | M1-T01 | 1 | `M1-T01-A1` | `/root/m1_t01_build` | blocked | 0 | no | host gates usable; device install cancelled by user, 0 tests; no commit |
 | M1-T01 | 1 | `M1-T01-A2` | `/root/m1_t01_build` | failed | 0 | no | install succeeded; 32 tests / 9 failures from incomplete revision-1 wiring/command; no commit |
-| M1-T01 | 2 | `M1-T01-A3` | `/root/m1_t01_build` | in_progress | 0 | no | revised contract: full Activity class + generated first/last/empty P6 hashes |
+| M1-T01 | 2 | `M1-T01-A3` | `/root/m1_t01_build` | cancelled | 0 | no | worker reported corrected 32/32, then quota interruption prevented final report/commit; raw pass XML was later overwritten |
+| M1-T01 | 2 | `M1-T01-A4` | main-agent acceptance | blocked | 0 | no | host check PASS; device install cancelled/restricted, XML 0 tests |
 | M1-T02–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -203,6 +204,18 @@ The same task revision resumes under attempt A2 because behavior and acceptance 
 
 **Classification:** test-infrastructure/plan contract failure, not a product or P6 technical conclusion. The same command cannot be retried unchanged. M1-T01 revision 2 adds the wiring-test file to scope and restores the P6-approved oracle/hash preparation command. Goal and acceptance criteria are unchanged; no spec behavior revision is required.
 
+### M1-T01-A3/A4 — revision-2 implementation and retained-evidence blocker
+
+**A3 last observable worker state:** corrected revision-2 device command reported exit 0 in 43.2 s with 32/32 tests and the three hashes `7432b279...5511d`, `7c055c9a...0fd5`, and `e3b0c442...b855`. The worker then hit an external agent-usage limit while running final host gates, so agentic workflow records A3 as `cancelled`, not DONE. Implementation changes remain preserved and uncommitted.
+
+**Main-agent host acceptance command:** full `check` under Temurin 17.
+
+**Result:** PASS — `BUILD SUCCESSFUL in 43s`, 252 actionable tasks (7 executed, 245 up-to-date), exact module check PASS.
+
+**Main-agent corrected device command:** emitted/validated all three P6 hashes, then invoked the revision-2 focused suite. Installation returned `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`; UTP ran 0 tests and overwrote the prior device XML with a 0-test result. No `pm clear`, manual uninstall, or source mutation occurred.
+
+**Current evidence rule:** the unretained A3 message cannot substitute for raw XML after A4 overwrote it. A fresh corrected run must pass and its XML must be copied/read before any other device run. Until then criterion 14 remains BLOCKED.
+
 ## Deviations and remaining risk
 
 - No plan deviation in M1-T00.
@@ -211,6 +224,7 @@ The same task revision resumes under attempt A2 because behavior and acceptance 
 - The physical reference device was disconnected during plan drafting; M1-T01 must recheck it before any build-file change.
 - M1-T01-A1 was initially blocked by an empty device list; the user connected the approved Xiaomi reference device and the fresh identity/state preflight passed. No dispatch failure was counted.
 - M1-T01-A1 then became externally blocked by Xiaomi USB-install confirmation/cancellation. This is not counted as a dispatch failure and cannot be retried until the user changes the device permission state.
+- M1-T01-A3 is recorded `cancelled` because the worker's usage-limit failure prevented a completion report/commit, despite usable last-observable device output. M1-T01-A4 is an external install blocker, not a dispatch failure. Neither permits a false PASS.
 - Plan path correction: the smoke-test package changes from `/build/` to `/compat/` solely because repository `.gitignore` treats any `/build/` segment as generated output. The test content/behavior and acceptance command remain unchanged apart from its class name package.
 - The separate destructive approval for clearing `com.paherdin.record.benchmark` has not been requested or granted; it is required only at M1-T10.
 - M1 remains incomplete; criteria 2–19 are pending except the initialized lifecycle record in criterion 1.
