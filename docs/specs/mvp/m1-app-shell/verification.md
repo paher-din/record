@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 2 / `M1-T02-A5` |
+| `task_revision` / `attempt_id` | 2 / `M1-T02-A6` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
 | Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | replace the hanging palette test harness only → obtain a bounded targeted device RED → fix theme/semantics/EOF findings → unit/device/full checks → commit/report → two-stage review → main acceptance |
-| Next command | revised targeted `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette` device RED with a 3-minute host timeout |
-| `blocked-on` | none; Xiaomi 14 Pro identity/state preflight passed on 2026-08-30 |
+| Remaining steps | fix theme/semantics/EOF findings from the proven palette RED → unit/host checks → obtain explicit MIUI app-op approval → device GREEN/full check → commit/report → two-stage review → main acceptance |
+| Next command | implement the audited production fixes and run task-local host tests; do not change the device app-op before approval |
+| `blocked-on` | device GREEN only: explicit approval to set test-package-only `MIUIOP(10021)` from `ignore` to `allow`, then restore/uninstall |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A4 UTP log: 1 test started, 0 completed for 1176 seconds; user-requested interruption produced `TEST_INTERRUPTED`; exact wrapper/test package stopped, device remains `device` |
+| Last raw evidence | A5 postmortem: JDB stack at `Instrumentation.startActivitySync`; Xiaomi logs `Abort background activity starts` result 102; exact shell Intent released the rule and produced expected palette RED 1/1 |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -62,7 +62,8 @@
 | M1-T02 | 1 | `M1-T02-A2` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | audit found theme/semantics/test gaps; unit compile PASS; device list became empty before behavior RED |
 | M1-T02 | 1 | `M1-T02-A3` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | targeted RED hit the 304-second host timeout with no Gradle output or assertion; no production changes |
 | M1-T02 | 1 | `M1-T02-A4` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | test started but hung at 0/1 for 1176 seconds; user requested stop; UTP classified the interruption as infrastructure |
-| M1-T02 | 2 | `M1-T02-A5` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | revise only the hanging Compose test harness; obtain the same palette RED within a 3-minute bound |
+| M1-T02 | 2 | `M1-T02-A5` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | standard command timed out at 184 seconds; main postmortem proved OEM background-start rejection and obtained the expected palette RED with an exact shell Intent |
+| M1-T02 | 2 | `M1-T02-A6` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | production/host fix may proceed; device GREEN waits for explicit temporary test-package app-op approval |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -100,6 +101,14 @@
 **Classification:** the targeted test's mutable dark-theme transition plus `runOnIdle`/`waitForIdle` path can hang without reaching the intended palette assertion. This is a test-infrastructure failure; the approved A/A1 palette behavior and task acceptance do not change.
 
 **Revision-2 contract:** modify the targeted test only so one bounded composition captures both explicit light and dark `MaterialTheme.colorScheme` values without state mutation, `runOnIdle`, or an unbounded idle wait. Keep the same exhaustive role assertions. Use a 3-minute host timeout for the exact targeted device RED and do not modify production until it fails on the expected non-A/A1 role assertion. Any install restriction, disconnect, timeout, or different failure stops the attempt.
+
+**Standard-command result:** FAILED / incomplete — the revised harness still timed out after 184.024 seconds, exit 124, with no assertion output. It changed only `SharedContentTest.kt`; no production file was modified and no GREEN or commit followed.
+
+**Main-agent postmortem:** direct instrumentation reproduced the hang. A live JDB `where all` proved the runner thread was waiting in `Instrumentation.startActivitySync` through `ActivityScenario.launch`, before the test body. Xiaomi's ActivityTaskManager simultaneously logged `Abort background activity starts from <test uid>` and result code 102 for the exact `androidx.activity.ComponentActivity` Intent. The package remained awake/unlocked, its merged test manifest contained the exported host Activity, and the Activity launched normally from shell; therefore the failure is the OEM background-start policy, not Compose, RecordTheme, or the assertion harness.
+
+**Expected RED recovered:** while the direct instrumentation remained at the blocked start, the main agent launched the exact action/category/component/flags recorded by ActivityScenario from shell. The rule immediately resumed and AndroidJUnitRunner reported 1 test, 1 failure, 0 ignored with the expected `AssertionError: unexpected non-error roles` at `SharedContentTest.kt`. This is sufficient test-first evidence for the audited RecordTheme production fix.
+
+**Device-policy evidence:** `appops get com.paherdin.record.core.ui.test` reports `MIUIOP(10021): ignore` with the rejection timestamp. No app-op or phone setting has been changed. A6 may implement production and run host checks now; device GREEN requires separate approval to set only this disposable test package's op to `allow`, followed by restore to `ignore` or automatic UTP uninstall. The risk is limited to that test APK being able to show a window from background while installed.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
