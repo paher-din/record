@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 2 / `M1-T02-A6` |
+| `task_revision` / `attempt_id` | 2 / `M1-T02-A7` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
-| Status / dispatch failures | `blocked` / 0 |
-| Remaining steps | obtain explicit MIUI app-op approval → device GREEN → commit/report → two-stage review → main acceptance |
-| Next command | after approval only: set test-package `MIUIOP(10021)` to `allow`, run the connected device gate, then restore/uninstall |
-| `blocked-on` | device GREEN only: explicit approval to set test-package-only `MIUIOP(10021)` from `ignore` to `allow`, then restore/uninstall |
+| Status / dispatch failures | `in_progress` / 0 |
+| Remaining steps | targeted/full device GREEN → restore/uninstall test-package app-op → commit/report → two-stage review → main acceptance |
+| Next command | targeted palette GREEN, then the approved combined unit/connected task command |
+| `blocked-on` | none; user explicitly approved the temporary test-package-only app-op on 2026-08-30 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A6 post-normalization full host `check` PASS in 68.4s, 257 tasks; 14 task-local unit tests PASS; exact 13-file scope/schema/build/boundary/whitespace gates PASS |
+| Last raw evidence | A7 preflight: Xiaomi remains `device`; `appops set --user 0 ... 10021 allow` succeeded and readback is `MIUIOP(10021): allow` |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -64,6 +64,7 @@
 | M1-T02 | 1 | `M1-T02-A4` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | test started but hung at 0/1 for 1176 seconds; user requested stop; UTP classified the interruption as infrastructure |
 | M1-T02 | 2 | `M1-T02-A5` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | standard command timed out at 184 seconds; main postmortem proved OEM background-start rejection and obtained the expected palette RED with an exact shell Intent |
 | M1-T02 | 2 | `M1-T02-A6` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | host implementation/checks PASS; exact 13-file change remains uncommitted; device GREEN waits for explicit temporary test-package app-op approval |
+| M1-T02 | 2 | `M1-T02-A7` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | user approved temporary test-package app-op; readback is allow; targeted/full device GREEN and rollback remain |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -119,6 +120,12 @@
 **Raw unit XML:** Phase 4/0/0/0, RecordPalette 5/0/0/0, ShellChromePolicy 5/0/0/0. Exact planned-file scope, unchanged `core/ui/build.gradle.kts`, schema no-diff, source-boundary scan, tracked `git diff --check`, EOF, and trailing-whitespace checks pass.
 
 **State:** BLOCKED, not committed or accepted. No device/app-op action occurred in A6. The main agent requested explicit approval for the temporary test-package-only `MIUIOP(10021)` change; production/debug package state is outside the request.
+
+### M1-T02-A7 — approved temporary Xiaomi app-op
+
+**Approval:** the user explicitly replied “同意” on 2026-08-30 after the main agent named exact package `com.paherdin.record.core.ui.test`, op `MIUIOP(10021)`, reason, background-window risk, and rollback.
+
+**Preflight/action:** the Xiaomi reference device remained serial `c55ad7e4` in state `device`. The main agent ran `appops set --user 0 com.paherdin.record.core.ui.test 10021 allow`; immediate readback returned `MIUIOP(10021): allow`. This affects only the disposable test APK. A7 must run the device gate and then prove the op is restored to `ignore` or the package was removed by UTP.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
