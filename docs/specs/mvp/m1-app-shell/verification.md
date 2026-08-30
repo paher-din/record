@@ -10,13 +10,13 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 1 / `M1-T02-A2` |
+| `task_revision` / `attempt_id` | 1 / `M1-T02-A3` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
-| Status / dispatch failures | `blocked` / 0 |
-| Remaining steps | reconnect approved physical device → create M1-T02-A3 → run targeted device RED → fix theme/semantics/EOF findings → unit/device/full checks → commit/report → two-stage review → main acceptance |
-| Next command | `C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe devices -l` |
-| `blocked-on` | physical reference device absent; ADB recovery briefly saw `emulator-5554 offline`, then an empty device table |
+| Status / dispatch failures | `in_progress` / 0 |
+| Remaining steps | run targeted device RED → fix theme/semantics/EOF findings → unit/device/full checks → commit/report → two-stage review → main acceptance |
+| Next command | targeted `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette` device RED |
+| `blocked-on` | none; Xiaomi 14 Pro identity/state preflight passed on 2026-08-30 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
 | Last raw evidence | A2 audit/host compilation plus empty-device targeted-test blocker below |
@@ -60,6 +60,7 @@
 | M1-T01 | 3 | `M1-T01-A6` | `/root/m1_t01_build` | done | 0 | yes | commits `2b0f1ed` + `98a522a`; A5 XML 32/0/0/0; reviews/main checks PASS |
 | M1-T02 | 1 | `M1-T02-A1` | `/root/m1_t02_core_ui` | cancelled | 0 | no | worker disappeared without report/commit; usable uncommitted source and 15 passing tests retained |
 | M1-T02 | 1 | `M1-T02-A2` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | audit found theme/semantics/test gaps; unit compile PASS; device list became empty before behavior RED |
+| M1-T02 | 1 | `M1-T02-A3` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | changed condition: Xiaomi 14 Pro restored as API36 `device` |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -75,6 +76,12 @@
 **Targeted device RED command:** attempted `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette`; Gradle failed before assertion with `No connected devices!`. ADB restart briefly listed `emulator-5554 offline`, then the final list was empty. The worker stopped without production fixes, full check, staging, or commit.
 
 **Classification:** external device prerequisite blocker with useful audit/test work preserved. No dispatch failure counted. A3 must first restore the approved device, then execute the intended RED before modifying production theme/semantics.
+
+### M1-T02-A3 — device resume preflight
+
+**Command:** `adb devices -l` plus market/model/API/fingerprint properties.
+
+**Result:** PASS — serial `c55ad7e4`, state `device`, Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`. The same task revision resumes with the audited source/test state unchanged.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
