@@ -13,13 +13,13 @@
 | `task_revision` / `attempt_id` | 1 / `M1-T02-A2` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
-| Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | fresh-worker audit of retained source/tests → fix findings/EOF formatting → rerun unit/device/full checks → exact commit/report → two-stage review → main acceptance |
-| Next command | inspect retained core/ui source against plan/spec and rerun `:core:ui:testDebugUnitTest` under Temurin 17 |
-| `blocked-on` | none |
+| Status / dispatch failures | `blocked` / 0 |
+| Remaining steps | reconnect approved physical device → create M1-T02-A3 → run targeted device RED → fix theme/semantics/EOF findings → unit/device/full checks → commit/report → two-stage review → main acceptance |
+| Next command | `C:\Users\p3148\AppData\Local\Android\Sdk\platform-tools\adb.exe devices -l` |
+| `blocked-on` | physical reference device absent; ADB recovery briefly saw `emulator-5554 offline`, then an empty device table |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A1 uncommitted source plus unit XML 14/0/0 and device XML 1/0/0; A1 cancelled without report |
+| Last raw evidence | A2 audit/host compilation plus empty-device targeted-test blocker below |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -28,9 +28,9 @@
 |---:|---|---|---|
 | 1 | Lifecycle and architecture prerequisite | PASS | ADR 0016 accepted; five core docs synchronized; spec/plan/router lifecycle scans and M1-T00 commands below |
 | 2 | Module boundary | PASS | M1-T01 module check, exact commit scope, spec review, and main full check |
-| 3 | Theme/localization/launch identity | pending | none |
-| 4 | Accessibility | pending | none |
-| 5 | Shared presentation | pending | none |
+| 3 | Theme/localization/launch identity | FAIL | retained RecordTheme leaves non-error Material roles outside approved A/A1 palette; A3 fix required |
+| 4 | Accessibility | FAIL/BLOCKED | retained SharedContent lacks stateDescription/polite live region; strengthened test compiled but device absent |
+| 5 | Shared presentation | BLOCKED | strengthened four-state/device coverage not executed because device disappeared |
 | 6 | Operation phases | pending | none |
 | 7 | Default shell | pending | none |
 | 8 | Global actions | pending | none |
@@ -59,10 +59,22 @@
 | M1-T01 | 2 | `M1-T01-A5` | main-agent integration | failed | 0 | no | retained device XML 32/0/0/0 and spec APPROVED; quality review found full benchmark relative Activity launch |
 | M1-T01 | 3 | `M1-T01-A6` | `/root/m1_t01_build` | done | 0 | yes | commits `2b0f1ed` + `98a522a`; A5 XML 32/0/0/0; reviews/main checks PASS |
 | M1-T02 | 1 | `M1-T02-A1` | `/root/m1_t02_core_ui` | cancelled | 0 | no | worker disappeared without report/commit; usable uncommitted source and 15 passing tests retained |
-| M1-T02 | 1 | `M1-T02-A2` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | fresh worker resumes retained state; must audit/fix/verify/commit exact core/ui scope |
+| M1-T02 | 1 | `M1-T02-A2` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | audit found theme/semantics/test gaps; unit compile PASS; device list became empty before behavior RED |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
+
+### M1-T02-A1/A2 — retained implementation audit and device blocker
+
+**A1 state:** worker disappeared without a completion report or commit. Thirteen untracked `core/ui/src` files remained. Raw XML showed PhaseTest 4/0/0/0, RecordPaletteTest 5/0/0/0, ShellChromePolicyTest 5/0/0/0, and SharedContentTest 1/0/0/0. Agentic state is `cancelled`, not DONE.
+
+**A2 audit findings:** all retained files lacked EOF newlines; ShellChrome totality coverage was partly tautological; SharedContent device coverage did not prove all state/heading/retry/font/target semantics; SharedContent lacked `stateDescription` and polite live-region semantics; RecordTheme left multiple non-error Material roles at default non-A/A1 values.
+
+**A2 test-first changes:** strengthened `PhaseTest.kt`, `ShellChromePolicyTest.kt`, and `SharedContentTest.kt` only. The combined unit/androidTest compilation initially failed because a new test referenced a future ready-state resource; the test was corrected to assert the approved Chinese semantic value directly. Rerun exit 0; unit XML remains Phase 4/0/0/0, Palette 5/0/0/0, Chrome 5/0/0/0.
+
+**Targeted device RED command:** attempted `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette`; Gradle failed before assertion with `No connected devices!`. ADB restart briefly listed `emulator-5554 offline`, then the final list was empty. The worker stopped without production fixes, full check, staging, or commit.
+
+**Classification:** external device prerequisite blocker with useful audit/test work preserved. No dispatch failure counted. A3 must first restore the approved device, then execute the intended RED before modifying production theme/semantics.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
