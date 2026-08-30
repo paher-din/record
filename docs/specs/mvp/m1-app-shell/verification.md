@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 1 / `M1-T02-A4` |
+| `task_revision` / `attempt_id` | 2 / `M1-T02-A5` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
 | Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | rerun targeted device RED after exact stale-process cleanup → fix theme/semantics/EOF findings → unit/device/full checks → commit/report → two-stage review → main acceptance |
-| Next command | targeted `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette` device RED with a 20-minute host timeout |
+| Remaining steps | replace the hanging palette test harness only → obtain a bounded targeted device RED → fix theme/semantics/EOF findings → unit/device/full checks → commit/report → two-stage review → main acceptance |
+| Next command | revised targeted `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette` device RED with a 3-minute host timeout |
 | `blocked-on` | none; Xiaomi 14 Pro identity/state preflight passed on 2026-08-30 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A3 host timeout left `com.paherdin.record.core.ui.test` running; A4 force-stopped that exact package and confirmed the device remains `device` |
+| Last raw evidence | A4 UTP log: 1 test started, 0 completed for 1176 seconds; user-requested interruption produced `TEST_INTERRUPTED`; exact wrapper/test package stopped, device remains `device` |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -61,7 +61,8 @@
 | M1-T02 | 1 | `M1-T02-A1` | `/root/m1_t02_core_ui` | cancelled | 0 | no | worker disappeared without report/commit; usable uncommitted source and 15 passing tests retained |
 | M1-T02 | 1 | `M1-T02-A2` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | audit found theme/semantics/test gaps; unit compile PASS; device list became empty before behavior RED |
 | M1-T02 | 1 | `M1-T02-A3` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | targeted RED hit the 304-second host timeout with no Gradle output or assertion; no production changes |
-| M1-T02 | 1 | `M1-T02-A4` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | changed condition: exact stale test package force-stopped; Xiaomi remains API36 `device`; host timeout raised to 20 minutes |
+| M1-T02 | 1 | `M1-T02-A4` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | test started but hung at 0/1 for 1176 seconds; user requested stop; UTP classified the interruption as infrastructure |
+| M1-T02 | 2 | `M1-T02-A5` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | revise only the hanging Compose test harness; obtain the same palette RED within a 3-minute bound |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -90,7 +91,15 @@
 
 **Changed condition:** post-timeout inspection found `com.paherdin.record.core.ui.test` still running on the reference device. The main agent ran only `adb shell am force-stop com.paherdin.record.core.ui.test`; a follow-up process scan was empty and `adb devices -l` still reported serial `c55ad7e4` as `device`. No package data, installation, source, or device setting was deleted or reset.
 
-**Retry contract:** task revision 1 and acceptance remain unchanged. The same targeted RED may be retried with a 20-minute host timeout; production theme/semantics fixes remain forbidden until that RED reaches the intended failing assertion.
+**Retry result:** CANCELLED / incomplete by explicit user request after the command again produced no console output for a prolonged period. Post-stop raw artifacts prove UTP did start `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette`: `test-results.log` contains the start event only, and the generated XML records one test, zero failures/errors, elapsed 1176.351 seconds, plus `TEST_INTERRUPTED` / `AndroidInstrumentationDriver was canceled`. The Gradle daemon records `Tests 0/1 completed` followed by client disconnection. This is not a product PASS or FAIL.
+
+**Exact stop evidence:** after the agent interruption left child work alive, the main agent stopped only wrapper PID 97644 and ran `adb shell am force-stop com.paherdin.record.core.ui.test`. Follow-up host/device process scans were empty for those exact targets and serial `c55ad7e4` remained `device`. The shared Gradle daemon, installed package, package data, device settings, and source were not cleared or deleted.
+
+### M1-T02-A5 — bounded test-harness revision
+
+**Classification:** the targeted test's mutable dark-theme transition plus `runOnIdle`/`waitForIdle` path can hang without reaching the intended palette assertion. This is a test-infrastructure failure; the approved A/A1 palette behavior and task acceptance do not change.
+
+**Revision-2 contract:** modify the targeted test only so one bounded composition captures both explicit light and dark `MaterialTheme.colorScheme` values without state mutation, `runOnIdle`, or an unbounded idle wait. Keep the same exhaustive role assertions. Use a 3-minute host timeout for the exact targeted device RED and do not modify production until it fails on the expected non-A/A1 role assertion. Any install restriction, disconnect, timeout, or different failure stops the attempt.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
