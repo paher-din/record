@@ -13,13 +13,13 @@
 | `task_revision` / `attempt_id` | 2 / `M1-T02-A6` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
-| Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | fix theme/semantics/EOF findings from the proven palette RED → unit/host checks → obtain explicit MIUI app-op approval → device GREEN/full check → commit/report → two-stage review → main acceptance |
-| Next command | implement the audited production fixes and run task-local host tests; do not change the device app-op before approval |
+| Status / dispatch failures | `blocked` / 0 |
+| Remaining steps | obtain explicit MIUI app-op approval → device GREEN → commit/report → two-stage review → main acceptance |
+| Next command | after approval only: set test-package `MIUIOP(10021)` to `allow`, run the connected device gate, then restore/uninstall |
 | `blocked-on` | device GREEN only: explicit approval to set test-package-only `MIUIOP(10021)` from `ignore` to `allow`, then restore/uninstall |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A5 postmortem: JDB stack at `Instrumentation.startActivitySync`; Xiaomi logs `Abort background activity starts` result 102; exact shell Intent released the rule and produced expected palette RED 1/1 |
+| Last raw evidence | A6 post-normalization full host `check` PASS in 68.4s, 257 tasks; 14 task-local unit tests PASS; exact 13-file scope/schema/build/boundary/whitespace gates PASS |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -28,14 +28,14 @@
 |---:|---|---|---|
 | 1 | Lifecycle and architecture prerequisite | PASS | ADR 0016 accepted; five core docs synchronized; spec/plan/router lifecycle scans and M1-T00 commands below |
 | 2 | Module boundary | PASS | M1-T01 module check, exact commit scope, spec review, and main full check |
-| 3 | Theme/localization/launch identity | FAIL | retained RecordTheme leaves non-error Material roles outside approved A/A1 palette; A3 fix required |
-| 4 | Accessibility | FAIL/BLOCKED | retained SharedContent lacks stateDescription/polite live region; strengthened test compiled but device absent |
-| 5 | Shared presentation | BLOCKED | strengthened four-state/device coverage not executed because device disappeared |
-| 6 | Operation phases | pending | none |
+| 3 | Theme/localization/launch identity | BLOCKED | expected palette RED recovered; A6 complete non-error A/A1 mapping compiles and host check passes; device GREEN awaits test-package app-op approval |
+| 4 | Accessibility | BLOCKED | A6 heading/stateDescription/polite-live-region/48-dp implementation compiles; physical-device behavior gate awaits app-op approval |
+| 5 | Shared presentation | BLOCKED | A6 four-state implementation/test compilation passes; physical-device behavior gate awaits app-op approval |
+| 6 | Operation phases | pending review | A6 task-local Phase XML 4/0/0/0 and full host check PASS; task remains unaccepted until device/reviews |
 | 7 | Default shell | pending | none |
 | 8 | Global actions | pending | none |
 | 9 | Typed/source-owned routing | pending | none |
-| 10 | Chrome rules | pending | none |
+| 10 | Chrome rules | pending review | A6 task-local Chrome XML 5/0/0/0 and full host check PASS; task remains unaccepted until device/reviews |
 | 11 | Independent retention | pending | none |
 | 12 | Timeline date | pending | none |
 | 13 | Safe startup | pending | none |
@@ -63,7 +63,7 @@
 | M1-T02 | 1 | `M1-T02-A3` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | targeted RED hit the 304-second host timeout with no Gradle output or assertion; no production changes |
 | M1-T02 | 1 | `M1-T02-A4` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | test started but hung at 0/1 for 1176 seconds; user requested stop; UTP classified the interruption as infrastructure |
 | M1-T02 | 2 | `M1-T02-A5` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | standard command timed out at 184 seconds; main postmortem proved OEM background-start rejection and obtained the expected palette RED with an exact shell Intent |
-| M1-T02 | 2 | `M1-T02-A6` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | production/host fix may proceed; device GREEN waits for explicit temporary test-package app-op approval |
+| M1-T02 | 2 | `M1-T02-A6` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | host implementation/checks PASS; exact 13-file change remains uncommitted; device GREEN waits for explicit temporary test-package app-op approval |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -109,6 +109,16 @@
 **Expected RED recovered:** while the direct instrumentation remained at the blocked start, the main agent launched the exact action/category/component/flags recorded by ActivityScenario from shell. The rule immediately resumed and AndroidJUnitRunner reported 1 test, 1 failure, 0 ignored with the expected `AssertionError: unexpected non-error roles` at `SharedContentTest.kt`. This is sufficient test-first evidence for the audited RecordTheme production fix.
 
 **Device-policy evidence:** `appops get com.paherdin.record.core.ui.test` reports `MIUIOP(10021): ignore` with the rejection timestamp. No app-op or phone setting has been changed. A6 may implement production and run host checks now; device GREEN requires separate approval to set only this disposable test package's op to `allow`, followed by restore to `ignore` or automatic UTP uninstall. The risk is limited to that test APK being able to show a window from background while installed.
+
+### M1-T02-A6 — host GREEN and device-approval blocker
+
+**Owned implementation:** exactly the 13 planned `core/ui/src` files. RecordTheme now maps every non-error Material role from the frozen A/A1 references while retaining semantic error roles. SharedContent supplies distinct loading/empty/error/ready state semantics, merged headings where applicable, polite live regions for announced states, resource-backed Chinese copy, and a minimum 48-dp Retry width/height. The retained static light/dark palette harness no longer mutates theme state or calls unbounded idle helpers. All owned files have uniform CRLF, a final line ending, and no trailing whitespace.
+
+**Host commands:** `:core:ui:testDebugUnitTest :core:ui:compileDebugAndroidTestKotlin` PASS in 27 seconds, followed by full host `check --console=plain` PASS in 111.2 seconds. After line-ending normalization the focused host command passed again in 6.4 seconds and a fresh full `check` passed in 68.4 seconds with 257 tasks (25 executed, 232 up-to-date); `checkModuleDependencies` passed.
+
+**Raw unit XML:** Phase 4/0/0/0, RecordPalette 5/0/0/0, ShellChromePolicy 5/0/0/0. Exact planned-file scope, unchanged `core/ui/build.gradle.kts`, schema no-diff, source-boundary scan, tracked `git diff --check`, EOF, and trailing-whitespace checks pass.
+
+**State:** BLOCKED, not committed or accepted. No device/app-op action occurred in A6. The main agent requested explicit approval for the temporary test-package-only `MIUIOP(10021)` change; production/debug package state is outside the request.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
