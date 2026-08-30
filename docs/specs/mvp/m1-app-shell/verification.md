@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 1 / `M1-T02-A3` |
+| `task_revision` / `attempt_id` | 1 / `M1-T02-A4` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
 | Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | run targeted device RED → fix theme/semantics/EOF findings → unit/device/full checks → commit/report → two-stage review → main acceptance |
-| Next command | targeted `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette` device RED |
+| Remaining steps | rerun targeted device RED after exact stale-process cleanup → fix theme/semantics/EOF findings → unit/device/full checks → commit/report → two-stage review → main acceptance |
+| Next command | targeted `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette` device RED with a 20-minute host timeout |
 | `blocked-on` | none; Xiaomi 14 Pro identity/state preflight passed on 2026-08-30 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A2 audit/host compilation plus empty-device targeted-test blocker below |
+| Last raw evidence | A3 host timeout left `com.paherdin.record.core.ui.test` running; A4 force-stopped that exact package and confirmed the device remains `device` |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -60,7 +60,8 @@
 | M1-T01 | 3 | `M1-T01-A6` | `/root/m1_t01_build` | done | 0 | yes | commits `2b0f1ed` + `98a522a`; A5 XML 32/0/0/0; reviews/main checks PASS |
 | M1-T02 | 1 | `M1-T02-A1` | `/root/m1_t02_core_ui` | cancelled | 0 | no | worker disappeared without report/commit; usable uncommitted source and 15 passing tests retained |
 | M1-T02 | 1 | `M1-T02-A2` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | audit found theme/semantics/test gaps; unit compile PASS; device list became empty before behavior RED |
-| M1-T02 | 1 | `M1-T02-A3` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | changed condition: Xiaomi 14 Pro restored as API36 `device` |
+| M1-T02 | 1 | `M1-T02-A3` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | targeted RED hit the 304-second host timeout with no Gradle output or assertion; no production changes |
+| M1-T02 | 1 | `M1-T02-A4` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | changed condition: exact stale test package force-stopped; Xiaomi remains API36 `device`; host timeout raised to 20 minutes |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -82,6 +83,14 @@
 **Command:** `adb devices -l` plus market/model/API/fingerprint properties.
 
 **Result:** PASS — serial `c55ad7e4`, state `device`, Xiaomi 14 Pro / `23116PN5BC`, API 36, fingerprint `Xiaomi/shennong/shennong:16/BP2A.250605.031.A3/OS3.0.307.0.WNBCNXM:user/release-keys`. The same task revision resumes with the audited source/test state unchanged.
+
+**Targeted RED result:** CANCELLED / incomplete — the exact `SharedContentTest#themeDerivesEveryNonErrorRoleFromTheApprovedPalette` command reached the 304-second host timeout with exit 124 and no Gradle console output. It did not produce an install error or test assertion, made no production change, and therefore supplies no RED/GREEN conclusion.
+
+### M1-T02-A4 — stale-process cleanup and bounded retry
+
+**Changed condition:** post-timeout inspection found `com.paherdin.record.core.ui.test` still running on the reference device. The main agent ran only `adb shell am force-stop com.paherdin.record.core.ui.test`; a follow-up process scan was empty and `adb devices -l` still reported serial `c55ad7e4` as `device`. No package data, installation, source, or device setting was deleted or reset.
+
+**Retry contract:** task revision 1 and acceptance remain unchanged. The same targeted RED may be retried with a 20-minute host timeout; production theme/semantics fixes remain forbidden until that RED reaches the intended failing assertion.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
