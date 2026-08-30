@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 2 / `M1-T02-A7` |
+| `task_revision` / `attempt_id` | 3 / `M1-T02-A8` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
 | Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | targeted/full device GREEN → restore/uninstall test-package app-op → commit/report → two-stage review → main acceptance |
-| Next command | targeted palette GREEN, then the approved combined unit/connected task command |
+| Remaining steps | corrected-timing combined device GREEN → prove UTP rollback → commit/report → two-stage review → main acceptance |
+| Next command | start one combined Gradle run; after UTP install/start set approved app-op and release the first exact ActivityScenario Intent once |
 | `blocked-on` | none; user explicitly approved the temporary test-package-only app-op on 2026-08-30 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A7 preflight: Xiaomi remains `device`; `appops set --user 0 ... 10021 allow` succeeded and readback is `MIUIOP(10021): allow` |
+| Last raw evidence | A7 timeout postmortem: UTP reset the pre-set op to `ignore`, rejected the first ActivityScenario start, and later removed the test package; exact wrapper/test processes stopped |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -64,7 +64,8 @@
 | M1-T02 | 1 | `M1-T02-A4` | `/root/m1_t02_core_ui_resume` | cancelled | 0 | no | test started but hung at 0/1 for 1176 seconds; user requested stop; UTP classified the interruption as infrastructure |
 | M1-T02 | 2 | `M1-T02-A5` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | standard command timed out at 184 seconds; main postmortem proved OEM background-start rejection and obtained the expected palette RED with an exact shell Intent |
 | M1-T02 | 2 | `M1-T02-A6` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | host implementation/checks PASS; exact 13-file change remains uncommitted; device GREEN waits for explicit temporary test-package app-op approval |
-| M1-T02 | 2 | `M1-T02-A7` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | user approved temporary test-package app-op; readback is allow; targeted/full device GREEN and rollback remain |
+| M1-T02 | 2 | `M1-T02-A7` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | UTP reinstall reset the pre-set op to ignore; combined command timed out; exact processes stopped and package removal proved rollback |
+| M1-T02 | 3 | `M1-T02-A8` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | apply approved op after UTP install/start, release first exact ActivityScenario Intent once, require combined XML and rollback |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -126,6 +127,12 @@
 **Approval:** the user explicitly replied “同意” on 2026-08-30 after the main agent named exact package `com.paherdin.record.core.ui.test`, op `MIUIOP(10021)`, reason, background-window risk, and rollback.
 
 **Preflight/action:** the Xiaomi reference device remained serial `c55ad7e4` in state `device`. The main agent ran `appops set --user 0 com.paherdin.record.core.ui.test 10021 allow`; immediate readback returned `MIUIOP(10021): allow`. This affects only the disposable test APK. A7 must run the device gate and then prove the op is restored to `ignore` or the package was removed by UTP.
+
+**Result:** FAILED / incomplete — the exact combined Gradle command timed out after 304.040 seconds with exit 124 and no test assertion output. Post-timeout inspection found wrapper PID 94912, test PID 17491, and `MIUIOP(10021): ignore` with a fresh rejection timestamp. This proves UTP's reinstall reset the op before instrumentation. The main agent stopped the exact wrapper/package processes; UTP then removed the package, and `appops get` returned `No UID`, proving the temporary setting no longer existed. No source change or commit occurred in A7.
+
+### M1-T02-A8 — corrected app-op timing
+
+**Revision-3 contract:** keep one exact combined Gradle command. Poll only until UTP has installed and started the disposable test package, then apply the already approved `MIUIOP(10021)=allow` and launch the exact first pending ActivityScenario host Intent once. Do not start another Gradle/UTP run or repeatedly foreground the Activity. Accept only complete unit/device XML plus UTP package removal or `ignore` readback; otherwise stop as incomplete.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
