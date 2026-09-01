@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 3 / `M1-T02-A8` |
+| `task_revision` / `attempt_id` | 4 / `M1-T02-A9` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
 | Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | corrected-timing combined device GREEN → prove UTP rollback → commit/report → two-stage review → main acceptance |
-| Next command | start one combined Gradle run; after UTP install/start set approved app-op and release the first exact ActivityScenario Intent once |
+| Remaining steps | test-first spec-review corrections → host/device rerun → correction commit → repeated two-stage review → main acceptance |
+| Next command | add Ready-heading and Editor-Saving RED assertions, then correct semantics/chrome/naming/icon token within the same 13 files |
 | `blocked-on` | none; user explicitly approved the temporary test-package-only app-op on 2026-08-30 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A7 timeout postmortem: UTP reset the pre-set op to `ignore`, rejected the first ActivityScenario start, and later removed the test package; exact wrapper/test processes stopped |
+| Last raw evidence | A8 device 11/0/0/0 and main host check PASS; implementation commit `d58ae68`; independent spec review CHANGES_REQUIRED on four existing-contract gaps |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -65,7 +65,8 @@
 | M1-T02 | 2 | `M1-T02-A5` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | standard command timed out at 184 seconds; main postmortem proved OEM background-start rejection and obtained the expected palette RED with an exact shell Intent |
 | M1-T02 | 2 | `M1-T02-A6` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | host implementation/checks PASS; exact 13-file change remains uncommitted; device GREEN waits for explicit temporary test-package app-op approval |
 | M1-T02 | 2 | `M1-T02-A7` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | UTP reinstall reset the pre-set op to ignore; combined command timed out; exact processes stopped and package removal proved rollback |
-| M1-T02 | 3 | `M1-T02-A8` | `/root/m1_t02_core_ui_resume` | in_progress | 0 | no | apply approved op after UTP install/start, release first exact ActivityScenario Intent once, require combined XML and rollback |
+| M1-T02 | 3 | `M1-T02-A8` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | host/device gates PASS and commit `d58ae68`; independent spec review found four existing-contract violations |
+| M1-T02 | 4 | `M1-T02-A9` | `/root/m1_t02_spec_fix` | in_progress | 0 | no | correct Ready heading, Editor Saving lock, Kotlin names, and semantic icon-size token; rerun all gates/reviews |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -133,6 +134,14 @@
 ### M1-T02-A8 — corrected app-op timing
 
 **Revision-3 contract:** keep one exact combined Gradle command. Poll only until UTP has installed and started the disposable test package, then apply the already approved `MIUIOP(10021)=allow` and launch the exact first pending ActivityScenario host Intent once. Do not start another Gradle/UTP run or repeatedly foreground the Activity. Accept only complete unit/device XML plus UTP package removal or `ignore` readback; otherwise stop as incomplete.
+
+**Result:** device GREEN PASS — retained `.superpowers/evidence/m1-t02-a8/TEST-23116PN5BC-16-core-ui.xml` reports 11 tests, 0 failures, 0 errors, 0 skipped, 24.481 seconds; exit-code artifact is 0; SHA-256 `43A0EFDC3C452A7B04F57DF803AB0DF70C1867CE52FF324E26F9BE3C7C5F8A81`. UTP removed the disposable test package, `appops get` returned `No UID`, and no exact wrapper/test process remained. Main-agent host `:core:ui:testDebugUnitTest :core:ui:compileDebugAndroidTestKotlin check` passed in 50 seconds with 263 tasks and module checks clean. Implementation commit `d58ae68` contains exactly the planned 13 files.
+
+**Spec review:** CHANGES_REQUIRED. ReadyBody did not guarantee a heading; Editor allowed Back during locked `Phase.Saving`; RecordIcons/RecordPalette/RecordTokens/theme/tag properties violated lowerCamelCase or compile-time `UPPER_SNAKE_CASE`; and the vector builder used `24.dp` instead of a semantic icon-size token. A8 is not accepted despite passing tests.
+
+### M1-T02-A9 — spec-review corrections
+
+**Revision-4 contract:** add failing coverage for Ready heading and Editor Saving Back lock, then correct only the four reviewed gaps within the existing 13-file ownership. Rename properties/constants mechanically without changing values or public responsibilities; source local-vector dimensions from a new semantic `RecordTokens` icon-size value. Rerun all host/device evidence and both review stages before acceptance.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
