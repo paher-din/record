@@ -1,0 +1,10 @@
+<resources>
+    <string name="timeline_screen_heading">时间线</string>
+    <string name="timeline_today">今天</string>
+    <string name="timeline_date_pattern">yyyy年M月d日</string>
+    <string name="timeline_availability">时间线内容将在 M5 接入</string>
+    <string name="projects_screen_heading">项目</string>
+    <string name="projects_availability">项目功能将在 M4 接入</string>
+    <string name="search_screen_heading">搜索</string>
+    <string name="search_availability">搜索功能将在 M5 接入</string>
+</resources>
