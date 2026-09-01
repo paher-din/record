@@ -1,0 +1,11 @@
+<resources>
+    <string name="shared_loading">加载中…</string>
+    <string name="shared_loading_state_description">正在加载</string>
+    <string name="shared_empty">暂无内容</string>
+    <string name="shared_empty_state_description">内容为空</string>
+    <string name="shared_error_temporarily_unavailable">暂时无法加载</string>
+    <string name="shared_error_recovery_required">需要完成恢复后才能继续</string>
+    <string name="shared_error_state_description">加载失败</string>
+    <string name="shared_ready_state_description">内容已就绪</string>
+    <string name="shared_retry">重试</string>
+</resources>
