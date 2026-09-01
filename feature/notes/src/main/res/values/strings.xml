@@ -1,0 +1,9 @@
+<resources>
+    <string name="notes_heading">笔记</string>
+    <string name="notes_ready_message">笔记功能将在 M3 版本中提供</string>
+    <string name="notes_detail_heading">笔记详情</string>
+    <string name="notes_detail_unavailable_message">笔记详情将在 M3 版本中提供</string>
+    <string name="notes_editor_heading">笔记编辑器</string>
+    <string name="notes_editor_unavailable_message">笔记编辑器将在 M3 版本中提供</string>
+    <string name="notes_back">返回</string>
+</resources>
