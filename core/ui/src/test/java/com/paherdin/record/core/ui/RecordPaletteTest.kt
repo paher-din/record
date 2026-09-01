@@ -11,52 +11,52 @@ class RecordPaletteTest {
 
     @Test
     fun light_references_are_exact() {
-        assertEquals(Color(0xFFF6F2E9), RecordPalette.AppBackgroundLight)
-        assertEquals(Color(0xFFEEE6D7), RecordPalette.PrimarySurfaceLight)
-        assertEquals(Color(0xFF145C4B), RecordPalette.PrimaryAccentLight)
-        assertEquals(Color(0xFF925D39), RecordPalette.WarmSecondaryLight)
-        assertEquals(Color(0xFF24342F), RecordPalette.PrimaryContentLight)
-        assertEquals(Color(0xFFFFF9EE), RecordPalette.OnPrimaryContentLight)
+        assertEquals(Color(0xFFF6F2E9), RecordPalette.appBackgroundLight)
+        assertEquals(Color(0xFFEEE6D7), RecordPalette.primarySurfaceLight)
+        assertEquals(Color(0xFF145C4B), RecordPalette.primaryAccentLight)
+        assertEquals(Color(0xFF925D39), RecordPalette.warmSecondaryLight)
+        assertEquals(Color(0xFF24342F), RecordPalette.primaryContentLight)
+        assertEquals(Color(0xFFFFF9EE), RecordPalette.onPrimaryContentLight)
     }
 
     @Test
     fun dark_references_are_exact() {
-        assertEquals(Color(0xFF171C1A), RecordPalette.AppBackgroundDark)
-        assertEquals(Color(0xFF222A27), RecordPalette.PrimarySurfaceDark)
-        assertEquals(Color(0xFF8BD0BB), RecordPalette.PrimaryAccentDark)
-        assertEquals(Color(0xFFD2A987), RecordPalette.WarmSecondaryDark)
-        assertEquals(Color(0xFFE9EEE9), RecordPalette.PrimaryContentDark)
-        assertEquals(Color(0xFF0D392F), RecordPalette.OnPrimaryContentDark)
+        assertEquals(Color(0xFF171C1A), RecordPalette.appBackgroundDark)
+        assertEquals(Color(0xFF222A27), RecordPalette.primarySurfaceDark)
+        assertEquals(Color(0xFF8BD0BB), RecordPalette.primaryAccentDark)
+        assertEquals(Color(0xFFD2A987), RecordPalette.warmSecondaryDark)
+        assertEquals(Color(0xFFE9EEE9), RecordPalette.primaryContentDark)
+        assertEquals(Color(0xFF0D392F), RecordPalette.onPrimaryContentDark)
     }
 
     @Test
     fun light_foreground_background_pairs_meet_contrast() {
         // High-emphasis text on root and grouped surfaces.
-        assertTrue(contrastRatio(RecordPalette.PrimaryContentLight, RecordPalette.AppBackgroundLight) >= 4.5)
-        assertTrue(contrastRatio(RecordPalette.PrimaryContentLight, RecordPalette.PrimarySurfaceLight) >= 4.5)
+        assertTrue(contrastRatio(RecordPalette.primaryContentLight, RecordPalette.appBackgroundLight) >= 4.5)
+        assertTrue(contrastRatio(RecordPalette.primaryContentLight, RecordPalette.primarySurfaceLight) >= 4.5)
         // Content placed on the primary action/accent.
-        assertTrue(contrastRatio(RecordPalette.OnPrimaryContentLight, RecordPalette.PrimaryAccentLight) >= 4.5)
+        assertTrue(contrastRatio(RecordPalette.onPrimaryContentLight, RecordPalette.primaryAccentLight) >= 4.5)
         // Warm secondary emphasis on the app background (the approved darkened value).
-        assertTrue(contrastRatio(RecordPalette.WarmSecondaryLight, RecordPalette.AppBackgroundLight) >= 4.5)
+        assertTrue(contrastRatio(RecordPalette.warmSecondaryLight, RecordPalette.appBackgroundLight) >= 4.5)
         // Focus emphasis / selected navigation.
-        assertTrue(contrastRatio(RecordPalette.PrimaryAccentLight, RecordPalette.AppBackgroundLight) >= 3.0)
-        assertTrue(contrastRatio(RecordPalette.PrimaryAccentLight, RecordPalette.PrimarySurfaceLight) >= 3.0)
+        assertTrue(contrastRatio(RecordPalette.primaryAccentLight, RecordPalette.appBackgroundLight) >= 3.0)
+        assertTrue(contrastRatio(RecordPalette.primaryAccentLight, RecordPalette.primarySurfaceLight) >= 3.0)
     }
 
     @Test
     fun dark_foreground_background_pairs_meet_contrast() {
-        assertTrue(contrastRatio(RecordPalette.PrimaryContentDark, RecordPalette.AppBackgroundDark) >= 4.5)
-        assertTrue(contrastRatio(RecordPalette.PrimaryContentDark, RecordPalette.PrimarySurfaceDark) >= 4.5)
-        assertTrue(contrastRatio(RecordPalette.OnPrimaryContentDark, RecordPalette.PrimaryAccentDark) >= 4.5)
-        assertTrue(contrastRatio(RecordPalette.WarmSecondaryDark, RecordPalette.AppBackgroundDark) >= 4.5)
-        assertTrue(contrastRatio(RecordPalette.PrimaryAccentDark, RecordPalette.AppBackgroundDark) >= 3.0)
-        assertTrue(contrastRatio(RecordPalette.PrimaryAccentDark, RecordPalette.PrimarySurfaceDark) >= 3.0)
+        assertTrue(contrastRatio(RecordPalette.primaryContentDark, RecordPalette.appBackgroundDark) >= 4.5)
+        assertTrue(contrastRatio(RecordPalette.primaryContentDark, RecordPalette.primarySurfaceDark) >= 4.5)
+        assertTrue(contrastRatio(RecordPalette.onPrimaryContentDark, RecordPalette.primaryAccentDark) >= 4.5)
+        assertTrue(contrastRatio(RecordPalette.warmSecondaryDark, RecordPalette.appBackgroundDark) >= 4.5)
+        assertTrue(contrastRatio(RecordPalette.primaryAccentDark, RecordPalette.appBackgroundDark) >= 3.0)
+        assertTrue(contrastRatio(RecordPalette.primaryAccentDark, RecordPalette.primarySurfaceDark) >= 3.0)
     }
 
     @Test
     fun warm_secondary_on_light_background_reaches_four_point_five_to_one() {
         // Spec 5.2 explicit requirement: the darkened light warm accent reaches >= 4.5:1 on the app background.
-        val ratio = contrastRatio(RecordPalette.WarmSecondaryLight, RecordPalette.AppBackgroundLight)
+        val ratio = contrastRatio(RecordPalette.warmSecondaryLight, RecordPalette.appBackgroundLight)
         assertTrue("expected >= 4.5, got $ratio", ratio >= 4.5)
     }
 

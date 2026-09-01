@@ -5,16 +5,17 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Semantic size/spacing/shape tokens shared across shell and feature surfaces.
- * Interactive controls must never fall below [MinimumTouchTarget].
+ * Interactive controls must never fall below [minimumTouchTarget].
  */
 object RecordTokens {
-    val MinimumTouchTarget = 48.dp
+    val minimumTouchTarget = 48.dp
+    val iconDefaultSize = 24.dp
 
-    val SpaceXSmall = 4.dp
-    val SpaceSmall = 8.dp
-    val SpaceMedium = 16.dp
-    val SpaceLarge = 24.dp
+    val spaceXSmall = 4.dp
+    val spaceSmall = 8.dp
+    val spaceMedium = 16.dp
+    val spaceLarge = 24.dp
 
-    val ShapeSmall = RoundedCornerShape(8.dp)
-    val ShapeMedium = RoundedCornerShape(16.dp)
+    val shapeSmall = RoundedCornerShape(8.dp)
+    val shapeMedium = RoundedCornerShape(16.dp)
 }

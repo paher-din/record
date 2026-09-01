@@ -152,6 +152,7 @@ class SharedContentTest {
 
         composeRule.onNodeWithText("ready:hello").assertIsDisplayed()
         composeRule.onNodeWithTag(readyTag)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
             .assert(
                 SemanticsMatcher.expectValue(
                     SemanticsProperties.StateDescription,
@@ -283,18 +284,18 @@ class SharedContentTest {
 
     private fun assertSchemeUsesApprovedRoles(scheme: ColorScheme, darkTheme: Boolean) {
         val approved = setOf(
-            RecordPalette.AppBackgroundLight,
-            RecordPalette.PrimarySurfaceLight,
-            RecordPalette.PrimaryAccentLight,
-            RecordPalette.WarmSecondaryLight,
-            RecordPalette.PrimaryContentLight,
-            RecordPalette.OnPrimaryContentLight,
-            RecordPalette.AppBackgroundDark,
-            RecordPalette.PrimarySurfaceDark,
-            RecordPalette.PrimaryAccentDark,
-            RecordPalette.WarmSecondaryDark,
-            RecordPalette.PrimaryContentDark,
-            RecordPalette.OnPrimaryContentDark,
+            RecordPalette.appBackgroundLight,
+            RecordPalette.primarySurfaceLight,
+            RecordPalette.primaryAccentLight,
+            RecordPalette.warmSecondaryLight,
+            RecordPalette.primaryContentLight,
+            RecordPalette.onPrimaryContentLight,
+            RecordPalette.appBackgroundDark,
+            RecordPalette.primarySurfaceDark,
+            RecordPalette.primaryAccentDark,
+            RecordPalette.warmSecondaryDark,
+            RecordPalette.primaryContentDark,
+            RecordPalette.onPrimaryContentDark,
         )
         val nonErrorRoles = listOf(
             scheme.primary,
@@ -354,19 +355,19 @@ class SharedContentTest {
         val expectedSecondary: Color
         val expectedContent: Color
         if (darkTheme) {
-            expectedBackground = RecordPalette.AppBackgroundDark
-            expectedSurface = RecordPalette.PrimarySurfaceDark
-            expectedPrimary = RecordPalette.PrimaryAccentDark
-            expectedOnPrimary = RecordPalette.OnPrimaryContentDark
-            expectedSecondary = RecordPalette.WarmSecondaryDark
-            expectedContent = RecordPalette.PrimaryContentDark
+            expectedBackground = RecordPalette.appBackgroundDark
+            expectedSurface = RecordPalette.primarySurfaceDark
+            expectedPrimary = RecordPalette.primaryAccentDark
+            expectedOnPrimary = RecordPalette.onPrimaryContentDark
+            expectedSecondary = RecordPalette.warmSecondaryDark
+            expectedContent = RecordPalette.primaryContentDark
         } else {
-            expectedBackground = RecordPalette.AppBackgroundLight
-            expectedSurface = RecordPalette.PrimarySurfaceLight
-            expectedPrimary = RecordPalette.PrimaryAccentLight
-            expectedOnPrimary = RecordPalette.OnPrimaryContentLight
-            expectedSecondary = RecordPalette.WarmSecondaryLight
-            expectedContent = RecordPalette.PrimaryContentLight
+            expectedBackground = RecordPalette.appBackgroundLight
+            expectedSurface = RecordPalette.primarySurfaceLight
+            expectedPrimary = RecordPalette.primaryAccentLight
+            expectedOnPrimary = RecordPalette.onPrimaryContentLight
+            expectedSecondary = RecordPalette.warmSecondaryLight
+            expectedContent = RecordPalette.primaryContentLight
         }
         assertEquals(expectedBackground, scheme.background)
         assertEquals(expectedSurface, scheme.surface)

@@ -19,9 +19,21 @@ class ShellChromePolicyTest {
     }
 
     @Test
-    fun editor_hides_bottom_bar_and_allows_back() {
-        for (phase in Phase.entries) {
-            assertEquals("phase=$phase", ShellChrome(showBottomBar = false, allowBack = true), ShellChromePolicy.resolve(DestinationKind.Editor, phase))
+    fun editor_hides_bottom_bar_and_blocks_back_while_saving() {
+        assertEquals(
+            ShellChrome(showBottomBar = false, allowBack = false),
+            ShellChromePolicy.resolve(DestinationKind.Editor, Phase.Saving),
+        )
+    }
+
+    @Test
+    fun editor_hides_bottom_bar_and_allows_back_outside_saving() {
+        for (phase in Phase.entries - Phase.Saving) {
+            assertEquals(
+                "phase=$phase",
+                ShellChrome(showBottomBar = false, allowBack = true),
+                ShellChromePolicy.resolve(DestinationKind.Editor, phase),
+            )
         }
     }
 

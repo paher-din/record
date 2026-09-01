@@ -24,11 +24,11 @@ import androidx.compose.ui.text.style.TextAlign
 import com.paherdin.record.core.ui.theme.RecordTokens
 
 private object SharedContentTags {
-    const val Loading = "SharedContentLoading"
-    const val Empty = "SharedContentEmpty"
-    const val Error = "SharedContentError"
-    const val Ready = "SharedContentReady"
-    const val Retry = "SharedContentRetry"
+    const val LOADING = "SharedContentLoading"
+    const val EMPTY = "SharedContentEmpty"
+    const val ERROR = "SharedContentError"
+    const val READY = "SharedContentReady"
+    const val RETRY = "SharedContentRetry"
 }
 
 /**
@@ -58,13 +58,13 @@ private fun LoadingBody(modifier: Modifier) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .testTag(SharedContentTags.Loading)
+            .testTag(SharedContentTags.LOADING)
             .sharedStateSemantics(stringResource(R.string.shared_loading_state_description)),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()
-            Spacer(Modifier.height(RecordTokens.SpaceMedium))
+            Spacer(Modifier.height(RecordTokens.spaceMedium))
             StateHeading(heading)
         }
     }
@@ -76,7 +76,7 @@ private fun EmptyBody(modifier: Modifier) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .testTag(SharedContentTags.Empty)
+            .testTag(SharedContentTags.EMPTY)
             .sharedStateSemantics(stringResource(R.string.shared_empty_state_description)),
         contentAlignment = Alignment.Center,
     ) {
@@ -99,21 +99,21 @@ private fun ErrorBody(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .testTag(SharedContentTags.Error)
+            .testTag(SharedContentTags.ERROR)
             .sharedStateSemantics(stringResource(R.string.shared_error_state_description)),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             StateHeading(heading)
             if (presentation.canRetry) {
-                Spacer(Modifier.height(RecordTokens.SpaceMedium))
+                Spacer(Modifier.height(RecordTokens.spaceMedium))
                 Button(
                     onClick = onRetry,
                     modifier = Modifier
-                        .testTag(SharedContentTags.Retry)
+                        .testTag(SharedContentTags.RETRY)
                         .defaultMinSize(
-                            minWidth = RecordTokens.MinimumTouchTarget,
-                            minHeight = RecordTokens.MinimumTouchTarget,
+                            minWidth = RecordTokens.minimumTouchTarget,
+                            minHeight = RecordTokens.minimumTouchTarget,
                         ),
                 ) {
                     Text(stringResource(R.string.shared_retry))
@@ -133,9 +133,10 @@ private fun <T> ReadyBody(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .testTag(SharedContentTags.Ready)
+            .testTag(SharedContentTags.READY)
             .semantics {
                 stateDescription = description
+                heading()
             },
     ) {
         readyContent(content)

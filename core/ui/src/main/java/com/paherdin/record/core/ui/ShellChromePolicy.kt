@@ -15,7 +15,7 @@ object ShellChromePolicy {
             ShellChrome(showBottomBar = true, allowBack = true)
 
         DestinationKind.Editor ->
-            ShellChrome(showBottomBar = false, allowBack = true)
+            ShellChrome(showBottomBar = false, allowBack = phase != Phase.Saving)
 
         DestinationKind.Progress ->
             ShellChrome(
