@@ -1,9 +1,13 @@
 package com.paherdin.record.core.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Button
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -14,23 +18,34 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.paherdin.record.core.ui.theme.RecordPalette
 import com.paherdin.record.core.ui.theme.RecordTheme
+import kotlin.math.pow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -49,6 +64,9 @@ class SharedContentTest {
     private val errorTag = "SharedContentError"
     private val readyTag = "SharedContentReady"
     private val retryTag = "SharedContentRetry"
+    private val readyHeadingTag = "SharedContentReadyHeading"
+    private val readyActionTag = "SharedContentReadyAction"
+    private val readyActionText = "ready action"
 
     @Test
     fun loadingStateShowsLoadingTextAndNoRetry() {
@@ -148,17 +166,34 @@ class SharedContentTest {
 
     @Test
     fun readyExposesStateSemanticsAndCompleteContent() {
-        setContent(ContentPresentation.Ready("hello"))
+        var actionInvoked = false
+        setContent(
+            ContentPresentation.Ready("hello"),
+            onReadyAction = { actionInvoked = true },
+        )
 
-        composeRule.onNodeWithText("ready:hello").assertIsDisplayed()
-        composeRule.onNodeWithTag(readyTag)
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        composeRule.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+            useUnmergedTree = true,
+        ).assertCountEquals(1)
+        composeRule.onNodeWithTag(readyTag, useUnmergedTree = true)
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Heading))
             .assert(
                 SemanticsMatcher.expectValue(
                     SemanticsProperties.StateDescription,
                     context.getString(R.string.shared_ready_state_description),
                 ),
             )
+        composeRule.onNodeWithTag(readyHeadingTag, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .assertTextEquals("ready:hello")
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        composeRule.onNodeWithTag(readyActionTag, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .performClick()
+        composeRule.runOnIdle { assertTrue(actionInvoked) }
     }
 
     @Test
@@ -202,6 +237,7 @@ class SharedContentTest {
         darkTheme: Boolean = false,
         fontScale: Float = 1f,
         onRetry: () -> Unit = {},
+        onReadyAction: () -> Unit = {},
     ) {
         composeRule.setContent {
             val current = LocalDensity.current
@@ -210,7 +246,7 @@ class SharedContentTest {
                     SharedContent(
                         presentation = presentation,
                         onRetry = onRetry,
-                        readyContent = { content -> Text("ready:$content") },
+                        readyContent = { content -> ReadyFixture(content, onReadyAction) },
                     )
                 }
             }
@@ -222,6 +258,7 @@ class SharedContentTest {
         darkTheme: Boolean = false,
         fontScale: Float = 1f,
         onRetry: () -> Unit = {},
+        onReadyAction: () -> Unit = {},
     ) {
         composeRule.setContent {
             val current = LocalDensity.current
@@ -230,7 +267,7 @@ class SharedContentTest {
                     SharedContent(
                         presentation = presentation(),
                         onRetry = onRetry,
-                        readyContent = { content -> Text("ready:$content") },
+                        readyContent = { content -> ReadyFixture(content, onReadyAction) },
                     )
                 }
             }
@@ -261,25 +298,56 @@ class SharedContentTest {
             onRetry = { retried = true },
         )
 
-        composeRule.onNodeWithText(loadingText).assertIsDisplayed()
+        assertFullyWithinRoot(
+            loadingTag,
+            composeRule.onNodeWithText(loadingText, useUnmergedTree = true).assertIsDisplayed(),
+        )
         composeRule.runOnIdle {
             presentation = ContentPresentation.Empty(EmptyReason.NoApplicableItems)
         }
-        composeRule.onNodeWithText(emptyText).assertIsDisplayed()
+        assertFullyWithinRoot(
+            emptyTag,
+            composeRule.onNodeWithText(emptyText, useUnmergedTree = true).assertIsDisplayed(),
+        )
         composeRule.runOnIdle {
             presentation = ContentPresentation.Error(
                 UiErrorCategory.TemporarilyUnavailable,
                 canRetry = true,
             )
         }
-        composeRule.onNodeWithText(context.getString(R.string.shared_error_temporarily_unavailable))
+        val errorNode = composeRule
+            .onNodeWithText(
+                context.getString(R.string.shared_error_temporarily_unavailable),
+                useUnmergedTree = true,
+            )
             .assertIsDisplayed()
-        composeRule.onNodeWithTag(retryTag).assertIsDisplayed().performClick()
+        val retryNode = composeRule.onNodeWithTag(retryTag, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertHasClickAction()
+        assertFullyWithinRoot(errorTag, errorNode, retryNode)
+        val errorBounds = errorNode.getUnclippedBoundsInRoot()
+        val retryBounds = retryNode.getUnclippedBoundsInRoot()
+        assertTrue(
+            "error and Retry overlap: error=$errorBounds retry=$retryBounds",
+            errorBounds.bottom <= retryBounds.top || retryBounds.bottom <= errorBounds.top,
+        )
+        retryNode.assert(SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus))
+            .performClick()
         composeRule.runOnIdle {
             assertTrue(retried)
             presentation = ContentPresentation.Ready("two-hundred-percent")
         }
-        composeRule.onNodeWithText("ready:two-hundred-percent").assertIsDisplayed()
+        assertFullyWithinRoot(
+            readyTag,
+            composeRule.onNodeWithTag(readyHeadingTag, useUnmergedTree = true)
+                .assertIsDisplayed()
+                .assertTextEquals("ready:two-hundred-percent"),
+            composeRule.onNodeWithTag(readyActionTag, useUnmergedTree = true)
+                .assertIsDisplayed()
+                .assertIsEnabled()
+                .assertHasClickAction(),
+        )
     }
 
     private fun assertSchemeUsesApprovedRoles(scheme: ColorScheme, darkTheme: Boolean) {
@@ -376,5 +444,100 @@ class SharedContentTest {
         assertEquals(expectedSecondary, scheme.secondary)
         assertEquals(expectedContent, scheme.onBackground)
         assertEquals(expectedContent, scheme.onSurface)
+        assertSemanticErrorRoles(scheme, darkTheme)
+    }
+
+    @Composable
+    private fun ReadyFixture(content: String, onAction: () -> Unit) {
+        Column {
+            Text(
+                text = "ready:$content",
+                modifier = Modifier
+                    .testTag(readyHeadingTag)
+                    .semantics { heading() },
+            )
+            Button(
+                onClick = onAction,
+                modifier = Modifier.testTag(readyActionTag),
+            ) {
+                Text(readyActionText)
+            }
+        }
+    }
+
+    private fun assertFullyWithinRoot(
+        stateTag: String,
+        vararg requiredNodes: SemanticsNodeInteraction,
+    ) {
+        val rootBounds = composeRule.onRoot(useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val stateBounds = composeRule
+            .onNodeWithTag(stateTag, useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        assertBoundsWithin(stateBounds, rootBounds)
+        requiredNodes.forEach { node ->
+            val bounds = node.getUnclippedBoundsInRoot()
+            assertBoundsWithin(bounds, rootBounds)
+        }
+    }
+
+    private fun assertBoundsWithin(bounds: DpRect, container: DpRect) {
+        assertTrue(
+            "required node has empty bounds: $bounds",
+            bounds.right > bounds.left && bounds.bottom > bounds.top,
+        )
+        assertTrue(
+            "required node is outside root bounds: node=$bounds root=$container",
+            bounds.left >= container.left &&
+                bounds.top >= container.top &&
+                bounds.right <= container.right &&
+                bounds.bottom <= container.bottom,
+        )
+    }
+
+    private fun assertSemanticErrorRoles(scheme: ColorScheme, darkTheme: Boolean) {
+        val defaults = if (darkTheme) darkColorScheme() else lightColorScheme()
+        assertEquals(defaults.error, scheme.error)
+        assertEquals(defaults.onError, scheme.onError)
+        assertEquals(defaults.errorContainer, scheme.errorContainer)
+        assertEquals(defaults.onErrorContainer, scheme.onErrorContainer)
+
+        val warmSecondaries = setOf(
+            RecordPalette.warmSecondaryLight,
+            RecordPalette.warmSecondaryDark,
+        )
+        val errorRoles = listOf(
+            scheme.error,
+            scheme.onError,
+            scheme.errorContainer,
+            scheme.onErrorContainer,
+        )
+        assertTrue(
+            "error roles alias warm secondary: ${errorRoles.filter(warmSecondaries::contains)}",
+            errorRoles.none(warmSecondaries::contains),
+        )
+        assertTrue(contrastRatio(scheme.onError, scheme.error) >= 4.5)
+        assertTrue(contrastRatio(scheme.onErrorContainer, scheme.errorContainer) >= 4.5)
+    }
+
+    private fun contrastRatio(foreground: Color, background: Color): Double {
+        val foregroundLuminance = relativeLuminance(foreground)
+        val backgroundLuminance = relativeLuminance(background)
+        return (maxOf(foregroundLuminance, backgroundLuminance) + 0.05) /
+            (minOf(foregroundLuminance, backgroundLuminance) + 0.05)
+    }
+
+    private fun relativeLuminance(color: Color): Double {
+        fun channel(value: Float): Double {
+            val component = value.toDouble()
+            return if (component <= 0.04045) {
+                component / 12.92
+            } else {
+                ((component + 0.055) / 1.055).pow(2.4)
+            }
+        }
+
+        return 0.2126 * channel(color.red) +
+            0.7152 * channel(color.green) +
+            0.0722 * channel(color.blue)
     }
 }

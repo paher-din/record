@@ -35,7 +35,9 @@ private object SharedContentTags {
  * The shared accessible body presentation. It renders [ContentPresentation],
  * offering [onRetry] only when the presentation declares it safe, and delegates
  * ready content to [readyContent]. State is expressed through text plus
- * semantics, never color alone.
+ * semantics, never color alone. [readyContent] must emit exactly one visible
+ * heading; the Ready state wrapper retains only non-merging state semantics so
+ * arbitrary child text and actions remain independently addressable.
  */
 @Composable
 fun <T> SharedContent(
@@ -134,9 +136,8 @@ private fun <T> ReadyBody(
         modifier = modifier
             .fillMaxSize()
             .testTag(SharedContentTags.READY)
-            .semantics {
+            .semantics(mergeDescendants = false) {
                 stateDescription = description
-                heading()
             },
     ) {
         readyContent(content)
