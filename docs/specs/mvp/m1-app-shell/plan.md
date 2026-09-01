@@ -794,7 +794,7 @@ Create resource-backed Chinese functional strings, `Record` app name, A/A1 XML c
 Expected: PASS; release package remains `com.paherdin.record`; benchmark package is isolated; no manifest permission.
 
 ```powershell
-git add app
+git add app core/data/src/testFixtures/kotlin/com/paherdin/record/core/data/startup
 git commit -m "feat(app): deliver M1 typed application shell"
 ```
 
