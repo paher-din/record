@@ -1,4 +1,6 @@
 class RecordRepository : Closeable
+class RecordStartup
+companion fun create(context: Context): RecordStartup
 companion fun open(context: Context): RepositoryResult<RecordRepository>
 data class BackupArtifact(val backupId: String, val path: String, val sha256: String)
 data class BackupTarget.PrivateFile(val file: File) : BackupTarget
@@ -19,6 +21,8 @@ data class RepositoryResult.Failure.RestoreRejected(val violation: RestoreViolat
 data class RepositoryResult.Failure.ValidationRejected(val violation: XorViolation) : RepositoryResult.Failure
 data class RepositoryResult.Success<T>(val value: T) : RepositoryResult<T>
 data class StagedRestore(val candidateId: String, val validationDigest: String, val recordCounts: Map<String, Int>, val attachmentCount: Int)
+data class StartupResult.Blocked(val failure: StartupFailure, val canRetry: Boolean) : StartupResult
+data class StartupResult.Ready(val repository: RecordRepository) : StartupResult
 data class TransactionView(val id: String, val type: TransactionType, val createdAt: Long, val updatedAt: Long, val deletedAt: Long?, val entries: List<NewAccountEntry>, val relationNoteIds: Set<String>)
 data object RepositoryResult.Failure.CommittedButResponseFailed : RepositoryResult.Failure
 data object RepositoryResult.Failure.DuplicateIdentity : RepositoryResult.Failure
@@ -27,6 +31,8 @@ data object RepositoryResult.Failure.StorageExhausted : RepositoryResult.Failure
 data object RepositoryResult.Failure.TransactionFailed : RepositoryResult.Failure
 data object RepositoryResult.Failure.Unexpected : RepositoryResult.Failure
 enum class AttachmentStage { TEMP_COPY, VALIDATION_HASH, ATOMIC_MOVE, METADATA_WRITE, PHYSICAL_DELETE, METADATA_DELETE, ORPHAN_CLEANUP }
+enum class StartupFailure { StorageExhausted, RecoveryRequired, Unexpected }
+enum class StartupProgress { Checking, RecoveryDetected, Recovering }
 enum class AttachmentViolation { UNDECODABLE, SIZE_LIMIT_EXCEEDED, MIME_TYPE_NOT_ACCEPTED, CONTENT_IDENTITY_UNKNOWN, CONTENT_NOT_AVAILABLE }
 enum class BackupStage { CONSISTENT_READ, STREAM_JSONL, STREAM_ATTACHMENT, MANIFEST_WRITE, PRIVATE_VALIDATE, PRIVATE_RENAME, PROVIDER_CREATE, PROVIDER_COPY_CHUNK, PROVIDER_FLUSH_CLOSE, PROVIDER_VERIFY, PROVIDER_RENAME, PROVIDER_MARKER_CLEAR }
 enum class BackupViolation { PACKAGE_VALIDATION_FAILED }
@@ -36,8 +42,11 @@ enum class RestoreStage { PREFLIGHT_DECLARED, PREFLIGHT_STREAMING, STAGING_IMPOR
 enum class RestoreViolation { FORMAT_UNSUPPORTED, MANIFEST_INVALID, RECORD_INVALID, UNKNOWN_LOGICAL_TYPE, SINGLETON_DUPLICATE, NAME_KEY_VERSION_UNSUPPORTED, CATALOG_INVALID, PATH_INVALID, PATH_TOO_LONG, PATH_DUPLICATE, ENTRY_COUNT_LIMIT, ENTRY_SIZE_LIMIT, AGGREGATE_SIZE_LIMIT, SPACE_BUDGET, COMPRESSION_RATIO_LIMIT, SIZE_UNDER_DECLARED, SHA256_MISMATCH, RECORD_COUNT_MISMATCH, ATTACHMENT_DUPLICATE_IDENTITY, ATTACHMENT_LINK_DANGLING, ATTACHMENT_MISSING, ATTACHMENT_EXTRA, ATTACHMENT_CORRUPT, FOREIGN_KEY_INVALID, XOR_INVALID, FINANCE_INVALID, BALANCE_INVALID, ENDPOINT_INVALID, CANDIDATE_MISMATCH, MAINTENANCE_PENDING }
 enum class XorViolation { DISCRIMINATOR_MISMATCH, MISSING_SUBTYPE, PROJECT_NOT_SUPPORTED, CROSS_TABLE_ID_COLLISION }
 fun close(): Unit
+fun onProgress(progress: StartupProgress): Unit
 interface BackupProviderTarget
+interface StartupObserver
 sealed interface BackupTarget
+sealed interface StartupResult
 sealed interface RepositoryResult.Failure : RepositoryResult<Nothing>
 sealed interface RepositoryResult<out T>
 suspend fun clearIncompleteMarker(): Unit
@@ -52,6 +61,8 @@ suspend fun ingestAttachment(source: File, declaredMimeType: String): Repository
 suspend fun linkAttachment(ownerEntityRefId: String, contentIdentity: String): RepositoryResult<Unit>
 suspend fun renameToFinalIfSupported(): Boolean
 suspend fun replaceTransactionNoteRelations(transactionId: String, noteIds: Set<String>): RepositoryResult<Unit>
+suspend fun retry(observer: StartupObserver): StartupResult
+suspend fun start(observer: StartupObserver): StartupResult
 suspend fun saveNoteAggregate(note: NewNote): RepositoryResult<Unit>
 suspend fun saveTransactionAggregate(tx: NewTransaction): RepositoryResult<Unit>
 suspend fun stageRestore(source: File): RepositoryResult<StagedRestore>

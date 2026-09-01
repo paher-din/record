@@ -14,14 +14,10 @@ import com.paherdin.record.core.data.room.RecordDao
 import com.paherdin.record.core.data.room.RecordDatabase
 import com.paherdin.record.core.data.room.Transaction
 import com.paherdin.record.core.data.room.TransactionNoteRelation
-import com.paherdin.record.core.data.restore.ActivationRecord
 import com.paherdin.record.core.data.restore.ActivationRecordStore
-import com.paherdin.record.core.data.restore.BootstrapResult
 import com.paherdin.record.core.data.restore.ActivationOutcome
-import com.paherdin.record.core.data.restore.GenerationActivation
 import com.paherdin.record.core.data.restore.GenerationManager
 import com.paherdin.record.core.data.restore.GenerationState
-import com.paherdin.record.core.data.restore.LegacyGenerationBootstrap
 import com.paherdin.record.core.data.restore.PreflightResult
 import com.paherdin.record.core.data.restore.RestoreActivationCoordinator
 import com.paherdin.record.core.data.restore.RestoreFaultHook
@@ -123,92 +119,16 @@ class RecordRepository internal constructor(
     @Volatile private var closed: Boolean = false
 
     companion object {
+        /**
+         * Legacy blocking compatibility entry (ADR 0016): delegates the
+         * complete startup sequence to the same `StartupEngine` `RecordStartup`
+         * uses and maps the terminal outcome into the existing result
+         * categories. It retains no bootstrap/activation logic of its own.
+         */
         fun open(context: Context): RepositoryResult<RecordRepository> {
-            val root = checkNotNull(context.filesDir.parentFile) { "app data root unavailable" }
-            return VaultSessionRegistry.open(root) { openProduction(context) }
-        }
-
-        private fun openProduction(context: Context): RepositoryResult<RecordRepository> {
-            return try {
-                val recordFile = recoveryRecordFile(context)
-                val legacyStore = MigrationRecoveryRecordStore(recordFile)
-                val activationStore = ActivationRecordStore(recordFile)
-                val generationManager = GenerationManager(context)
-                val bootstrap = LegacyGenerationBootstrap(
-                    context = context,
-                    activationStore = activationStore,
-                    legacyStore = legacyStore,
-                    generationManager = generationManager,
-                    coordinator = MigrationCoordinator(context, legacyStore),
-                )
-
-                val bootstrapResult = generationManager.underLock { bootstrap.classify() }
-                val fresh = bootstrapResult is BootstrapResult.Fresh
-                var record = when (bootstrapResult) {
-                    BootstrapResult.Fresh -> generationManager.underLock {
-                        val created = ActivationRecord(
-                            migrationRecoveryState = MigrationRecoveryState.MIGRATION_HEALTHY,
-                            migration = null,
-                            generationActivation = generationManager.createInitialGeneration(),
-                        )
-                        activationStore.write(created)
-                        created
-                    }
-                    is BootstrapResult.Ready -> bootstrapResult.record
-                    is BootstrapResult.Blocked -> return TransactionFailed
-                }
-                if (record.generationActivation.state == GenerationState.PENDING) {
-                    // Cold-start resolution of a durable PENDING candidate (same resolver as confirm).
-                    val coordinator = RestoreActivationCoordinator(context, activationStore, generationManager, RestoreFaultHook.NO_OP)
-                    record = when (val outcome = runBlocking { coordinator.resolvePending(record) }) {
-                        is ActivationOutcome.Activated -> outcome.record
-                        is ActivationOutcome.RolledBack -> outcome.record
-                        is ActivationOutcome.Blocked -> return TransactionFailed
-                    }
-                }
-                if (record.migrationRecoveryState != MigrationRecoveryState.MIGRATION_HEALTHY) return TransactionFailed
-                if (record.generationActivation.state != GenerationState.HEALTHY) return TransactionFailed
-
-                generationManager.underLock {
-                    generationManager.orphanCandidates(record).forEach { orphan ->
-                        generationManager.deleteGenerationDirectory(orphan.name)
-                    }
-                }
-
-                val generationId = record.generationActivation.activeGenerationId
-                val databaseFile = generationManager.databaseFile(generationId)
-                val resumableFresh = generationManager.isIncomplete(generationId)
-                if (!fresh && !resumableFresh && !databaseFile.isFile) return TransactionFailed
-                val opened = openWithBuilder(
-                    context = context,
-                    hook = TransactionFaultHook.NO_OP,
-                    builder = { ctx -> openGenerationDatabase(ctx, databaseFile) },
-                    attachmentHook = AttachmentFaultHook.NO_OP,
-                    attachmentFilesDir = generationManager.generationDir(generationId),
-                    generationId = generationId,
-                )
-                if (opened is Success && generationManager.isIncomplete(generationId)) {
-                    try {
-                        generationManager.markComplete(generationId)
-                    } catch (e: Throwable) {
-                        opened.value.close()
-                        throw e
-                    }
-                }
-                opened
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: SQLiteFullException) {
-                StorageExhausted
-            } catch (e: SQLiteException) {
-                TransactionFailed
-            } catch (e: MigrationGateException) {
-                TransactionFailed
-            } catch (e: IllegalArgumentException) {
-                TransactionFailed
-            } catch (e: Throwable) {
-                Unexpected
-            }
+            checkNotNull(context.filesDir.parentFile) { "app data root unavailable" }
+            return runBlocking { StartupEngine(context).run(StartupObserver {}) }
+                .toRepositoryResult()
         }
 
         /** The app-private activation/recovery record (data and storage, plan Task 3). */

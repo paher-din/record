@@ -8,6 +8,8 @@ import com.paherdin.record.core.data.GateResult
 import com.paherdin.record.core.data.MigrationCoordinator
 import com.paherdin.record.core.data.MigrationRecoveryRecordStore
 import com.paherdin.record.core.data.MigrationRecoveryState
+import com.paherdin.record.core.data.StartupObserver
+import com.paherdin.record.core.data.StartupProgress
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
@@ -41,11 +43,18 @@ internal class LegacyGenerationBootstrap(
     private val legacyDatabaseFile: File get() = context.getDatabasePath("record.db")
     private val legacyAttachmentsDir: File get() = File(context.filesDir, "attachments")
 
-    fun classify(): BootstrapResult {
+    fun classify(observer: StartupObserver = StartupObserver {}): BootstrapResult {
         when (val version = activationStore.recordVersion()) {
             ActivationRecord.RECORD_VERSION -> return BootstrapResult.Ready(checkNotNull(activationStore.read()))
             com.paherdin.record.core.data.MigrationRecord.RECORD_VERSION -> {
-                checkNotNull(legacyStore.read())
+                val legacy = checkNotNull(legacyStore.read())
+                // ADR 0016: a durable pending migration proves recovery work;
+                // RecoveryDetected precedes the resolver dispatch below and
+                // Recovering covers the resolver's owned progress.
+                if (legacy.state == MigrationRecoveryState.MIGRATION_RECOVERY_PENDING) {
+                    observer.onProgress(StartupProgress.RecoveryDetected)
+                    observer.onProgress(StartupProgress.Recovering)
+                }
                 return bootstrapLegacy()
             }
             null -> Unit

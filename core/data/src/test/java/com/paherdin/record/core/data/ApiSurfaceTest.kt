@@ -64,6 +64,8 @@ class ApiSurfaceTest {
             "com.paherdin.record.core.data.XorInvariantValidator",
             "com.paherdin.record.core.data.FinanceMatrixValidator",
             "com.paherdin.record.core.data.FinanceViolationException",
+            // ADR 0016: the startup engine and its P5 steps stay module-internal.
+            "com.paherdin.record.core.data.StartupEngine",
             // P5 backup/restore machinery (all module-internal per plan Task 2/3/7/8).
             "com.paherdin.record.core.data.JsonlCodec",
             "com.paherdin.record.core.data.JsonValue",
