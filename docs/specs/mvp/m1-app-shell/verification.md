@@ -9,17 +9,17 @@
 
 | Field | Value |
 |---|---|
-| Current task | M1-T03 — expose the single-owner safe startup coordinator |
-| `task_revision` / `attempt_id` | 1 / not started |
-| Owner / write scope | `/root/m1_t03_core_data`; `core/data/**` only |
-| Dependencies / ready evidence | M1-T02 revision 6 accepted; ADR 0016 accepted; M1-T01 build baseline commits `2b0f1ed` + `98a522a` |
-| Status / dispatch failures | `ready` / 0 |
-| Remaining steps | dispatch core-data worker per plan M1-T03: failing coordinator tests → `RecordStartup`/`StartupEngine` → `RecordRepository.open()` compatibility → API machine checks → core-data gates + schema no-diff → commit → reviews → main acceptance |
-| Next command | dispatch M1-T03 worker with write scope `core/data/**` (plus plan-listed API fixtures) |
-| `blocked-on` | none |
+| Current task | M1-T04/T05/T06 — Finance/Notes/Timeline availability surfaces (parallel slice) |
+| `task_revision` / `attempt_id` | 1 / host slice dispatched |
+| Owner / write scope | finance/notes/timeline workers; `feature/finance/**`, `feature/notes/**`, `feature/timeline/**`; main agent owns device gates, commits, reviews |
+| Dependencies / ready evidence | M1-T02 revision 6 accepted; M1-T03 revision 3 accepted (commits `9ac16b3` + `af9f03f`, reviews APPROVED, device XML 165/0/0/0) |
+| Status / dispatch failures | `in_progress` / 0 |
+| Remaining steps | per feature: host gates → main-agent direct-instrumentation device gate (per-package app-op needs user approval) → boundary scan on staged files → commit → two-stage reviews → acceptance |
+| Next command | collect T06 host report, then run serial feature device gates after per-package app-op approval |
+| `blocked-on` | device app-op approval for `com.paherdin.record.feature.{finance,notes,timeline}.test` pending user consent (plan M1-T04/T05/T06 execution correction) |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
-| Contract references | plan M1-T03; spec criteria 13, 15, 18; accepted ADR 0016 |
-| Last raw evidence | M1-T02 accepted: commit `37032a3`; direct instrumentation 11/11 OK, SHA-256 `0D3EF803…8D1B68`; spec + quality reviews APPROVED; main full `check` PASS 257 tasks |
+| Contract references | plan M1-T04/T05/T06; spec criteria 3–5, 7–9, 12 |
+| Last raw evidence | T03 accepted: device 165/0/0/0 XML `3D213C0F…9BB67F`; feature host slices green, device gates pending |
 | Last updated | 2026-09-01 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -38,7 +38,7 @@
 | 10 | Chrome rules | PASS (policy subgate) | ShellChromePolicyTest 6/0/0/0 exhaustive resolve(kind, phase); runtime bar-visibility/back-lock device gate remains T08 |
 | 11 | Independent retention | pending | none |
 | 12 | Timeline date | pending | none |
-| 13 | Safe startup | pending | none |
+| 13 | Safe startup | PASS (coordinator subgate) | T03 device 165/0/0/0: one `StartupEngine`, `Checking→RecoveryDetected→Recovering` ordering, resolver non-cancellable boundary, open() compatibility identity; app-side `RestoreRecoveryRoute` routing subgate remains T08 |
 | 14 | Startup budgets and isolation | pending | M1-T01 isolated package/device subgate PASS via retained A5 XML; numeric startup budgets remain M1-T10 |
 | 15 | Dependency review | PASS | approved versions resolved; host/dependency scans, smoke test, spec/quality reviews, and production-target manifest checks pass |
 | 16 | Offline routes | pending | none |
@@ -70,7 +70,13 @@
 | M1-T02 | 4 | `M1-T02-A10` | main-agent device gate | failed | 0 | no | host/device gates PASS and spec APPROVED; quality review found one Important and two Minor gaps |
 | M1-T02 | 5 | `M1-T02-A11` | `/root/m1_t02_spec_fix` | failed | 0 | no | host gates PASS; device 11/3 exposed over-strong device-focus assertions and a UTP destroyed-Activity race; led to approved revision 6 |
 | M1-T02 | 6 | `M1-T02-A12` | `/root/m1_t02_spec_fix` + main device gate | done | 0 | yes | commit `37032a3`; direct instrumentation 11/11 OK and full rollback; spec + quality reviews APPROVED; main full `check` PASS |
-| M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
+| M1-T03 | 1 | `M1-T03-A1` | `/root/m1_t03_core_data` | blocked | 0 | no | host gates PASS; full device suite hit pre-existing P4 SearchBenchmark airplane-mode preconditions (165/167); worker stopped without commit |
+| M1-T03 | 2 | `M1-T03-A2` | main-agent device gate | done | 0 | yes | notClass correction recorded in plan; device 165/0/0/0; commit `9ac16b3`; spec APPROVED; quality CHANGES_REQUIRED (Important: resolver cancellability) |
+| M1-T03 | 3 | `M1-T03-A3` | `/root/m1_t03_core_data` + main device gate | done | 0 | yes | commit `af9f03f`; device 165/0/0/0 XML `3D213C0F…9BB67F`; spec + quality rereviews APPROVED; main full `check` PASS |
+| M1-T04 | 1 | host slice | `/root/m1_t04_finance` | in_progress | 0 | no | RED→GREEN host PASS; boundary content scan clean; device gate pending |
+| M1-T05 | 1 | host slice | `/root/m1_t05_notes` | in_progress | 0 | no | RED→GREEN host PASS; boundary scan exit 1; device gate pending |
+| M1-T06 | 1 | host slice | `/root/m1_t06_timeline` | in_progress | 0 | no | RED→GREEN host PASS; unit 7/0/0/0; SaverScope round-trip correction in flight; device gate pending |
+| M1-T07–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
 
@@ -175,6 +181,42 @@
 **Device result:** PASS — preflight proved the device awake with no package/app-op/test process present. After `adb install` (Success), `appops set --user 0 com.paherdin.record.core.ui.test 10021 allow` read back `MIUIOP(10021): allow`. Direct `am instrument -w -r -e class com.paherdin.record.core.ui.SharedContentTest com.paherdin.record.core.ui.test/androidx.test.runner.AndroidJUnitRunner` returned `OK (11 tests)` in 21.573 s. Raw output retained at `.superpowers/evidence/m1-t02-a12/am-instrument-raw.txt`, SHA-256 `0D3EF803B37EEE60C9353549DD863DB72239B40870F84141259B75FA7C8D1B68`. Uninstall returned Success; package list, `appops get` (`No UID`), and process scan were all empty — full rollback.
 
 **Acceptance:** implementation commit `37032a3` contains exactly `SharedContent.kt` and `SharedContentTest.kt`. Spec-compliance review APPROVED (revision 5/6 contracts, A8 four items unregressed, A10 three findings closed, criteria 3/4/5/6/10 in T02 scope). Code-quality review APPROVED (Important + two Minor closed, no new findings). Main-agent fresh full `check` PASS in 38 s (257 tasks, exit 0). M1-T02 accepted; criteria 3/4/5/6/10 T02 subgates are PASS, app-level subgates remain with their owning tasks.
+
+### M1-T03-A1 — worker host PASS and airplane-mode device blocker
+
+**Host evidence:** RED first (`Unresolved reference 'RecordStartup'/'StartupProgress'/'StartupResult'` in both test sets); after implementation `:core:data:testDebugUnitTest :core:data:apiBoundaryCheck` PASS with 309/0/0/0 (RecordStartupTest 15/15) and `apiBoundaryCheck: PASS (5 positive, 26 negative)`; schema diff exit 0; full `check` PASS 257 tasks.
+
+**Device result:** BLOCKED — install succeeded and 165/167 tests passed, but the two pre-existing P4 `SearchBenchmarkTest` measured runs failed on their own frozen preconditions (`airplane mode must be enabled`, device `airplane_mode_on=0`), independent of any M1 change. Worker stopped without commit.
+
+### M1-T03-A2 — notClass device-gate correction and implementation commit
+
+**Plan correction:** recorded in plan.md — the full `:core:data:connectedDebugAndroidTest` suite is re-run with `-Pandroid.testInstrumentationRunnerArguments.notClass=com.paherdin.record.core.data.search.SearchBenchmarkTest`; measured benchmarks belong to their own P4/P6 evidence chains, not the M1 regression gate.
+
+**Device result:** PASS — 165/165, 0 failures, BUILD SUCCESSFUL in 7m26s. XML retained at `.superpowers/evidence/m1-t03-a2/TEST-23116PN5BC - 16-_core_data-.xml`, SHA-256 `870B69B7456F1900587DF59EDC9EA7B6C1243888E85188854E7BAE2A45034F43`; all five `RecordStartupDeviceTest` cases present and passing.
+
+**Commit:** `9ac16b3` (`feat(data): expose safe startup gate handoff`), exactly 10 `core/data` files; schema no-diff; CRLF normalization applied.
+
+**Spec review:** APPROVED — ADR 0016 surface, progress ordering, coalescing/caching/retry semantics, open() delegation and registry identity, data-free boundary all conform; both declared deviations accepted as documented (internal constructor for test injection with unchanged public surface; `LegacyGenerationBootstrap` +13 lines as the necessary minimum for v1-pending recovery events).
+
+**Quality review:** CHANGES_REQUIRED — Important: `resolvePendingActivation` dispatch lacked `withContext(NonCancellable)`, violating ADR 0016:112; Minors: observer reentrancy KDoc, `toRepositoryResult` KDoc wording, test gaps for interleaved progress timeline, cancellation paths, and the process-wide mutex.
+
+### M1-T03-A3 — revision-3 corrections and acceptance
+
+**Revision-3 contract:** wrap the resolver dispatch in `withContext(NonCancellable)` matching `confirmRestore`, with `coroutineContext.ensureActive()` after the boundary so caller cancellation deterministically surfaces without writing a terminal result; add the three missing test classes of coverage; correct the two KDoc texts.
+
+**RED:** `attemptInsideResolverRunsToCompletionDespiteCancellation` failed as expected against the pre-fix engine (AssertionError: resolver must complete before cancellation propagates); the other new tests were green regression pins.
+
+**Host result:** `:core:data:testDebugUnitTest :core:data:apiBoundaryCheck` PASS with 312/0/0/0 (RecordStartupTest 18/18); apiBoundaryCheck 5+26; schema diff exit 0; full `check` PASS 257 tasks.
+
+**Device result:** PASS — 165/165, 0 failures, BUILD SUCCESSFUL in 7m37s. XML retained at `.superpowers/evidence/m1-t03-a3/TEST-23116PN5BC - 16-_core_data-.xml`, SHA-256 `3D213C0FD822375EA3E54C8C53A32049D167B923AC1C3D3CEF4C1DB18C9BB67F`.
+
+**Commit:** `af9f03f` (`fix(data): keep pending resolver non-cancellable per ADR 0016`), exactly 3 `core/data` files.
+
+**Spec rereview:** APPROVED — boundary identical in kind to confirmRestore and matching ADR wording; cancellation/coalescing/caching semantics verified non-conflicting; red-test evidence valid; surface/schema/scope clean.
+
+**Quality rereview:** APPROVED — Important closed, all five Minors closed, no new Critical/Important findings; one non-blocking Minor noted on the timing-based negative mutex assertion.
+
+**Main-agent final result:** fresh full `check` BUILD SUCCESSFUL at HEAD (257 tasks, exit 0). M1-T03 revision 3 accepted; criterion 13 coordinator subgate PASS, app-side routing subgate remains T08.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
@@ -375,5 +417,7 @@ The same task revision resumes under attempt A2 because behavior and acceptance 
 - M1-T01-A3 is recorded `cancelled` because the worker's usage-limit failure prevented a completion report/commit, despite usable last-observable device output. M1-T01-A4 is an external install blocker, not a dispatch failure. Neither permits a false PASS.
 - Plan path correction: the smoke-test package changes from `/build/` to `/compat/` solely because repository `.gitignore` treats any `/build/` segment as generated output. The test content/behavior and acceptance command remain unchanged apart from its class name package.
 - M1-T02 revision 6 is a bounded test-infrastructure correction recorded in plan.md: focusability evidence became the semantics `RequestFocus` action instead of device focus state, and the Xiaomi device gate used the approved direct-instrumentation fallback with pre-applied package-only app-op and explicit uninstall. Product assertions, scope, and acceptance criteria are unchanged; no spec reapproval was required.
+- M1-T03: the plan device command implicitly required the P4 benchmark environment; the notClass correction (plan.md, revision 2) excludes measured benchmark runs from the regression gate without changing any acceptance criterion.
+- M1-T03 documented deviations, all accepted by both review stages: `RecordStartup` constructor is `internal` instead of ADR-literal `private` (test injection; public surface machine-verified unchanged); `LegacyGenerationBootstrap.kt` gained a +13-line observer parameter as the necessary minimum to emit v1-pending recovery progress; unclassified `Throwable` in `RecordRepository.open()` now stably maps to `TransactionFailed` instead of the pre-delegation `Unexpected` (plan Step 3 wording; no external caller distinguishes them).
 - The separate destructive approval for clearing `com.paherdin.record.benchmark` has not been requested or granted; it is required only at M1-T10.
 - M1 remains incomplete; criteria 2–19 are pending except the initialized lifecycle record in criterion 1.
