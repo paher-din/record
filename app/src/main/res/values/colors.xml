@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A/A1 warm-editorial semantic palette by role (spec 5.2). These values
+         mirror :core:ui's RecordPalette so the platform starting window and
+         adaptive icon match the Compose theme; Compose surfaces keep using the
+         semantic RecordTheme tokens. -->
+    <color name="record_app_background">#F6F2E9</color>
+    <color name="record_primary_surface">#EEE6D7</color>
+    <color name="record_primary_accent">#145C4B</color>
+    <color name="record_warm_secondary">#925D39</color>
+    <color name="record_primary_content">#24342F</color>
+    <color name="record_on_primary_content">#FFF9EE</color>
+</resources>

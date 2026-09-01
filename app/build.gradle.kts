@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
 
     testImplementation(libs.junit)
+    testImplementation(testFixtures(project(":core:data")))
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.navigation.testing)
     androidTestImplementation(libs.compose.ui.test.junit4)

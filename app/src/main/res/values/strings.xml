@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Record</string>
+
+    <string name="shell_tab_timeline">时间线</string>
+    <string name="shell_tab_finance">财务</string>
+    <string name="shell_tab_notes">笔记</string>
+    <string name="shell_tab_projects">项目</string>
+
+    <string name="shell_action_create">新建</string>
+    <string name="shell_action_search">搜索</string>
+    <string name="shell_action_settings">设置</string>
+    <string name="shell_action_back">返回</string>
+
+    <string name="create_sheet_title">新建</string>
+    <string name="create_choice_expense">支出</string>
+    <string name="create_choice_income">收入</string>
+    <string name="create_choice_transfer">转账</string>
+    <string name="create_choice_note">笔记</string>
+
+    <string name="startup_gate_checking_title">正在检查数据</string>
+    <string name="startup_gate_checking_state_description">正在检查数据安全性</string>
+    <string name="startup_gate_recovery_detected_title">检测到待恢复的数据</string>
+    <string name="startup_gate_recovering_title">正在恢复数据</string>
+    <string name="startup_gate_recovering_state_description">正在恢复数据，请稍候</string>
+    <string name="startup_gate_blocked_title">数据恢复未完成</string>
+    <string name="startup_gate_recoverable_body">可以安全重试以继续恢复。</string>
+    <string name="startup_gate_blocking_body">当前无法自动恢复，请先处理存储问题。</string>
+    <string name="startup_gate_retry">重试</string>
+    <string name="startup_gate_checking_body">请稍候，应用正在完成启动检查。</string>
+    <string name="startup_gate_recovery_detected_state_description">检测到待恢复数据</string>
+    <string name="startup_gate_state_description">启动恢复未完成</string>
+
+    <string name="settings_heading">设置</string>
+    <string name="settings_back">返回</string>
+    <string name="settings_app_row">应用：Record</string>
+    <string name="settings_availability">更多设置将在后续版本提供。</string>
+</resources>

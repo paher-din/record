@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Platform starting-window theme (spec 5.2): A/A1 warm app background on
+         the starting window, no second custom splash Activity, no timer. The
+         in-app Material 3 theme remains the RecordTheme wrapper in :core:ui. -->
+    <style name="Theme.Record" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/record_app_background</item>
+        <item name="android:windowSplashScreenBackground">@color/record_app_background</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/record_app_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

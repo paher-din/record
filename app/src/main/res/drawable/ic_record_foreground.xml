@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Text-free launcher mark (spec 5.2): one continuous timeline thread
+     connecting two circular events, inside the adaptive safe zone; warm
+     background plus primary green only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M33,54 L75,54"
+        android:strokeColor="@color/record_primary_accent"
+        android:strokeWidth="4" />
+    <path
+        android:fillColor="@color/record_primary_accent"
+        android:pathData="M42,54m-8,0a8,8 0 1,0 16,0a8,8 0 1,0 -16,0" />
+    <path
+        android:fillColor="@color/record_app_background"
+        android:pathData="M42,54m-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0" />
+    <path
+        android:fillColor="@color/record_primary_accent"
+        android:pathData="M69,54m-11,0a11,11 0 1,0 22,0a11,11 0 1,0 -22,0" />
+</vector>
