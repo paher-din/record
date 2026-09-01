@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 4 / `M1-T02-A10` |
+| `task_revision` / `attempt_id` | 5 / `M1-T02-A11` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
 | Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | cold-package device rerun → correction commit → repeated two-stage review → main acceptance |
-| Next command | rerun the same corrected-timing combined gate from proven package-absent/app-op-absent state |
+| Remaining steps | test-first quality corrections → host/device rerun → correction commit → repeated reviews → main acceptance |
+| Next command | make ready fixture provide a visible heading and assert exactly one, obtaining RED from the duplicate wrapper heading before production correction |
 | `blocked-on` | none; user explicitly approved the temporary test-package-only app-op on 2026-08-30 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A9 host PASS; device 11 tests/1 ActivityScenario infrastructure NPE/10 pass; UTP then removed package/app-op, establishing a clean A10 condition |
+| Last raw evidence | A10 cold-package device 11/0/0/0 and rollback PASS; spec rereview APPROVED; quality review CHANGES_REQUIRED on Ready heading semantics and two test gaps |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -67,7 +67,8 @@
 | M1-T02 | 2 | `M1-T02-A7` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | UTP reinstall reset the pre-set op to ignore; combined command timed out; exact processes stopped and package removal proved rollback |
 | M1-T02 | 3 | `M1-T02-A8` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | host/device gates PASS and commit `d58ae68`; independent spec review found four existing-contract violations |
 | M1-T02 | 4 | `M1-T02-A9` | `/root/m1_t02_spec_fix` | failed | 0 | no | host corrections PASS; first full device run had 10 pass plus one ActivityScenario destroyed-Activity infrastructure NPE |
-| M1-T02 | 4 | `M1-T02-A10` | main-agent device gate | in_progress | 0 | no | unchanged correction source; cold package/app-op-absent retry of the same approved Xiaomi orchestration |
+| M1-T02 | 4 | `M1-T02-A10` | main-agent device gate | failed | 0 | no | host/device gates PASS and spec APPROVED; quality review found one Important and two Minor gaps |
+| M1-T02 | 5 | `M1-T02-A11` | `/root/m1_t02_spec_fix` | in_progress | 0 | no | move heading ownership to visible ready content; strengthen 200% font and semantic error-role evidence; rerun gates/reviews |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -151,6 +152,14 @@
 ### M1-T02-A10 — cold-package device retry
 
 **Contract:** no source, assertion, command, timeout, or app-op scope change. Start from package/app-op absent, run the same one-job corrected-timing gate once, and accept only 11/0/0/0 plus package/app-op rollback.
+
+**Result:** PASS — the cold-package precondition was empty; the same combined command completed in 35 seconds with 11/0/0/0 and Gradle exit 0. Retained `.superpowers/evidence/m1-t02-a10/TEST-23116PN5BC-16-core-ui.xml` SHA-256 is `8932FE83A940B94986863C4EA76220C18FFDB5C52E39DD05772D39D5372C7677`. UTP removed the package and app-op. Correction commit `5f40add` contains exactly nine authorized files. Spec rereview returned APPROVED.
+
+**Quality review:** CHANGES_REQUIRED. The Ready wrapper's own generic Heading could duplicate the real visible ready title; 200%-font coverage did not prove bounds/non-overlap/focusability; theme coverage omitted the four semantic error roles and their separation from warm secondary.
+
+### M1-T02-A11 — quality-review corrections
+
+**Revision-5 contract:** first make the ready test fixture expose its real visible heading and assert exactly one heading; the revision-4 wrapper must fail with a duplicate. Then remove Heading from the non-merging state wrapper and explicitly require readyContent to emit exactly one visible heading while keeping descendant text/actions addressable. Strengthen the existing 200%-font and light/dark error-role tests without adding new files or behavior.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
