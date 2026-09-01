@@ -9,17 +9,17 @@
 
 | Field | Value |
 |---|---|
-| Current task | M1-T04/T05/T06 — Finance/Notes/Timeline availability surfaces (parallel slice) |
-| `task_revision` / `attempt_id` | 1 / host slice dispatched |
-| Owner / write scope | finance/notes/timeline workers; `feature/finance/**`, `feature/notes/**`, `feature/timeline/**`; main agent owns device gates, commits, reviews |
-| Dependencies / ready evidence | M1-T02 revision 6 accepted; M1-T03 revision 3 accepted (commits `9ac16b3` + `af9f03f`, reviews APPROVED, device XML 165/0/0/0) |
-| Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | per feature: host gates → main-agent direct-instrumentation device gate (per-package app-op needs user approval) → boundary scan on staged files → commit → two-stage reviews → acceptance |
-| Next command | collect T06 host report, then run serial feature device gates after per-package app-op approval |
-| `blocked-on` | device app-op approval for `com.paherdin.record.feature.{finance,notes,timeline}.test` pending user consent (plan M1-T04/T05/T06 execution correction) |
+| Current task | M1-T07 — startup/navigation/shell-chrome/theme/launch-identity integration (`app/**` only) |
+| `task_revision` / `attempt_id` | 1 / not dispatched |
+| Owner / write scope | app integration worker; only `app/**`; main agent owns device gates, commits, reviews |
+| Dependencies / ready evidence | M1-T02 revision 6, M1-T03 revision 3, M1-T04/T05/T06 accepted (commits `37032a3`, `9ac16b3`+`af9f03f`, `3bd4bc2`, `d6ce79f`, `8ad0474`; all two-stage reviews APPROVED; feature device gates 8/8, 8/8, 7/7) |
+| Status / dispatch failures | pending dispatch / 0 |
+| Remaining steps | dispatch T07 worker (RED routes/store tests → integration → host gates `:app:testDebugUnitTest :app:assembleDebug :app:assembleRelease checkModuleDependencies` → commit `feat(app): deliver M1 typed application shell`) → main-agent review/device gates per plan |
+| Next command | dispatch the T07 app integration worker with the plan's exact file scope |
+| `blocked-on` | none; the three feature test-package app-op approvals were consumed by their one-time device gates and all packages are uninstalled |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
-| Contract references | plan M1-T04/T05/T06; spec criteria 3–5, 7–9, 12 |
-| Last raw evidence | T03 accepted: device 165/0/0/0 XML `3D213C0F…9BB67F`; feature host slices green, device gates pending |
+| Contract references | plan M1-T07; spec criteria 3, 7–9, 11, 13 (app side), 18 |
+| Last raw evidence | T04/T05/T06 accepted: finance 8/8 `e7047165…1fae82`, notes 8/8 `076c2fef…4542c9`, timeline 7/7 `f461820e…352ec` direct-instrumentation raw logs; full `check` PASS at HEAD |
 | Last updated | 2026-09-01 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -28,16 +28,16 @@
 |---:|---|---|---|
 | 1 | Lifecycle and architecture prerequisite | PASS | ADR 0016 accepted; five core docs synchronized; spec/plan/router lifecycle scans and M1-T00 commands below |
 | 2 | Module boundary | PASS | M1-T01 module check, exact commit scope, spec review, and main full check |
-| 3 | Theme/localization/launch identity | PASS (T02 subgate) | A12 device 11/11 + host PASS: A/A1 non-error roles, semantic error roles, light/dark, resource-backed Chinese copy, local-vector icons; packaged-resource/no-data-preframe subgates remain T08/T11 |
-| 4 | Accessibility | PASS (T02 subgate) | A12 device 11/11: heading/state/live-region semantics, 48-dp Retry, 200%-font full-bounds/no-overlap/focus-action; selected-tab/focus subgate remains T08 |
-| 5 | Shared presentation | PASS (T02 subgate) | A12 device 11/11 four-state semantics; error never empty, partial never ready, Retry callback verified; production fixtures carry no synthetic business data |
+| 3 | Theme/localization/launch identity | PASS (T02 subgate) | A12 device 11/11 + host PASS: A/A1 non-error roles, semantic error roles, light/dark, resource-backed Chinese copy, local-vector icons; T04/T05/T06 extend the resource-backed-Chinese/token subgate to all three feature slices (device 8/8, 8/8, 7/7); packaged-resource/no-data-preframe subgates remain T08/T11 |
+| 4 | Accessibility | PASS (T02 subgate) | A12 device 11/11: heading/state/live-region semantics, 48-dp Retry, 200%-font full-bounds/no-overlap/focus-action; T04/T05/T06 device gates add feature-slice heading/48-dp/200%-font coverage (timeline dark-theme+200%-font usability test included); selected-tab/focus subgate remains T08 |
+| 5 | Shared presentation | PASS (T02 subgate) | A12 device 11/11 four-state semantics; error never empty, partial never ready, Retry callback verified; T04/T05/T06 prove all three feature slices dispatch every presentation through `SharedContent` with Retry-when-retryable and no synthetic business data in `src/main`; production fixtures carry no synthetic business data |
 | 6 | Operation phases | PASS | PhaseTest 4/0/0/0 on the exact closed set/transitions; no alias flags found by scans |
 | 7 | Default shell | pending | none |
-| 8 | Global actions | pending | none |
-| 9 | Typed/source-owned routing | pending | none |
+| 8 | Global actions | pending | typed create destinations exist and are device-verified: Finance editor kinds Expense/Income/Transfer with kind-specific Chinese labels (T04 8/8) and Notes editor (T05 8/8); app-bar reachability, exact global-create modal, and dispatch gate remain T07/T08 |
+| 9 | Typed/source-owned routing | pending | typed source-owned screens exist with no Room/DAO/path/URI/payload arguments (signatures verified by both review stages); representative detail/editor screens render no record ID; route registration, Transaction→Finance/Note→Notes wiring, and Back-origin restoration gate remains T07/T08 |
 | 10 | Chrome rules | PASS (policy subgate) | ShellChromePolicyTest 6/0/0/0 exhaustive resolve(kind, phase); runtime bar-visibility/back-lock device gate remains T08 |
 | 11 | Independent retention | pending | none |
-| 12 | Timeline date | pending | none |
+| 12 | Timeline date | pending | state/saver/controller subgate PASS: T06 unit 8/0/0/0 with fixed `Clock`/`ZoneId("Asia/Shanghai")` covering current-day default, restored-state precedence, foreground-midnight stability, explicit Today re-read, revision increment, filter preservation, and Today-to-top scroll reset, plus a Saver round-trip; app wiring and device-level stale-revision read-side proof remain T07/T08 |
 | 13 | Safe startup | PASS (coordinator subgate) | T03 device 165/0/0/0: one `StartupEngine`, `Checking→RecoveryDetected→Recovering` ordering, resolver non-cancellable boundary, open() compatibility identity; app-side `RestoreRecoveryRoute` routing subgate remains T08 |
 | 14 | Startup budgets and isolation | pending | M1-T01 isolated package/device subgate PASS via retained A5 XML; numeric startup budgets remain M1-T10 |
 | 15 | Dependency review | PASS | approved versions resolved; host/dependency scans, smoke test, spec/quality reviews, and production-target manifest checks pass |
@@ -73,9 +73,10 @@
 | M1-T03 | 1 | `M1-T03-A1` | `/root/m1_t03_core_data` | blocked | 0 | no | host gates PASS; full device suite hit pre-existing P4 SearchBenchmark airplane-mode preconditions (165/167); worker stopped without commit |
 | M1-T03 | 2 | `M1-T03-A2` | main-agent device gate | done | 0 | yes | notClass correction recorded in plan; device 165/0/0/0; commit `9ac16b3`; spec APPROVED; quality CHANGES_REQUIRED (Important: resolver cancellability) |
 | M1-T03 | 3 | `M1-T03-A3` | `/root/m1_t03_core_data` + main device gate | done | 0 | yes | commit `af9f03f`; device 165/0/0/0 XML `3D213C0F…9BB67F`; spec + quality rereviews APPROVED; main full `check` PASS |
-| M1-T04 | 1 | host slice | `/root/m1_t04_finance` | in_progress | 0 | no | RED→GREEN host PASS; boundary content scan clean; device gate pending |
-| M1-T05 | 1 | host slice | `/root/m1_t05_notes` | in_progress | 0 | no | RED→GREEN host PASS; boundary scan exit 1; device gate pending |
-| M1-T06 | 1 | host slice | `/root/m1_t06_timeline` | in_progress | 0 | no | RED→GREEN host PASS; unit 7/0/0/0; SaverScope round-trip correction in flight; device gate pending |
+| M1-T04 | 1 | `M1-T04-A1` | `/root/m1_t04_finance` + main device gate | failed | 0 | no | RED→GREEN host PASS; boundary scan clean; first device run 1 failure of 8: Xiaomi device-only `IllegalStateException: has already set content` from the editor test setting content 3×; fixed to one composition + `mutableStateOf` switching; no commit |
+| M1-T04 | 1 | `M1-T04-A2` | main device gate | done | 0 | yes | commit `3bd4bc2`; direct instrumentation 8/8 OK after mid-run MIUI op reset recovery (re-allow + exact shell Intent); uninstall/no-UID rollback; spec + quality APPROVED; full `check` PASS |
+| M1-T05 | 1 | `M1-T05-A1` | `/root/m1_t05_notes` + main device gate | done | 0 | yes | RED→GREEN host PASS; commit `d6ce79f`; direct instrumentation 8/8 OK after mid-run MIUI op reset recovery; uninstall/no-UID rollback; spec + quality APPROVED |
+| M1-T06 | 1 | `M1-T06-A1` | `/root/m1_t06_timeline` + main device gate | done | 0 | yes | unit 8/0/0/0 incl. Saver round-trip via the nested-`with` form (Kotlin 2.2.10 member-extension defect; pure-Kotlin fix, no Java bridge); commit `8ad0474` (message deviation recorded); device 7/7 OK clean run; rollback proved; spec + quality APPROVED |
 | M1-T07–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -217,6 +218,30 @@
 **Quality rereview:** APPROVED — Important closed, all five Minors closed, no new Critical/Important findings; one non-blocking Minor noted on the timing-based negative mutex assertion.
 
 **Main-agent final result:** fresh full `check` BUILD SUCCESSFUL at HEAD (257 tasks, exit 0). M1-T03 revision 3 accepted; criterion 13 coordinator subgate PASS, app-side routing subgate remains T08.
+
+### M1-T04-A2 — finance direct-instrumentation device gate and acceptance
+
+**Approval:** on 2026-09-01 the user explicitly approved “同意全部三个（推荐）”, granting the package-only `MIUIOP(10021)=allow` execution approval for the three disposable feature test packages `com.paherdin.record.feature.finance.test`, `com.paherdin.record.feature.notes.test`, `com.paherdin.record.feature.timeline.test`, mirroring the 2026-08-30 core-ui approval. Each gate sets the op only after install, runs the class once, then uninstalls.
+
+**A1 device result:** FAILED — install Success, op read back allow, direct `am instrument -w -r -e class com.paherdin.record.feature.finance.FinanceScreensTest` ran 8 tests with 7 passing and `editorShowsKindSpecificChineseLabelAndBackAction` dying before its product assertion with `IllegalStateException: … has already set content` (the test called `setContent` three times; Xiaomi device runs reject re-setting content while host Compose runs tolerate it). Raw log `.superpowers/evidence/m1-t04-a1/am-instrument-raw.txt`, `FAILURES!!!`, Time 13.054. The fix rewrote the test to a single composition with `mutableStateOf(FinanceEditorKind.Expense)` and `runOnIdle` kind switching. No commit occurred at A1.
+
+**A2 device result:** PASS — preflight clean (no package/app-op/process), `adb install` Success, op read back `MIUIOP(10021): allow`. Direct `am instrument -w -r -e class com.paherdin.record.feature.finance.FinanceScreensTest com.paherdin.record.feature.finance.test/androidx.test.runner.AndroidJUnitRunner` returned `OK (8 tests)`, Time 262.047 s. Mid-run MIUI reset the op to `ignore; rejectTime` and the run hung; recovery re-set the op to allow and released the blocked first Activity once with the exact shell Intent (`am start -f 0x10008000 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.paherdin.record.feature.finance.test/androidx.activity.ComponentActivity`), after which the same instrumentation process completed. Raw output retained at `.superpowers/evidence/m1-t04-a2/am-instrument-raw.txt`, SHA-256 `e7047165172edb5a3d0aa1805eb3a119490f6d21badb4d64026627b0c21fae82`. Uninstall Success; package list, `appops get`, and process scan all empty — full rollback.
+
+**Acceptance:** commit `3bd4bc2` contains exactly the four planned files. Boundary scan `git grep -E "Room|Dao|Entity|RecordRepository|Save" -- feature/finance/src/main` exit 1. Spec-compliance review APPROVED (11 evidence checks PASS: exact public signatures, truthful M2 copy, Step-1 coverage 1:1, single `setContent` per test, resource-backed Chinese, `:core:ui`-only module graph). Code-quality review APPROVED (no Critical/Important; two non-blocking Minors — an unused `androidx.compose.ui.test.assert` import and a redundant Heading re-assertion in `FinanceScreensTest.kt`, to be removed on the file's next touch). M1-T04 accepted.
+
+### M1-T05-A1 — notes direct-instrumentation device gate and acceptance
+
+**Device result:** PASS — under the same 2026-09-01 approval; install Success, op read back allow; direct `am instrument` on `com.paherdin.record.feature.notes.NotesScreensTest` returned `OK (8 tests)`, Time 358.703 s. The run hit the same mid-run MIUI op reset and was recovered by re-setting allow plus one exact shell Intent release to `com.paherdin.record.feature.notes.test/androidx.activity.ComponentActivity`, then completed in the same instrumentation process. Raw log `.superpowers/evidence/m1-t05-a1/am-instrument-raw.txt`, SHA-256 `076c2fef36bf2e15bf923e191087eef28ce7c3001ca4fd89b4317c06c04542c9`. Uninstall Success; package list, `appops get`, and process scan empty — full rollback.
+
+**Acceptance:** commit `d6ce79f` contains exactly the four planned files. Boundary scan (pattern including `Markdown`) exit 1. Spec-compliance review APPROVED (signatures verbatim, all four presentations with retryable and non-retryable error branches, truthful M3 copy `笔记功能将在 M3 版本中提供`, single `setContent` per test via one helper, resource-backed Chinese, no domain/data dependency proven structurally by build graph/imports/scan). Code-quality review APPROVED (no Critical/Important; two non-blocking Minors — detail/editor tests could additionally assert the Heading semantic the Ready test asserts, and the ready body omits an explicit `bodyLarge` style that Material3 already defaults to). M1-T05 accepted.
+
+### M1-T06-A1 — timeline direct-instrumentation device gate and acceptance
+
+**Host/unit evidence:** `TimelineDateControllerTest` 8/0/0/0 with fixed `Clock` and `ZoneId.of("Asia/Shanghai")` — the plan's Step-1 coverage plus the Saver round-trip and an Int/Long restore pin. The round-trip first failed to compile because the Kotlin 2.2.10 toolchain does not resolve `Saver.save` member-extension calls written with an explicit dispatch receiver (independently verified via `javap` and a four-form probe; only the nested `with` with both receivers implicit compiles). The accepted fix is the pure-Kotlin double-`with` + `RoundTripScope : SaverScope` form; the interim `SaverSaveBridge.java` was removed, keeping the module Kotlin-only.
+
+**Device result:** PASS — the first install attempt was externally cancelled (`INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`; MIUI install prompt not accepted). After the user reconnected, `adb install` of the rebuilt test APK (30,894,470 bytes) returned Success, the op read back `MIUIOP(10021): allow`, and direct `am instrument` on `com.paherdin.record.feature.timeline.TimelineScreensTest` completed cleanly: `OK (7 tests)`, Time 14.381 s, no recovery needed. Raw log `.superpowers/evidence/m1-t06-a1/am-instrument-raw.txt`, SHA-256 `f461820e4f7cbccca777ecf916f645b0781cab1eae9bdfe6e6c26c22e67352ec`. Uninstall Success; package list and process scan empty — full rollback.
+
+**Acceptance:** commit `8ad0474` contains exactly the six planned files. Projection-write boundary scan exit 1; no `:core:data` dependency. Spec-compliance review APPROVED (plan-exact state/controller/saver shape, Step-1 coverage map 1:1, production Availability-only with synthetic cards confined to test source, single `setContent` per test, resource-backed Chinese, criteria 3/4/5/12 conformance within slice scope). Code-quality review APPROVED (no Critical/Important; three non-blocking Minors — per-recomposition `DateTimeFormatter` allocation at `TimelineScreens.kt:160`, `ProjectsHomeScreen`/`UnifiedSearchScreen` shared-wiring duplication (~25 lines, two stable call sites), and a hardcoded `"SharedContentRetry"` test-tag literal at `TimelineScreensTest.kt:192`). Main-agent fresh full `check` at HEAD including all three feature modules: BUILD SUCCESSFUL, 266 tasks, exit 0. M1-T06 accepted.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
@@ -419,5 +444,6 @@ The same task revision resumes under attempt A2 because behavior and acceptance 
 - M1-T02 revision 6 is a bounded test-infrastructure correction recorded in plan.md: focusability evidence became the semantics `RequestFocus` action instead of device focus state, and the Xiaomi device gate used the approved direct-instrumentation fallback with pre-applied package-only app-op and explicit uninstall. Product assertions, scope, and acceptance criteria are unchanged; no spec reapproval was required.
 - M1-T03: the plan device command implicitly required the P4 benchmark environment; the notClass correction (plan.md, revision 2) excludes measured benchmark runs from the regression gate without changing any acceptance criterion.
 - M1-T03 documented deviations, all accepted by both review stages: `RecordStartup` constructor is `internal` instead of ADR-literal `private` (test injection; public surface machine-verified unchanged); `LegacyGenerationBootstrap.kt` gained a +13-line observer parameter as the necessary minimum to emit v1-pending recovery progress; unclassified `Throwable` in `RecordRepository.open()` now stably maps to `TransactionFailed` instead of the pre-delegation `Unexpected` (plan Step 3 wording; no external caller distinguishes them).
+- M1-T04/T05/T06 documented deviations and execution notes: the T06 commit message is `feat(timeline): add M1 availability surfaces` instead of the plan-literal `feat(timeline): add M1 shell surfaces and date state` (chosen for consistency with the sibling T04/T05 messages; content/scope identical; both review stages judged it non-blocking). Xiaomi-specific execution lessons that T08's device gates inherit: Compose test rules must use exactly one `setContent` per test (device-only `IllegalStateException`), and MIUI may reset `MIUIOP(10021)` to `ignore` mid-instrumentation after roughly 4–5 minutes — recovery is re-setting allow and releasing the blocked first Activity once with the exact shell Intent, after which the same instrumentation process completes; both recoveries are recorded in the T04/T05 evidence sections.
 - The separate destructive approval for clearing `com.paherdin.record.benchmark` has not been requested or granted; it is required only at M1-T10.
-- M1 remains incomplete; criteria 2–19 are pending except the initialized lifecycle record in criterion 1.
+- M1 remains incomplete: criteria 2, 3, 4, 5, 6, 10, 13, and 15 are PASS (some with named remaining subgates owned by T07–T11); criteria 1, 7, 8, 9, 11, 12, 14, 16, 17, 18, 19 remain pending their owning tasks, with slice subgate evidence recorded on each row.
