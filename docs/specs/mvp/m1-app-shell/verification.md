@@ -9,18 +9,18 @@
 
 | Field | Value |
 |---|---|
-| Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 5 / `M1-T02-A11` |
-| Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
-| Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
-| Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | test-first quality corrections → host/device rerun → correction commit → repeated reviews → main acceptance |
-| Next command | make ready fixture provide a visible heading and assert exactly one, obtaining RED from the duplicate wrapper heading before production correction |
-| `blocked-on` | none; user explicitly approved the temporary test-package-only app-op on 2026-08-30 |
+| Current task | M1-T03 — expose the single-owner safe startup coordinator |
+| `task_revision` / `attempt_id` | 1 / not started |
+| Owner / write scope | `/root/m1_t03_core_data`; `core/data/**` only |
+| Dependencies / ready evidence | M1-T02 revision 6 accepted; ADR 0016 accepted; M1-T01 build baseline commits `2b0f1ed` + `98a522a` |
+| Status / dispatch failures | `ready` / 0 |
+| Remaining steps | dispatch core-data worker per plan M1-T03: failing coordinator tests → `RecordStartup`/`StartupEngine` → `RecordRepository.open()` compatibility → API machine checks → core-data gates + schema no-diff → commit → reviews → main acceptance |
+| Next command | dispatch M1-T03 worker with write scope `core/data/**` (plus plan-listed API fixtures) |
+| `blocked-on` | none |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
-| Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A10 cold-package device 11/0/0/0 and rollback PASS; spec rereview APPROVED; quality review CHANGES_REQUIRED on Ready heading semantics and two test gaps |
-| Last updated | 2026-08-30 Asia/Shanghai |
+| Contract references | plan M1-T03; spec criteria 13, 15, 18; accepted ADR 0016 |
+| Last raw evidence | M1-T02 accepted: commit `37032a3`; direct instrumentation 11/11 OK, SHA-256 `0D3EF803…8D1B68`; spec + quality reviews APPROVED; main full `check` PASS 257 tasks |
+| Last updated | 2026-09-01 Asia/Shanghai |
 
 ## Acceptance criteria
 
@@ -28,14 +28,14 @@
 |---:|---|---|---|
 | 1 | Lifecycle and architecture prerequisite | PASS | ADR 0016 accepted; five core docs synchronized; spec/plan/router lifecycle scans and M1-T00 commands below |
 | 2 | Module boundary | PASS | M1-T01 module check, exact commit scope, spec review, and main full check |
-| 3 | Theme/localization/launch identity | BLOCKED | expected palette RED recovered; A6 complete non-error A/A1 mapping compiles and host check passes; device GREEN awaits test-package app-op approval |
-| 4 | Accessibility | BLOCKED | A6 heading/stateDescription/polite-live-region/48-dp implementation compiles; physical-device behavior gate awaits app-op approval |
-| 5 | Shared presentation | BLOCKED | A6 four-state implementation/test compilation passes; physical-device behavior gate awaits app-op approval |
-| 6 | Operation phases | pending review | A6 task-local Phase XML 4/0/0/0 and full host check PASS; task remains unaccepted until device/reviews |
+| 3 | Theme/localization/launch identity | PASS (T02 subgate) | A12 device 11/11 + host PASS: A/A1 non-error roles, semantic error roles, light/dark, resource-backed Chinese copy, local-vector icons; packaged-resource/no-data-preframe subgates remain T08/T11 |
+| 4 | Accessibility | PASS (T02 subgate) | A12 device 11/11: heading/state/live-region semantics, 48-dp Retry, 200%-font full-bounds/no-overlap/focus-action; selected-tab/focus subgate remains T08 |
+| 5 | Shared presentation | PASS (T02 subgate) | A12 device 11/11 four-state semantics; error never empty, partial never ready, Retry callback verified; production fixtures carry no synthetic business data |
+| 6 | Operation phases | PASS | PhaseTest 4/0/0/0 on the exact closed set/transitions; no alias flags found by scans |
 | 7 | Default shell | pending | none |
 | 8 | Global actions | pending | none |
 | 9 | Typed/source-owned routing | pending | none |
-| 10 | Chrome rules | pending review | A6 task-local Chrome XML 5/0/0/0 and full host check PASS; task remains unaccepted until device/reviews |
+| 10 | Chrome rules | PASS (policy subgate) | ShellChromePolicyTest 6/0/0/0 exhaustive resolve(kind, phase); runtime bar-visibility/back-lock device gate remains T08 |
 | 11 | Independent retention | pending | none |
 | 12 | Timeline date | pending | none |
 | 13 | Safe startup | pending | none |
@@ -68,7 +68,8 @@
 | M1-T02 | 3 | `M1-T02-A8` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | host/device gates PASS and commit `d58ae68`; independent spec review found four existing-contract violations |
 | M1-T02 | 4 | `M1-T02-A9` | `/root/m1_t02_spec_fix` | failed | 0 | no | host corrections PASS; first full device run had 10 pass plus one ActivityScenario destroyed-Activity infrastructure NPE |
 | M1-T02 | 4 | `M1-T02-A10` | main-agent device gate | failed | 0 | no | host/device gates PASS and spec APPROVED; quality review found one Important and two Minor gaps |
-| M1-T02 | 5 | `M1-T02-A11` | `/root/m1_t02_spec_fix` | in_progress | 0 | no | move heading ownership to visible ready content; strengthen 200% font and semantic error-role evidence; rerun gates/reviews |
+| M1-T02 | 5 | `M1-T02-A11` | `/root/m1_t02_spec_fix` | failed | 0 | no | host gates PASS; device 11/3 exposed over-strong device-focus assertions and a UTP destroyed-Activity race; led to approved revision 6 |
+| M1-T02 | 6 | `M1-T02-A12` | `/root/m1_t02_spec_fix` + main device gate | done | 0 | yes | commit `37032a3`; direct instrumentation 11/11 OK and full rollback; spec + quality reviews APPROVED; main full `check` PASS |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -160,6 +161,20 @@
 ### M1-T02-A11 — quality-review corrections
 
 **Revision-5 contract:** first make the ready test fixture expose its real visible heading and assert exactly one heading; the revision-4 wrapper must fail with a duplicate. Then remove Heading from the non-merging state wrapper and explicitly require readyContent to emit exactly one visible heading while keeping descendant text/actions addressable. Strengthen the existing 200%-font and light/dark error-role tests without adding new files or behavior.
+
+**Host result:** PASS — exactly SharedContent production/test files changed; task-local unit/androidTest compilation and fresh full `check` passed; unit XML is 15/0/0/0; scope/schema/build/diff/CRLF/boundary gates passed.
+
+**Device result:** FAILED as test infrastructure — 11 tests ran, with `retryTargetIsAtLeastFortyEightDp` failing before assertion because ActivityScenario's Activity was already destroyed, and both 200%-font cases failing because the test required `Focused=true` after invoking the exposed `RequestFocus` action. The node dump proves `RequestFocus`, OnClick, enabled Button role, and bounds were present. XML SHA-256 is `60D5F379168FC0A9440350361D8EE25028E761D0FF02EB4A1A3573D1D745B949`. UTP removed the package/app-op.
+
+### M1-T02-A12 — direct Xiaomi instrumentation fallback
+
+**Revision-6 contract:** focusability requires the semantics `RequestFocus` action, not OEM focus-state mutation. After host GREEN, install the disposable compiled test APK, set its already approved `MIUIOP(10021)=allow` before instrumentation, run the complete SharedContentTest class once directly, require 11/0/0/0, then uninstall the exact test package and prove no UID/app-op/process remains.
+
+**Host result:** PASS — `SharedContentTest.kt` now asserts `SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus)` instead of `assertIsFocused`; the two obsolete imports were removed and a full-tree grep shows no residual focus-state assertion. Task-local `:core:ui:testDebugUnitTest :core:ui:compileDebugAndroidTestKotlin` PASS with unit XML 15/0/0/0 (Phase 4 + Palette 5 + Chrome 6); `:core:ui:assembleDebugAndroidTest` rebuilt `ui-debug-androidTest.apk` (31,252,462 bytes); fresh full `check` BUILD SUCCESSFUL with 257 tasks.
+
+**Device result:** PASS — preflight proved the device awake with no package/app-op/test process present. After `adb install` (Success), `appops set --user 0 com.paherdin.record.core.ui.test 10021 allow` read back `MIUIOP(10021): allow`. Direct `am instrument -w -r -e class com.paherdin.record.core.ui.SharedContentTest com.paherdin.record.core.ui.test/androidx.test.runner.AndroidJUnitRunner` returned `OK (11 tests)` in 21.573 s. Raw output retained at `.superpowers/evidence/m1-t02-a12/am-instrument-raw.txt`, SHA-256 `0D3EF803B37EEE60C9353549DD863DB72239B40870F84141259B75FA7C8D1B68`. Uninstall returned Success; package list, `appops get` (`No UID`), and process scan were all empty — full rollback.
+
+**Acceptance:** implementation commit `37032a3` contains exactly `SharedContent.kt` and `SharedContentTest.kt`. Spec-compliance review APPROVED (revision 5/6 contracts, A8 four items unregressed, A10 three findings closed, criteria 3/4/5/6/10 in T02 scope). Code-quality review APPROVED (Important + two Minor closed, no new findings). Main-agent fresh full `check` PASS in 38 s (257 tasks, exit 0). M1-T02 accepted; criteria 3/4/5/6/10 T02 subgates are PASS, app-level subgates remain with their owning tasks.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
@@ -359,5 +374,6 @@ The same task revision resumes under attempt A2 because behavior and acceptance 
 - M1-T01-A1 then became externally blocked by Xiaomi USB-install confirmation/cancellation. This is not counted as a dispatch failure and cannot be retried until the user changes the device permission state.
 - M1-T01-A3 is recorded `cancelled` because the worker's usage-limit failure prevented a completion report/commit, despite usable last-observable device output. M1-T01-A4 is an external install blocker, not a dispatch failure. Neither permits a false PASS.
 - Plan path correction: the smoke-test package changes from `/build/` to `/compat/` solely because repository `.gitignore` treats any `/build/` segment as generated output. The test content/behavior and acceptance command remain unchanged apart from its class name package.
+- M1-T02 revision 6 is a bounded test-infrastructure correction recorded in plan.md: focusability evidence became the semantics `RequestFocus` action instead of device focus state, and the Xiaomi device gate used the approved direct-instrumentation fallback with pre-applied package-only app-op and explicit uninstall. Product assertions, scope, and acceptance criteria are unchanged; no spec reapproval was required.
 - The separate destructive approval for clearing `com.paherdin.record.benchmark` has not been requested or granted; it is required only at M1-T10.
 - M1 remains incomplete; criteria 2–19 are pending except the initialized lifecycle record in criterion 1.
