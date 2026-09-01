@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="finance_home_ready_message">财务功能将在 M2 提供</string>
+    <string name="finance_home_ready_body">当前版本仅提供应用基础框架，完整功能将在后续阶段逐步开放。</string>
+    <string name="finance_transaction_detail_availability">交易详情将在 M2 提供</string>
+    <string name="finance_editor_kind_expense">支出</string>
+    <string name="finance_editor_kind_income">收入</string>
+    <string name="finance_editor_kind_transfer">转账</string>
+    <string name="finance_editor_availability">%1$s编辑将在 M2 提供</string>
+    <string name="finance_back">返回</string>
+</resources>
