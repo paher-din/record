@@ -14,9 +14,13 @@ import com.paherdin.record.core.data.restore.RestoreActivationCoordinator
 import com.paherdin.record.core.data.restore.RestoreFaultHook
 import com.paherdin.record.core.data.restore.VaultSessionRegistry
 import com.paherdin.record.core.data.restore.openGenerationDatabase
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.coroutineContext
 
 /**
  * The single-owner startup engine (ADR 0016, plan M1-T03): owns the existing
@@ -104,7 +108,13 @@ internal class StartupEngine internal constructor(
                 // existing resolver is dispatched, Recovering while it runs.
                 observer.onProgress(StartupProgress.RecoveryDetected)
                 observer.onProgress(StartupProgress.Recovering)
-                when (val outcome = resolvePendingActivation(classified)) {
+                // ADR 0016: once dispatched, the resolver is non-cancellable
+                // until it reaches verified healthy, rollback, or blocked
+                // (same boundary as confirmRestore). The caller's
+                // cancellation is surfaced immediately after the boundary.
+                val outcome = withContext(NonCancellable) { resolvePendingActivation(classified) }
+                coroutineContext.ensureActive()
+                when (outcome) {
                     is ActivationOutcome.Activated -> outcome.record
                     is ActivationOutcome.RolledBack -> outcome.record
                     is ActivationOutcome.Blocked -> return@withLock StartupResult.Blocked(StartupFailure.RecoveryRequired, true)
@@ -185,8 +195,9 @@ internal class StartupEngine internal constructor(
 /**
  * Compatibility mapping of the engine outcome into the existing result
  * categories (ADR 0016): Ready becomes `Success`; blocked storage stays
- * `StorageExhausted`; every other blocked outcome keeps the existing stable
- * `TransactionFailed` category.
+ * `StorageExhausted`; every other blocked outcome — including unclassified
+ * failures, which the pre-delegation `open()` used to surface as
+ * `Unexpected` — now stably maps to `TransactionFailed` (plan M1-T03 Step 3).
  */
 internal fun StartupResult.toRepositoryResult(): RepositoryResult<RecordRepository> = when (this) {
     is StartupResult.Ready -> RepositoryResult.Success(repository)

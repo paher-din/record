@@ -10,7 +10,13 @@ enum class StartupProgress { Checking, RecoveryDetected, Recovering }
 /** Stable startup failure category (ADR 0016); carries no path, count, or exception. */
 enum class StartupFailure { StorageExhausted, RecoveryRequired, Unexpected }
 
-/** Receives every progress emission of one startup attempt. */
+/**
+ * Receives every progress emission of one startup attempt. The callback runs
+ * on the attempt's own coroutine while the engine's non-reentrant attempt
+ * mutex is held: it must not synchronously call `RecordRepository.open()`,
+ * `RecordStartup.start()`, or `RecordStartup.retry()` (on any instance) —
+ * such reentry deadlocks on the same lock.
+ */
 fun interface StartupObserver {
     fun onProgress(progress: StartupProgress)
 }

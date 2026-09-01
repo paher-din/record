@@ -8,10 +8,13 @@ import com.paherdin.record.core.data.restore.BootstrapResult
 import com.paherdin.record.core.data.restore.GenerationActivation
 import com.paherdin.record.core.data.restore.GenerationState.HEALTHY
 import com.paherdin.record.core.data.restore.GenerationState.PENDING
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -20,6 +23,8 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
 
 /**
  * Pure JVM tests for the ADR-0016 startup gate handoff (plan M1-T03 Step 1).
@@ -110,8 +115,9 @@ class RecordStartupTest {
 
     @Test
     fun recoveryDetectedThenRecoveringPrecedePendingResolution() = runBlocking {
+        // One interleaved timeline pins that Recovering is emitted while the
+        // resolver owns progress, not only after it completes.
         val order = mutableListOf<String>()
-        val observer = RecordingObserver()
         val result = engine(
             classify = { BootstrapResult.Ready(pendingActivationRecord()) },
             resolvePendingActivation = {
@@ -122,13 +128,14 @@ class RecordStartupTest {
                 order += "open"
                 RepositoryResult.Success(RecordRepository())
             },
-        ).run(observer)
+        ).run(
+            StartupObserver { progress -> order += progress.name },
+        )
         assertTrue(result is StartupResult.Ready)
         assertEquals(
-            listOf(StartupProgress.Checking, StartupProgress.RecoveryDetected, StartupProgress.Recovering),
-            observer.events,
+            listOf("Checking", "RecoveryDetected", "Recovering", "resolve", "open"),
+            order,
         )
-        assertEquals(listOf("resolve", "open"), order)
     }
 
     @Test
@@ -298,5 +305,121 @@ class RecordStartupTest {
         assertSame(first, second)
         assertSame(repository, (first as StartupResult.Ready).repository)
         assertEquals(1, openCalls.get())
+    }
+
+    // ---- cancellation (ADR 0016 non-cancellable resolver boundary) ----
+
+    /** A resolver that suspends at a cancellable point and waits for the test to complete it. */
+    private fun suspendingResolver(
+        entered: CountDownLatch,
+        completed: CountDownLatch,
+        continuation: AtomicReference<CancellableContinuation<Unit>?>,
+    ): suspend (ActivationRecord) -> ActivationOutcome = {
+        // The continuation is published before the latch trips, so the test
+        // can never observe "entered" with a still-unset continuation.
+        suspendCancellableCoroutine<Unit> { cont ->
+            continuation.set(cont)
+            entered.countDown()
+        }
+        completed.countDown()
+        ActivationOutcome.Activated(healthyRecord())
+    }
+
+    private fun resumeAfterCancellation(continuation: AtomicReference<CancellableContinuation<Unit>?>) {
+        // With the ADR boundary the suspension must not answer the
+        // cancellation; resume it as the real Room validation would complete.
+        continuation.get()?.takeIf { !it.isCompleted }?.resume(Unit)
+    }
+
+    @Test
+    fun cancelledAttemptThrowsWithoutCachingTerminal() = runBlocking {
+        val entered = CountDownLatch(1)
+        val completed = CountDownLatch(1)
+        val continuation = AtomicReference<CancellableContinuation<Unit>?>(null)
+        val classifyCalls = AtomicInteger()
+        val startup = RecordStartup(
+            engine(
+                // Only the first attempt enters the pending-activation path;
+                // the retried attempt must run the fresh path so it completes
+                // without the (never resumed) test resolver.
+                classify = {
+                    classifyCalls.incrementAndGet()
+                    if (classifyCalls.get() == 1) BootstrapResult.Ready(pendingActivationRecord()) else BootstrapResult.Fresh
+                },
+                resolvePendingActivation = suspendingResolver(entered, completed, continuation),
+            ),
+        )
+        val job = launch(Dispatchers.Default) { startup.start(RecordingObserver()) }
+        check(entered.await(15, TimeUnit.SECONDS)) { "attempt never entered the resolver" }
+        job.cancel()
+        resumeAfterCancellation(continuation)
+        job.join()
+        assertTrue("cancelled start() must propagate CancellationException", job.isCancelled)
+        // The cancelled attempt wrote no terminal result: the next start runs
+        // a fresh attempt instead of returning a cached outcome.
+        val retried = startup.start(RecordingObserver())
+        assertTrue("next start must run a fresh attempt, got $retried", retried is StartupResult.Ready)
+        assertEquals(2, classifyCalls.get())
+    }
+
+    @Test
+    fun attemptInsideResolverRunsToCompletionDespiteCancellation() = runBlocking {
+        // ADR 0016: once the attempt has dispatched the resolver, caller
+        // cancellation must not interrupt it; it reaches verified
+        // healthy/rollback/blocked before cancellation surfaces to the caller.
+        val entered = CountDownLatch(1)
+        val completed = CountDownLatch(1)
+        val continuation = AtomicReference<CancellableContinuation<Unit>?>(null)
+        val startup = RecordStartup(
+            engine(
+                classify = { BootstrapResult.Ready(pendingActivationRecord()) },
+                resolvePendingActivation = suspendingResolver(entered, completed, continuation),
+            ),
+        )
+        val job = launch(Dispatchers.Default) { startup.start(RecordingObserver()) }
+        check(entered.await(15, TimeUnit.SECONDS)) { "attempt never entered the resolver" }
+        job.cancel()
+        resumeAfterCancellation(continuation)
+        job.join()
+        assertTrue("cancelled caller must observe CancellationException", job.isCancelled)
+        assertTrue(
+            "resolver must complete before cancellation propagates",
+            completed.await(15, TimeUnit.SECONDS),
+        )
+    }
+
+    // ---- process-wide attempt mutex ----
+
+    @Test
+    fun distinctEnginesShareOneProcessWideAttemptMutex() = runBlocking {
+        val firstEntered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val secondClassify = CountDownLatch(1)
+        val first = engine(
+            classify = {
+                firstEntered.countDown()
+                check(release.await(15, TimeUnit.SECONDS)) { "first classify release timed out" }
+                BootstrapResult.Fresh
+            },
+        )
+        val second = engine(
+            classify = {
+                secondClassify.countDown()
+                BootstrapResult.Fresh
+            },
+        )
+        val firstRun = async(Dispatchers.Default) { first.run(RecordingObserver()) }
+        check(firstEntered.await(15, TimeUnit.SECONDS)) { "first run never entered classify" }
+        val secondRun = async(Dispatchers.Default) { second.run(RecordingObserver()) }
+        // A second engine instance must not enter its sequence while another
+        // attempt holds the process-wide mutex (latch count 1 = not entered).
+        Thread.sleep(300)
+        assertEquals("second engine entered classify during the first attempt", 1, secondClassify.count)
+        release.countDown()
+        assertTrue(firstRun.await() is StartupResult.Ready)
+        assertTrue(secondRun.await() is StartupResult.Ready)
+        // After the first attempt releases the mutex, the second engine runs
+        // exactly one attempt of its own.
+        assertEquals(0, secondClassify.count)
     }
 }
