@@ -10,16 +10,16 @@
 | Field | Value |
 |---|---|
 | Current task | M1-T02 — shared phase, presentation, chrome, icon, and theme system |
-| `task_revision` / `attempt_id` | 4 / `M1-T02-A9` |
+| `task_revision` / `attempt_id` | 4 / `M1-T02-A10` |
 | Owner / write scope | `/root/m1_t02_core_ui_resume`; `core/ui/**` only |
 | Dependencies / ready evidence | M1-T01 revision 3 accepted; commits `2b0f1ed` + `98a522a`; retained device XML 32/0/0/0; both review stages APPROVED; main full `check` PASS |
 | Status / dispatch failures | `in_progress` / 0 |
-| Remaining steps | test-first spec-review corrections → host/device rerun → correction commit → repeated two-stage review → main acceptance |
-| Next command | add Ready-heading and Editor-Saving RED assertions, then correct semantics/chrome/naming/icon token within the same 13 files |
+| Remaining steps | cold-package device rerun → correction commit → repeated two-stage review → main acceptance |
+| Next command | rerun the same corrected-timing combined gate from proven package-absent/app-op-absent state |
 | `blocked-on` | none; user explicitly approved the temporary test-package-only app-op on 2026-08-30 |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
 | Contract references | plan M1-T02; spec criteria 3–6 and 10 |
-| Last raw evidence | A8 device 11/0/0/0 and main host check PASS; implementation commit `d58ae68`; independent spec review CHANGES_REQUIRED on four existing-contract gaps |
+| Last raw evidence | A9 host PASS; device 11 tests/1 ActivityScenario infrastructure NPE/10 pass; UTP then removed package/app-op, establishing a clean A10 condition |
 | Last updated | 2026-08-30 Asia/Shanghai |
 
 ## Acceptance criteria
@@ -66,7 +66,8 @@
 | M1-T02 | 2 | `M1-T02-A6` | `/root/m1_t02_core_ui_resume` | blocked | 0 | no | host implementation/checks PASS; exact 13-file change remains uncommitted; device GREEN waits for explicit temporary test-package app-op approval |
 | M1-T02 | 2 | `M1-T02-A7` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | UTP reinstall reset the pre-set op to ignore; combined command timed out; exact processes stopped and package removal proved rollback |
 | M1-T02 | 3 | `M1-T02-A8` | `/root/m1_t02_core_ui_resume` | failed | 0 | no | host/device gates PASS and commit `d58ae68`; independent spec review found four existing-contract violations |
-| M1-T02 | 4 | `M1-T02-A9` | `/root/m1_t02_spec_fix` | in_progress | 0 | no | correct Ready heading, Editor Saving lock, Kotlin names, and semantic icon-size token; rerun all gates/reviews |
+| M1-T02 | 4 | `M1-T02-A9` | `/root/m1_t02_spec_fix` | failed | 0 | no | host corrections PASS; first full device run had 10 pass plus one ActivityScenario destroyed-Activity infrastructure NPE |
+| M1-T02 | 4 | `M1-T02-A10` | main-agent device gate | in_progress | 0 | no | unchanged correction source; cold package/app-op-absent retry of the same approved Xiaomi orchestration |
 | M1-T03–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
@@ -142,6 +143,14 @@
 ### M1-T02-A9 — spec-review corrections
 
 **Revision-4 contract:** add failing coverage for Ready heading and Editor Saving Back lock, then correct only the four reviewed gaps within the existing 13-file ownership. Rename properties/constants mechanically without changing values or public responsibilities; source local-vector dimensions from a new semantic `RecordTokens` icon-size value. Rerun all host/device evidence and both review stages before acceptance.
+
+**RED/GREEN host evidence:** Editor/Saving focused test first failed 1/1 at the old allow-Back behavior, then passed after correction. The strengthened Ready test compiled before production change; a bounded direct single-method run with one exact shell Intent failed 1/1 on missing `Heading` while retaining `StateDescription='内容已就绪'` and its child. After correction, task-local unit/androidTest compilation passed; unit XML is 15/0/0/0. Post-normalization full host `check` passed in 15 seconds with 257 tasks and module checks clean. Exact nine-file subset, no build/schema, naming, CRLF, whitespace, and boundary scans pass.
+
+**First device GREEN attempt:** FAILED / incomplete as test infrastructure — the full suite ran 11 tests; 10 passed and `retryTargetIsAtLeastFortyEightDp` failed before its product assertion with `NullPointerException: Cannot run onActivity since Activity has been destroyed already`. XML SHA-256 is `43C12FCF718C04A45A1B44898F8DCFC3D350559E456D1003D34C7D5D4A3B9E59`. UTP then removed the package; no UID, app-op, test process, or Gradle wrapper remained. The changed retry condition is a completely absent package/old task, matching successful A8 startup state.
+
+### M1-T02-A10 — cold-package device retry
+
+**Contract:** no source, assertion, command, timeout, or app-op scope change. Start from package/app-op absent, run the same one-job corrected-timing gate once, and accept only 11/0/0/0 plus package/app-op rollback.
 
 ### M1-T00 — ADR/core-document synchronization and lifecycle activation
 
