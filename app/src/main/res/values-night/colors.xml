@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A/A1 dark-mode window-background continuity (spec 5.2 dark column,
+         M1-T08 dark-starting-window correction). Only the app-background role is
+         overridden so the platform starting window and the adaptive launcher
+         background stay continuous with the dark shell (#171C1A); every other
+         role keeps the light reference because the in-app palette is owned by
+         the :core:ui RecordTheme, not by these resources. -->
+    <color name="record_app_background">#171C1A</color>
+</resources>

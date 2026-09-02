@@ -27,8 +27,10 @@ import com.paherdin.record.core.ui.UiErrorCategory
 import com.paherdin.record.core.ui.theme.RecordTheme
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -223,6 +225,50 @@ class TimelineScreensTest {
             composeRule.onNodeWithText("2026年9月1日", useUnmergedTree = true),
             composeRule.onNodeWithTag(TimelineScreenTags.TODAY, useUnmergedTree = true),
         )
+    }
+
+    @Test
+    fun staleSavedDayDoesNotSurfaceTheCurrentClockDayWithoutToday() {
+        // Cross-module M1-T08 acceptance (spec 8.4): a state saved under an
+        // older day restores exactly as saved and never surfaces as the
+        // current clock day; only explicit Today re-reads the injected clock,
+        // invalidates the request revision, and returns the list to the top.
+        val zone = ZoneId.of("Asia/Shanghai")
+        val savedUnderOlderDay = TimelineDateState(
+            selectedDay = LocalDate.parse("2026-09-01"),
+            requestRevision = 3L,
+            firstVisibleItemIndex = 2,
+            firstVisibleItemOffset = 10,
+        )
+        val advancedController = TimelineDateController(
+            Clock.fixed(Instant.parse("2026-09-02T18:30:00Z"), zone),
+            zone,
+        )
+        val currentClock = Clock.fixed(Instant.parse("2026-09-02T18:30:00Z"), zone)
+
+        composeRule.setContent {
+            RecordTheme {
+                TimelineHomeScreen(
+                    dateState = advancedController.initial(restored = savedUnderOlderDay),
+                    onToday = {},
+                    onOpenTransaction = {},
+                    onOpenNote = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("2026年9月1日").assertIsDisplayed()
+        composeRule.onNodeWithText("2026年9月3日").assertDoesNotExist()
+
+        val restored = advancedController.initial(restored = savedUnderOlderDay)
+        assertEquals(LocalDate.parse("2026-09-01"), restored.selectedDay)
+        assertEquals(3L, restored.requestRevision)
+        assertNotEquals(LocalDate.now(currentClock), restored.selectedDay)
+        val today = advancedController.today(restored)
+        assertEquals(LocalDate.parse("2026-09-03"), today.selectedDay)
+        assertEquals(4L, today.requestRevision)
+        assertEquals(0, today.firstVisibleItemIndex)
+        assertEquals(0, today.firstVisibleItemOffset)
     }
 
     private fun assertBoundsWithinRoot(vararg nodes: SemanticsNodeInteraction) {

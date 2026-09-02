@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark-mode starting-window theme (spec 5.2, M1-T08 dark-starting-window
+         correction). It mirrors the light Theme.Record structure but inherits
+         the platform dark base, and the window/splash background values resolve
+         to the spec 5.2 dark app-background role through values-night/colors.xml,
+         so a dark launch never flashes the light warm starting window. No second
+         custom splash Activity, no timer; the in-app theme remains RecordTheme
+         in :core:ui. -->
+    <style name="Theme.Record" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/record_app_background</item>
+        <item name="android:windowSplashScreenBackground">@color/record_app_background</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/record_app_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

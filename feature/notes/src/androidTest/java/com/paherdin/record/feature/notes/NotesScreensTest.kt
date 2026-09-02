@@ -1,5 +1,7 @@
 package com.paherdin.record.feature.notes
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -8,11 +10,14 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.paherdin.record.core.ui.ContentPresentation
@@ -101,6 +106,41 @@ class NotesScreensTest {
             SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
             useUnmergedTree = true,
         ).assertCountEquals(1)
+    }
+
+    @Test
+    fun notesReadyBodySurvivesDarkThemeAtTwoHundredPercentFontWithoutClipping() {
+        // Cross-module M1-T08 acceptance (spec 5.3): the Notes home body keeps
+        // its single heading and its bounds inside the root at 200% font in
+        // the dark scheme, exactly as the shell renders it.
+        composeRule.setContent {
+            val current = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(current.density, 2f)) {
+                RecordTheme(darkTheme = true) {
+                    NotesHomeScreen(
+                        presentation = ContentPresentation.Ready(NotesAvailability),
+                        onRetry = {},
+                    )
+                }
+            }
+        }
+
+        val heading = composeRule.onNodeWithTag(readyHeadingTag, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .assertTextEquals(context.getString(R.string.notes_heading))
+        composeRule.onNodeWithText(context.getString(R.string.notes_ready_message), useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading),
+            useUnmergedTree = true,
+        ).assertCountEquals(1)
+        val root = composeRule.onRoot(useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val headingBounds = heading.getUnclippedBoundsInRoot()
+        assertTrue(
+            "notes heading is outside root bounds: node=$headingBounds root=$root",
+            headingBounds.left >= root.left && headingBounds.top >= root.top &&
+                headingBounds.right <= root.right && headingBounds.bottom <= root.bottom,
+        )
     }
 
     @Test

@@ -207,6 +207,50 @@ class SharedContentTest {
     }
 
     @Test
+    fun readyContentStaysUsableWhileOperationPhasesLockShellChrome() {
+        // Cross-module M1-T08 acceptance (spec 6, 8.2): the presentation family
+        // stays orthogonal to the exact Phase contract. An Editor locked by
+        // Phase.Saving and a Running progress destination hide the bottom bar
+        // and block Back, while Detail chrome stays open and a Ready body keeps
+        // its content independently addressable underneath.
+        assertEquals(
+            ShellChrome(showBottomBar = false, allowBack = false),
+            ShellChromePolicy.resolve(kind = DestinationKind.Editor, phase = Phase.Saving),
+        )
+        assertEquals(
+            ShellChrome(showBottomBar = false, allowBack = false),
+            ShellChromePolicy.resolve(kind = DestinationKind.Progress, phase = Phase.Running),
+        )
+        assertEquals(
+            ShellChrome(showBottomBar = false, allowBack = true),
+            ShellChromePolicy.resolve(kind = DestinationKind.Progress, phase = Phase.Idle),
+        )
+        assertEquals(
+            ShellChrome(showBottomBar = true, allowBack = true),
+            ShellChromePolicy.resolve(kind = DestinationKind.Detail, phase = Phase.Idle),
+        )
+
+        var actionInvoked = false
+        setContent(
+            ContentPresentation.Ready("saving-lock"),
+            onReadyAction = { actionInvoked = true },
+        )
+        composeRule.onNodeWithTag(readyTag, useUnmergedTree = true)
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.StateDescription,
+                    context.getString(R.string.shared_ready_state_description),
+                ),
+            )
+        composeRule.onNodeWithTag(readyActionTag, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .performClick()
+        composeRule.runOnIdle { assertTrue(actionInvoked) }
+    }
+
+    @Test
     fun themeDerivesEveryNonErrorRoleFromTheApprovedPalette() {
         var lightScheme: ColorScheme? = null
         var darkScheme: ColorScheme? = null
