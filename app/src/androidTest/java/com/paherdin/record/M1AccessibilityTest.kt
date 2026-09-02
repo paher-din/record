@@ -111,9 +111,10 @@ class M1AccessibilityTest {
     fun recoveryGateExposesOneHeadingRetryBoundsAndNoRawText() {
         var retried = false
         var phase by mutableStateOf(Phase.RecoverableFailure)
+        var canRetry by mutableStateOf(true)
         composeRule.setContent {
             M1ShellHost(M1TestClocks.atSeptemberSecond(), M1TestClocks.zoneId) {
-                RestoreRecoverySurface(phase = phase, canRetry = true, onRetry = { retried = true })
+                RestoreRecoverySurface(phase = phase, canRetry = canRetry, onRetry = { retried = true })
             }
         }
 
@@ -139,7 +140,12 @@ class M1AccessibilityTest {
         composeRule.runOnIdle { assertTrue(retried) }
         assertNoRawErrorText()
 
-        composeRule.runOnIdle { phase = Phase.Checking }
+        // The store emits Gate(Checking, canRetry=false) on a retry attempt;
+        // mirror that real transition instead of an unreachable state.
+        composeRule.runOnIdle {
+            phase = Phase.Checking
+            canRetry = false
+        }
         composeRule.onNodeWithText("正在检查数据").assertIsDisplayed()
         composeRule.onNodeWithTag(M1ShellTags.RESTORE_RECOVERY_RETRY).assertDoesNotExist()
     }

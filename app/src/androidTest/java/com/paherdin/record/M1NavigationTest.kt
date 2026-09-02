@@ -212,7 +212,8 @@ class M1NavigationTest {
         assertEquals(M1TestCards.TRANSACTION_ID, detail?.transactionId)
         assertEquals(TopLevelOrigin.Projects, detail?.origin)
         composeRule.onNodeWithText("返回").performClick()
-        composeRule.onNodeWithText("项目功能将在 M4 接入").assertIsDisplayed()
+        // Back restores the exact Projects origin with its injected card content.
+        composeRule.onNodeWithText(M1TestCards.transaction.headline).assertIsDisplayed()
 
         composeRule.runOnIdle {
             checkNotNull(navController).navigate(UnifiedSearch(TopLevelOrigin.Projects))
