@@ -226,7 +226,8 @@ class M1NavigationTest {
         assertEquals(M1TestCards.NOTE_ID, noteRoute?.noteId)
         assertEquals(TopLevelOrigin.Projects, noteRoute?.origin)
         composeRule.onNodeWithText("返回").performClick()
-        composeRule.onNodeWithText("搜索功能将在 M5 接入").assertIsDisplayed()
+        // Back restores the exact Search origin with its injected card content.
+        composeRule.onNodeWithText(M1TestCards.note.headline).assertIsDisplayed()
     }
 
     @Test
