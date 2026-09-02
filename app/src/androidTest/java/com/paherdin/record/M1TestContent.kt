@@ -298,11 +298,11 @@ internal fun M1PresentationHost(
                             .testTag(M1FixtureTags.PRESENTATION_READY_HEADING)
                             .semantics { heading() },
                     )
-                    Button(onClick = onReadyAction) {
-                        Text(
-                            text = "$content 操作",
-                            modifier = Modifier.testTag(M1FixtureTags.PRESENTATION_READY_ACTION),
-                        )
+                    Button(
+                        onClick = onReadyAction,
+                        modifier = Modifier.testTag(M1FixtureTags.PRESENTATION_READY_ACTION),
+                    ) {
+                        Text(text = "$content 操作")
                     }
                 },
             )
