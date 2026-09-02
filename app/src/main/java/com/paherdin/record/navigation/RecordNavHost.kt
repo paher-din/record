@@ -7,7 +7,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -132,7 +131,7 @@ internal fun RecordNavHost(
 /** Navigates to a top-level tab with single-top plus saved/retained state. */
 internal fun NavHostController.navigateToTopLevel(route: Any) {
     navigate(route) {
-        popUpTo(graph.findStartDestination()) { saveState = true }
+        popUpTo(TimelineHome) { saveState = true }
         launchSingleTop = true
         restoreState = true
     }
