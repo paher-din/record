@@ -87,6 +87,42 @@ class M1StartupHarnessSelfCheckTest {
         }
     }
 
+    @Test
+    fun commandAllowlistRefusesQuotingAndSplittingCharacters() {
+        // A quoting/meta character can split one token into two argv words on
+        // the device shell (pm clear com.paherdin.rec"ord" carries no complete
+        // allowlist token and no residual complete production prefix, yet its
+        // argv names the production package). The gate refuses all of them,
+        // including quoted forms of otherwise-allowed tokens.
+        for (command in listOf(
+            "pm clear com.paherdin.rec\"ord\"",
+            "pm clear com.paherdin.rec'ord'",
+            "pm clear com.paherdin.rec\\ord",
+            "pm clear com.paherdin.rec\$ord",
+            "pm clear \"com.paherdin.record.benchmark\"",
+        )) {
+            try {
+                M1StartupHarnessGates.assertCommandAllowed(command)
+            } catch (expected: IllegalStateException) {
+                continue
+            }
+            fail("a quoting/splitting character must be refused: $command")
+        }
+    }
+
+    @Test
+    fun commandAllowlistStillAcceptsUnquotedBenchmarkCommands() {
+        // The seal must not touch the exact legal commands.
+        val target = M1StartupHarnessGates.TARGET_PACKAGE
+        val activity = M1StartupHarnessGates.TARGET_ACTIVITY
+        for (command in listOf(
+            "pm clear $target",
+            "am start -W -n $target/$activity",
+        )) {
+            M1StartupHarnessGates.assertCommandAllowed(command)
+        }
+    }
+
     // ------------------------------------------------------------------
     // Identity gates
     // ------------------------------------------------------------------

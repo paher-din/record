@@ -642,15 +642,15 @@ object M1StartupReportValidator {
                 problems += "run manifest block '${row.block}' fixture '${row.fixture}' " +
                     "!= expected '${spec.fixture}'"
             }
-            if (row.ttfdRequired != null && row.ttfdRequired != spec.ttfdRequired) {
+            if (row.ttfdRequired == null || row.ttfdRequired != spec.ttfdRequired) {
                 problems += "run manifest block '${row.block}' ttfdRequired ${row.ttfdRequired} " +
                     "!= expected ${spec.ttfdRequired}"
             }
-            if (row.iterations != null && row.iterations != spec.iterations) {
+            if (row.iterations == null || row.iterations != spec.iterations) {
                 problems += "run manifest block '${row.block}' iterations ${row.iterations} " +
                     "!= expected ${spec.iterations}"
             }
-            if (row.warmups != null && row.warmups != spec.warmups) {
+            if (row.warmups == null || row.warmups != spec.warmups) {
                 problems += "run manifest block '${row.block}' warmups ${row.warmups} " +
                     "!= expected ${spec.warmups}"
             }
@@ -743,12 +743,18 @@ object M1StartupReportValidator {
 
     /**
      * True when every package token in [command] is exactly one of the frozen
-     * benchmark allowlist tokens. Any occurrence of the production
-     * `com.paherdin.record` namespace outside those complete tokens (for
-     * example `pm clear com.paherdin.record`) is refused.
+     * benchmark allowlist tokens and the command carries no shell-quoting
+     * character. Any occurrence of the production `com.paherdin.record`
+     * namespace outside those complete tokens (for example
+     * `pm clear com.paherdin.record`) is refused, as is any quoting character
+     * that could split one token into two argv words on the device shell
+     * (`pm clear com.paherdin.rec"ord"`).
      */
     fun commandTokensAllowed(command: String): Boolean {
         val contract = M1StartupReportParser.CONTRACT
+        if (command.any { it == '"' || it == '\'' || it == '\\' || it == '$' }) {
+            return false
+        }
         var text = command
         // Strip every allowed complete token; a residual production-prefix
         // fragment means the command carried an out-of-allowlist package token.

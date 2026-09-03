@@ -64,12 +64,20 @@ internal object M1StartupHarnessGates {
     }
 
     /**
-     * True when every package token in [command] is exactly one of
-     * [ALLOWED_PACKAGE_TOKENS]. Any residual occurrence of the production
-     * `com.paherdin.record` namespace outside those complete tokens (for
-     * example `pm clear com.paherdin.record`) is refused.
+     * Refuses [command] unless every package token it carries is exactly one
+     * of [ALLOWED_PACKAGE_TOKENS] and it carries no shell-quoting character.
+     * Any residual occurrence of the production `com.paherdin.record`
+     * namespace outside those complete tokens (for example
+     * `pm clear com.paherdin.record`) is refused.
      */
     fun assertCommandAllowed(command: String) {
+        // A quoting character can split one token into two argv words on the
+        // device shell (`pm clear com.paherdin.rec"ord"` carries no complete
+        // allowlist token and no residual complete production prefix, yet its
+        // argv names the production package). Fail closed on all of them.
+        check(command.none { it == '"' || it == '\'' || it == '\\' || it == '$' }) {
+            "command carries a shell-quoting character that can split one token: $command"
+        }
         var text = command
         // Strip every allowed complete token; a residual production-prefix
         // fragment means the command carried an out-of-allowlist package token.

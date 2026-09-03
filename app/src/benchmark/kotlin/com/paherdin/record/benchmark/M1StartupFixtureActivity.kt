@@ -65,7 +65,16 @@ class M1StartupFixtureActivity : Activity() {
         recorder.write(SENTINEL_PACKAGE_NAME, packageName)
 
         // Gate 2: the manifest meta-data variant marker (not a BuildConfig).
-        val marker = applicationInfo.metaData?.getString(VARIANT_METADATA_KEY) ?: ""
+        // aapt2 compiles `android:value="true"` to TYPE_INT_BOOLEAN, so the
+        // Bundle entry is a Boolean and `getString` would return null; read
+        // the Boolean first and keep the string form as a compatibility
+        // fallback. The sentinel still publishes the exact "true" token.
+        val metadata = applicationInfo.metaData
+        val marker = if (metadata?.getBoolean(VARIANT_METADATA_KEY, false) == true) {
+            "true"
+        } else {
+            metadata?.getString(VARIANT_METADATA_KEY) ?: ""
+        }
         check(marker == "true") {
             "merged manifest meta-data $VARIANT_METADATA_KEY must be 'true', got '$marker'"
         }
@@ -113,7 +122,11 @@ class M1StartupFixtureActivity : Activity() {
         check(prefs.getString(CONSUMED_TOKEN_DIGEST, null) == null) {
             "the setup token was already consumed within this install"
         }
-        prefs.edit().putString(CONSUMED_TOKEN_DIGEST, sha256Hex(token.toByteArray(Charsets.UTF_8))).commit()
+        // Fail closed: if the synchronous commit fails, the token was NOT
+        // durably consumed and a replayed setup intent could re-run prepare.
+        check(prefs.edit().putString(CONSUMED_TOKEN_DIGEST, sha256Hex(token.toByteArray(Charsets.UTF_8))).commit()) {
+            "the one-shot setup token could not be durably consumed"
+        }
     }
 
     private fun signingCertSha256(): String {

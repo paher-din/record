@@ -542,7 +542,12 @@ class M1StartupReportValidatorTest {
     private fun startupMetricJson(vararg runs: Double): String =
         """{"minimum":0.0,"maximum":0.0,"median":0.0,"coefficientOfVariation":0.0,"runs":[${runs.joinToString(",")}]}"""
 
-    private fun benchmarkJson(block: String, ttidRuns: List<Double>, ttfdRuns: List<Double>?): String {
+    private fun benchmarkJson(
+        block: String,
+        ttidRuns: List<Double>,
+        ttfdRuns: List<Double>?,
+        profilerCount: Int = ttidRuns.size,
+    ): String {
         val ttfd = ttfdRuns?.let { "\"timeToFullDisplayMs\":${startupMetricJson(*it.toDoubleArray())}," } ?: ""
         return """
             {
@@ -555,7 +560,7 @@ class M1StartupReportValidatorTest {
               "warmupIterations": 0,
               "repeatIterations": 30,
               "thermalThrottleSleepSeconds": 0,
-              "profilerOutputs": [${(0 until ttidRuns.size).joinToString(",") {
+              "profilerOutputs": [${(0 until profilerCount).joinToString(",") {
             """{"type":"PerfettoTrace","label":"iter_${blockNumber(it, block)}.perfetto-trace","filename":"iter_${blockNumber(it, block)}.perfetto-trace"}"""
         }}]
             }
@@ -727,15 +732,73 @@ class M1StartupReportValidatorTest {
     }
 
     // ------------------------------------------------------------------
-    // Negative controls
+    // Negative controls — each mutates exactly one point of a full valid tree
+    // and asserts the specific gate problem (never a collateral "missing
+    // report for the seven unmutated blocks" problem)
     // ------------------------------------------------------------------
+
+    /** The default benchmark entry of one block (30 samples, TTFD per rule). */
+    private fun defaultEntryJson(spec: M1StartupReportParser.CONTRACT.BlockSpec): String =
+        benchmarkJson(
+            spec.block,
+            List(30) { if (spec.ttfdRequired) 300.0 else 500.0 },
+            if (spec.ttfdRequired) List(30) { 350.0 } else null,
+        )
+
+    /** Rebuilds the full 8-entry data file with exactly one block entry replaced. */
+    private fun rewriteDataWithEntry(
+        root: File,
+        blockName: String,
+        replacementJson: String,
+    ) {
+        val entries = M1StartupReportParser.CONTRACT.BLOCKS.map { spec ->
+            if (spec.block == blockName) replacementJson else defaultEntryJson(spec)
+        }
+        writeBenchmarkData(root, *entries.toTypedArray())
+    }
+
+    /** The 240 default iteration records, as JSON strings. */
+    private fun defaultIterationRecords(): List<String> =
+        (0 until 8).flatMap { b ->
+            (0 until 30).map { i -> iterationJson(blockIndex = b, iteration = i) }
+        }
+
+    /** Rewrites only the manifest's iteration array over an otherwise valid tree. */
+    private fun rewriteIterations(root: File, records: List<String>) {
+        writeManifest(root, iterationsJson = records.joinToString(","))
+    }
+
+    /** Requires the validation result to be exactly one problem containing [needle]. */
+    private fun assertProblem(root: File, needle: String) {
+        val result = validate(root)
+        assertTrue(
+            "expected exactly one problem containing '$needle', got: ${result.problems}",
+            result.problems.size == 1 && result.problems.single().contains(needle),
+        )
+    }
+
+    /** Requires every [needle] to appear among the problems (others allowed). */
+    private fun assertProblemsContain(root: File, vararg needles: String) {
+        val result = validate(root)
+        for (needle in needles) {
+            assertTrue(
+                "expected a problem containing '$needle', got: ${result.problems}",
+                result.problems.any { it.contains(needle) },
+            )
+        }
+        assertTrue("expected at least one problem, got none", result.problems.isNotEmpty())
+    }
 
     @Test
     fun missingBenchmarkDataFileFails() {
         val root = tmp.newFolder("missing-data")
         writeTraces(root, 240)
         writeManifest(root)
-        assertFails(root)
+        assertProblemsContain(
+            root,
+            "expected exactly one 'benchmarkData.json' benchmark-data file, found 0",
+            "missing report for block 'startup01Fresh'",
+        )
     }
 
     @Test
@@ -743,8 +806,14 @@ class M1StartupReportValidatorTest {
         val root = tmp.newFolder("29-samples")
         writeValidTree(root)
         val spec = M1StartupReportParser.CONTRACT.BLOCKS[0]
-        writeBenchmarkData(root, benchmarkJson(spec.block, List(29) { 300.0 }, List(29) { 350.0 }))
-        assertFails(root)
+        // 29 TTID samples but 30 TTFD samples and 30 profilerOutputs, so the
+        // ONLY problem is the TTID sample-count gate.
+        rewriteDataWithEntry(
+            root,
+            spec.block,
+            benchmarkJson(spec.block, List(29) { 300.0 }, List(30) { 350.0 }, profilerCount = 30),
+        )
+        assertProblem(root, "${spec.block} has 29 timeToInitialDisplayMs samples, expected exactly 30")
     }
 
     @Test
@@ -754,8 +823,17 @@ class M1StartupReportValidatorTest {
             writeValidTree(root)
             val spec = M1StartupReportParser.CONTRACT.BLOCKS[1]
             val runs = List(29) { 300.0 } + bad
-            writeBenchmarkData(root, benchmarkJson(spec.block, runs, List(30) { 350.0 }))
-            assertFails(root)
+            rewriteDataWithEntry(
+                root,
+                spec.block,
+                benchmarkJson(spec.block, runs, List(30) { 350.0 }),
+            )
+            val result = validate(root)
+            assertTrue(
+                "bad $label sample must hit exactly the finiteness/positivity gate: ${result.problems}",
+                result.problems.size == 1 &&
+                    result.problems.single().contains("non-positive or non-finite timeToInitialDisplayMs"),
+            )
         }
     }
 
@@ -763,60 +841,88 @@ class M1StartupReportValidatorTest {
     fun duplicateIterationRecordFails() {
         val root = tmp.newFolder("duplicate-iteration")
         writeValidTree(root)
-        writeManifest(root, defaultIterationsJson() + "," + iterationJson(blockIndex = 0, iteration = 0))
-        assertFails(root)
+        rewriteIterations(root, defaultIterationRecords() + iterationJson(blockIndex = 0, iteration = 0))
+        assertProblemsContain(
+            root,
+            "duplicate iteration record startup01Fresh#0",
+            "run manifest has 241 iteration records, expected 240",
+        )
     }
 
     @Test
     fun missingIterationRecordFails() {
         val root = tmp.newFolder("missing-iteration")
         writeValidTree(root)
-        val all = (0 until 8).joinToString(",") { b ->
-            (0 until 30).joinToString(",") { i ->
-                if (b == 2 && i == 17) "null" else iterationJson(blockIndex = b, iteration = i)
-            }.split(",").filterNotNull().joinToString(",")
-        }
-        writeManifest(root, all)
-        assertFails(root)
+        // Drop exactly one real record (startup03HighVolume#17): no JSON null,
+        // no unparseable-manifest problem — the missing-record gate must fire.
+        val records = defaultIterationRecords()
+            .filterIndexed { index, _ -> index != 2 * 30 + 17 }
+        rewriteIterations(root, records)
+        assertProblemsContain(
+            root,
+            "run manifest has 239 iteration records, expected 240",
+            "run manifest missing startup03HighVolume iteration record(s) [17]",
+        )
     }
 
     @Test
     fun unexpectedExitInfoIterationFails() {
         val root = tmp.newFolder("exit-info")
         writeValidTree(root)
-        val all = (0 until 8).joinToString(",") { b ->
-            (0 until 30).joinToString(",") { i ->
-                iterationJson(blockIndex = b, iteration = i, exitInfoUnexpected = b == 3 && i == 5)
-            }
-        }
-        writeManifest(root, all)
-        assertFails(root)
+        rewriteIterations(
+            root,
+            defaultIterationRecords().mapIndexed { index, json ->
+                val b = index / 30
+                val i = index % 30
+                if (b == 3 && i == 5) {
+                    iterationJson(blockIndex = b, iteration = i, exitInfoUnexpected = true)
+                } else {
+                    json
+                }
+            },
+        )
+        assertProblem(root, "iteration startup04PendingActivation#5 reported unexpected exit info")
     }
 
     @Test
     fun unvalidatedFixtureIterationFails() {
         val root = tmp.newFolder("unvalidated")
         writeValidTree(root)
-        val all = (0 until 8).joinToString(",") { b ->
-            (0 until 30).joinToString(",") { i ->
-                iterationJson(blockIndex = b, iteration = i, fixtureValidated = b == 1 && i == 0)
-            }
-        }
-        writeManifest(root, all)
-        assertFails(root)
+        rewriteIterations(
+            root,
+            defaultIterationRecords().mapIndexed { index, json ->
+                val b = index / 30
+                val i = index % 30
+                if (b == 1 && i == 0) {
+                    iterationJson(blockIndex = b, iteration = i, fixtureValidated = false)
+                } else {
+                    json
+                }
+            },
+        )
+        assertProblem(root, "iteration startup02Typical#0 ran against an unvalidated fixture")
     }
 
     @Test
     fun wrongFixtureNamePerBlockFails() {
         val root = tmp.newFolder("wrong-fixture")
         writeValidTree(root)
-        val all = (0 until 8).joinToString(",") { b ->
-            (0 until 30).joinToString(",") { i ->
-                iterationJson(blockIndex = b, iteration = i, fixture = if (b == 0) "Typical" else null)
-            }
-        }
-        writeManifest(root, all)
-        assertFails(root)
+        rewriteIterations(
+            root,
+            defaultIterationRecords().mapIndexed { index, json ->
+                val b = index / 30
+                if (b == 0) {
+                    iterationJson(blockIndex = b, iteration = index % 30, fixture = "Typical")
+                } else {
+                    json
+                }
+            },
+        )
+        assertProblemsContain(
+            root,
+            "iteration startup01Fresh#0 fixture 'Typical' != expected 'Fresh'",
+            "iteration startup01Fresh#29 fixture 'Typical' != expected 'Fresh'",
+        )
     }
 
     @Test
@@ -825,9 +931,16 @@ class M1StartupReportValidatorTest {
         writeValidTree(root)
         // A pending-migration block must never report TTFD (no shell before safety).
         val blocked = M1StartupReportParser.CONTRACT.BLOCKS.first { !it.ttfdRequired }
-        val ttfdEntry = benchmarkJson(blocked.block, List(30) { 500.0 }, List(30) { 350.0 })
-        writeBenchmarkData(root, ttfdEntry)
-        assertFails(root)
+        rewriteDataWithEntry(
+            root,
+            blocked.block,
+            benchmarkJson(blocked.block, List(30) { 500.0 }, List(30) { 350.0 }),
+        )
+        assertProblem(
+            root,
+            "${blocked.block} reported timeToFullDisplayMs samples but a pending-migration " +
+                "gate never renders a shell",
+        )
     }
 
     @Test
@@ -835,8 +948,15 @@ class M1StartupReportValidatorTest {
         val root = tmp.newFolder("healthy-no-ttfd")
         writeValidTree(root)
         val healthy = M1StartupReportParser.CONTRACT.BLOCKS.first { it.ttfdRequired }
-        writeBenchmarkData(root, benchmarkJson(healthy.block, List(30) { 300.0 }, null))
-        assertFails(root)
+        rewriteDataWithEntry(
+            root,
+            healthy.block,
+            benchmarkJson(healthy.block, List(30) { 300.0 }, null),
+        )
+        assertProblem(
+            root,
+            "${healthy.block} missing timeToFullDisplayMs samples",
+        )
     }
 
     @Test
@@ -845,8 +965,12 @@ class M1StartupReportValidatorTest {
         writeValidTree(root)
         // p95 (rank 29) of 30 samples at 1_001 ms exceeds the 1,000 ms budget.
         val healthy = M1StartupReportParser.CONTRACT.BLOCKS[0]
-        writeBenchmarkData(root, benchmarkJson(healthy.block, List(30) { 1_001.0 }, List(30) { 350.0 }))
-        assertFails(root)
+        rewriteDataWithEntry(
+            root,
+            healthy.block,
+            benchmarkJson(healthy.block, List(30) { 1_001.0 }, List(30) { 350.0 }),
+        )
+        assertProblem(root, "${healthy.block} TTID p95 1001.0ms exceeds the 1000.0ms budget")
     }
 
     @Test
@@ -854,8 +978,12 @@ class M1StartupReportValidatorTest {
         val root = tmp.newFolder("ttfd-budget")
         writeValidTree(root)
         val healthy = M1StartupReportParser.CONTRACT.BLOCKS[0]
-        writeBenchmarkData(root, benchmarkJson(healthy.block, List(30) { 300.0 }, List(30) { 1_501.0 }))
-        assertFails(root)
+        rewriteDataWithEntry(
+            root,
+            healthy.block,
+            benchmarkJson(healthy.block, List(30) { 300.0 }, List(30) { 1_501.0 }),
+        )
+        assertProblem(root, "${healthy.block} TTFD p95 1501.0ms exceeds the 1500.0ms budget")
     }
 
     @Test
@@ -863,21 +991,36 @@ class M1StartupReportValidatorTest {
         val root = tmp.newFolder("no-manifest")
         writeValidTree(root)
         File(root, "m1-run-manifest.json").delete()
-        assertFails(root)
+        assertProblem(root, "expected exactly one 'm1-run-manifest.json', found 0")
     }
 
     @Test
     fun wrongIdentityBlockFails() {
-        for ((label, mutate) in listOf(
-            "target" to { json: String -> json.replace("\"targetPackage\":\"$TARGET_PACKAGE\"", "\"targetPackage\":\"com.other.app\"") },
-            "marker" to { json: String -> defaultIdentityJson().replace("\"variantMarker\":\"true\"", "\"variantMarker\":\"false\"") },
-            "cert" to { json: String -> defaultIdentityJson().replace("\"signingCertSha256\":\"${"b".repeat(64)}\"", "\"signingCertSha256\":\"short\"") },
-            "datadir" to { json: String -> defaultIdentityJson().replace("0/$TARGET_PACKAGE", "0/other") },
+        for ((label, needle) in listOf(
+            "target" to "identity.targetPackage 'com.other.app'",
+            "marker" to "identity.variantMarker 'false'",
+            "cert" to "identity.signingCertSha256 must be 64 lowercase hex",
+            "datadir" to "identity.dataDir '/data/user/0/other'",
         )) {
             val root = tmp.newFolder("identity-$label")
             writeValidTree(root)
-            writeManifest(root, identityJson = mutate(defaultIdentityJson()))
-            assertFails(root)
+            val mutated = when (label) {
+                "target" -> defaultIdentityJson().replace(
+                    "\"targetPackage\":\"$TARGET_PACKAGE\"",
+                    "\"targetPackage\":\"com.other.app\"",
+                )
+                "marker" -> defaultIdentityJson().replace(
+                    "\"variantMarker\":\"true\"",
+                    "\"variantMarker\":\"false\"",
+                )
+                "cert" -> defaultIdentityJson().replace(
+                    "\"signingCertSha256\":\"${"b".repeat(64)}\"",
+                    "\"signingCertSha256\":\"short\"",
+                )
+                else -> defaultIdentityJson().replace("0/$TARGET_PACKAGE", "0/other")
+            }
+            writeManifest(root, identityJson = mutated)
+            assertProblem(root, needle)
         }
     }
 
@@ -887,7 +1030,22 @@ class M1StartupReportValidatorTest {
         writeValidTree(root)
         val bad = "[{\"command\":\"pm clear com.paherdin.record\",\"target\":\"com.paherdin.record\",\"allowed\":true}]"
         writeManifest(root, commandLogJson = bad)
-        assertFails(root)
+        assertProblemsContain(
+            root,
+            "commandLog target 'com.paherdin.record' is not the benchmark variant or its test package",
+            "commandLog command carries a package token outside the benchmark allowlist",
+        )
+    }
+
+    @Test
+    fun commandLogWithQuotingCharacterFails() {
+        val root = tmp.newFolder("command-log-quoted")
+        writeValidTree(root)
+        // A quoting character can split one token into two argv words on the
+        // device shell; the frozen gate refuses every such command.
+        val bad = "[{\"command\":\"pm clear com.paherdin.rec\\\"ord\\\"\",\"target\":\"com.paherdin.record.benchmark\",\"allowed\":true}]"
+        writeManifest(root, commandLogJson = bad)
+        assertProblem(root, "package token outside the benchmark allowlist")
     }
 
     @Test
@@ -895,7 +1053,7 @@ class M1StartupReportValidatorTest {
         val root = tmp.newFolder("empty-command-log")
         writeValidTree(root)
         writeManifest(root, commandLogJson = "[]")
-        assertFails(root)
+        assertProblem(root, "run manifest commandLog is empty")
     }
 
     @Test
@@ -903,7 +1061,7 @@ class M1StartupReportValidatorTest {
         val root = tmp.newFolder("blank-env")
         writeValidTree(root)
         writeManifest(root, environmentJson = defaultEnvironmentJson().replace("\"brand\":\"xiaomi\"", "\"brand\":\"\""))
-        assertFails(root)
+        assertProblem(root, "run manifest environment.brand is blank")
     }
 
     @Test
@@ -911,16 +1069,28 @@ class M1StartupReportValidatorTest {
         val root = tmp.newFolder("missing-trace")
         writeValidTree(root)
         File(root, "traces/iter_239.perfetto-trace").delete()
-        assertFails(root)
+        assertProblemsContain(
+            root,
+            "expected exactly 240 '.perfetto-trace' traces, found 239",
+            "profilerOutput filename 'iter_239.perfetto-trace' does not resolve",
+        )
     }
 
     @Test
     fun wrongBlockNameFails() {
         val root = tmp.newFolder("wrong-block")
         writeValidTree(root)
-        val healthy = M1StartupReportParser.CONTRACT.BLOCKS[0]
-        writeBenchmarkData(root, benchmarkJson("startup99Wrong", List(30) { 300.0 }, List(30) { 350.0 }))
-        assertTrue("unknown block must be a problem", validate(root).problems.isNotEmpty())
+        val fresh = M1StartupReportParser.CONTRACT.BLOCKS[0]
+        rewriteDataWithEntry(
+            root,
+            fresh.block,
+            benchmarkJson("startup99Wrong", List(30) { 300.0 }, List(30) { 350.0 }),
+        )
+        assertProblemsContain(
+            root,
+            "benchmark-data has a benchmark entry for unknown block 'startup99Wrong'",
+            "missing report for block 'startup01Fresh'",
+        )
     }
 
     companion object {
