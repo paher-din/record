@@ -9,18 +9,18 @@
 
 | Field | Value |
 |---|---|
-| Current task | M1-T08 — navigation/retained-state/shared-presentation/accessibility UI acceptance (not dispatched; execution paused after T07 acceptance at the user's request) |
+| Current task | M1-T09 — startup fixture/harness/report validator code (not dispatched) |
 | `task_revision` / `attempt_id` | 1 / not dispatched |
-| Owner / write scope | UI acceptance worker; `app/src/androidTest/**` + cross-module test paths per plan; main agent owns device gates, commits, reviews |
-| Dependencies / ready evidence | M1-T07 accepted (commit `b2d8d0f`, both review stages APPROVED, unit 25/0/0/0, host gates + full check PASS, release badging verified); M1-T02–T06 accepted before it |
+| Owner / write scope | benchmark worker; approved testFixtures/app benchmark/benchmark/core-data report-validator scopes per plan; main agent owns device gates, commits, reviews |
+| Dependencies / ready evidence | M1-T08 accepted (plan corrections commit `837da5f`, remediation commit `37c49cb`; app 31/31 on the target-uid op gate, host full check, release boundary, rollback — all raw evidence verified by the main agent; quality rereview APPROVED; spec rereview closed on the plan-sync item); M1-T03 and M1-T07 accepted before it |
 | Status / dispatch failures | pending dispatch / 0 |
-| Remaining steps | when resumed: dispatch T08 worker (test-only app fixture → navigation/recreation/accessibility suites → every UI module suite) → main-agent Xiaomi device gates (direct instrumentation + app-op approvals; one-setContent and mid-run op-reset lessons from T04/T05 apply) → reviews → acceptance |
-| Next command | dispatch the T08 UI acceptance worker when the user resumes execution |
-| `blocked-on` | none |
+| Remaining steps | dispatch T09 benchmark worker (fixture generator → Macrobenchmark harness → report validator, RED→GREEN unit evidence) → main full check → reviews → acceptance; T10 device runs additionally require the separate execution-time deletion approval |
+| Next command | dispatch the T09 benchmark worker |
+| `blocked-on` | cleanup of generated `.kotlin/` (worktree root; only an empty `sessions` directory, invisible to git) awaits explicit user deletion approval |
 | Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
-| Contract references | plan M1-T08; spec criteria 3, 4, 5, 7–9, 11, 12 (device side), 13 (app side), 16; known gap routed to T08: dark starting-window `values-night` pair (see deviations) |
-| Last raw evidence | T07 accepted: app unit 25/0/0/0 XML, full `check` BUILD SUCCESSFUL exit 0, release badging `com.paherdin.record`/`Record`/no INTERNET, commit `b2d8d0f` 19 files |
-| Last updated | 2026-09-02 Asia/Shanghai |
+| Contract references | plan M1-T08 plus target-uid and retention-review corrections; spec criteria 3–13, 16, 18 |
+| Last raw evidence | T08 accepted: `.superpowers/evidence/m1-t08-a5/` app 31/31 (51.849 s) with zero `-2`, SHA-256 manifest re-verified by the main agent, host full check BUILD SUCCESSFUL, release manifest/resources clean, rollback complete |
+| Last updated | 2026-09-03 Asia/Shanghai |
 
 ## Acceptance criteria
 
@@ -78,9 +78,58 @@
 | M1-T05 | 1 | `M1-T05-A1` | `/root/m1_t05_notes` + main device gate | done | 0 | yes | RED→GREEN host PASS; commit `d6ce79f`; direct instrumentation 8/8 OK after mid-run MIUI op reset recovery; uninstall/no-UID rollback; spec + quality APPROVED |
 | M1-T06 | 1 | `M1-T06-A1` | `/root/m1_t06_timeline` + main device gate | done | 0 | yes | unit 8/0/0/0 incl. Saver round-trip via the nested-`with` form (Kotlin 2.2.10 member-extension defect; pure-Kotlin fix, no Java bridge); commit `8ad0474` (message deviation recorded); device 7/7 OK clean run; rollback proved; spec + quality APPROVED |
 | M1-T07 | 1 | `M1-T07-A1` | app integration worker (main-agent dispatch) | done | 0 | yes | compile-stage RED (266 unresolved-reference diagnostics); unit 25/0/0/0 (Routes 11 + StartupStateStore 13 + compat smoke 1); host gates `:app:testDebugUnitTest :app:assembleDebug :app:assembleRelease checkModuleDependencies` BUILD SUCCESSFUL; full `check` PASS; release badging verified; commit `b2d8d0f` (19 files incl. the two seam-correction paths); spec + quality APPROVED with recorded minors; one mid-run worker stream stall recovered by message nudge with no state loss |
-| M1-T07–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
+| M1-T08 | 1 | `M1-T08-A1` | UI acceptance worker + main device gate | failed | 1 | no | product navigation crash plus three test defects; usable fixes/diagnostics retained, no complete app gate |
+| M1-T08 | 1 | `M1-T08-A2` | main device gate | failed | 2 | no | fixed tests advanced, but all three real-Activity retained tests hung on HyperOS result 102 |
+| M1-T08 | 1 | `M1-T08-A3` | device-gate worker | cancelled | 3 | no | two retained invocations hung; warm-start assumption disproved by 12-second launch delay; third retained test and 21-test phase not run |
+| M1-T08 | 1 | `M1-T08-A4` | main-agent takeover | failed | 3 | no | target-uid correction and app 24/24 passed; independent spec/quality reviews both returned CHANGES_REQUIRED on missing acceptance evidence |
+| M1-T08 | 1 | `M1-T08-A5` | main-agent takeover | done | 3 | yes | RED→GREEN remediation closed both reviews' Important gaps (four-tab retention probes via the debug-only target-process host, stale-request suppression, real-shell detail chrome/Back via production-default injection seams, 48-dp token, real-shell 200%-font); app 31/31 (51.849 s) under the target-uid op gate, host full check + release boundary + rollback verified; quality rereview APPROVED, spec rereview closed on the plan-sync item (`837da5f`); remediation commit `37c49cb` (message deviation: the plan's commit-command message was already used by `c1e46a8`) |
+| M1-T09–M1-T11 | 1 | not started | unassigned | pending | 0 | no | none |
 
 ## Commands and results
+
+### M1-T08-A1/A2/A3 — UI implementation fixes and Xiaomi launch-harness failures
+
+**Implementation result:** commit `c1e46a8` added the T08 app/core/feature acceptance tests and dark starting-window resources. The first device run exposed the plan-authored Navigation 2.9 `popUpTo(NavDestination)` runtime crash; the plan was corrected in `717aff0` and production was corrected to the typed start route in `33f59f8`. Commits `c70774a`, `f147543`, and `877c66a` corrected four invalid test assertions/semantics fixtures without changing product behavior.
+
+**Reusable module device evidence:** `.superpowers/evidence/m1-t08-a1/` retains complete direct-instrumentation output for unchanged T08 test paths: `core-ui-am-instrument-raw.txt` 12/12, `finance-am-instrument-raw.txt` 9/9, `notes-am-instrument-raw.txt` 9/9, and `timeline-am-instrument-raw.txt` 8/8, each with zero `-2` status and `INSTRUMENTATION_CODE: -1`. `git log` proves none of those four test paths changed after `c1e46a8`.
+
+**A2/A3 infrastructure result:** FAILED/CANCELLED, not product failures. All three `M1RetainedStateTest` methods drive the real `MainActivity`; HyperOS returned ActivityTaskManager result 102 and permanently blocked ActivityScenario's launch channel. A3 split the methods and warm-started the target first, but `.superpowers/evidence/m1-t08-a3/retained-1-hang-diagnostics.txt` proves the shell display occurred at 22:55:19 and the instrumentation-owned launch only at 22:55:31, after the foreground exemption expired. Calls 1 and 2 stopped at `INSTRUMENTATION_STATUS_CODE: 1`; call 3 and the remaining app tests did not run.
+
+**Root cause correction:** `pm list instrumentation` identifies `com.paherdin.record.test/androidx.test.runner.AndroidJUnitRunner (target=com.paherdin.record)`; package diagnostics assign distinct app IDs 10614/10615. ActivityTaskManager attributed the rejected launch to target app uid 10614, while the old protocol authorized only `com.paherdin.record.test`. AppOps recorded the matching rejection on `com.paherdin.record`. Thus the test-package-only op never authorized the caller.
+
+### M1-T08-A4 — main-agent target-uid device gate
+
+**Takeover:** A1/A2/A3 produced three dispatch failures for revision 1, so the main agent took over under the repeated-failure rule and did not redispatch.
+
+**Single-hypothesis diagnostic:** after exact-package force-stop, set only installed instrumentation target `com.paherdin.record` to `MIUIOP(10021)=allow`; readback was `allow` while `com.paherdin.record.test` remained `ignore`. Without warm start or release watch, direct invocation of `M1RetainedStateTest#activityRecreationPreservesTheCurrentDestinationAndExactOrigin` completed in 1.963 seconds with `OK (1 test)`. Raw evidence: `.superpowers/evidence/m1-t08-a4/target-op-preflight.txt` and `retained-1-target-op-raw.txt`.
+
+**Complete app device gate:** the same installed pair ran `am instrument -w -r com.paherdin.record.test/androidx.test.runner.AndroidJUnitRunner`; `.superpowers/evidence/m1-t08-a4/app-24-target-op-raw.txt` reports 24 starts, 24 passes, zero `-2` failures, `OK (24 tests)`, and `INSTRUMENTATION_CODE: -1` in 35.742 seconds. The target op remained `allow` through completion.
+
+**Rollback:** target op was restored to `ignore` with readback; the test op remained `ignore`. Both freshly installed debug/test packages then uninstalled successfully; package/process scans were empty and both AppOps queries returned `No UID`. Raw evidence: `target-op-rollback.txt` and `package-rollback.txt`.
+
+**Fresh host/packaged checks:** `:app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest checkModuleDependencies check --console=plain` passed in 1m07s with 539 tasks (24 executed, 515 up-to-date). App unit XML totals are 25/0/0/0. `aapt2 dump resources` on the release APK contains `record_app_background` default `#fff6f2e9`, night `#ff171c1a`, and a night `Theme.Record` configuration. `git diff --check` passes; T08 changes contain no schema, build, dependency, or module-graph path. Raw evidence: `.superpowers/evidence/m1-t08-a4/host-full-check-raw.txt` and `main-acceptance.txt`.
+
+**Pending before acceptance:** independent spec and quality reviews. Criterion 16's full airplane-mode route gate and criteria 17–19 final artifact/combined acceptance remain T11 work; they are not relabeled as T08 PASS.
+
+### M1-T08-A5 — independent-review remediation
+
+**A4 review outcome:** both independent reviews returned CHANGES_REQUIRED. They agreed that A4 did not prove four distinct per-tab scroll/filter/date probes through Activity/saved-state restoration, stale request-result suppression, real-shell detail chrome and system Back, complete 48-dp target coverage, or real four-tab 200%-font/no-overlap behavior. The quality review also proved the test-only Ready fixture placed its heading and action at the same Box origin.
+
+**Accessibility RED→GREEN:** the strengthened 200%-font test first failed because the one-item fixture bar had no “财务” node. The fixture was corrected to the exact four labels and Ready content moved into a spaced Column. The complete accessibility class then exposed a real 40-dp Ready-action fixture failure; adding the semantic minimum touch target produced 10/10. New assertions cover light/dark real-shell and recovery layouts at 200%, clipped versus unclipped bounds, pairwise non-overlap, four tab targets, three top-bar actions, Today, Ready action, and Retry.
+
+**Real-shell navigation RED→GREEN:** the representative detail test first failed because `M1DispatchHost` mounted `RecordNavHost` without `RecordApp`, so the bottom bar did not exist. `RecordApp` now accepts the already-approved content/controller seams with production Availability defaults; the test host mounts the real shell. Detail bottom navigation, target-owned route identity, system Back, app-bar Back, create from every root, and the actual 13-destination graph now pass. Focused GREEN and the complete navigation class report 1/1 and 9/9.
+
+**Retention RED→GREEN:** an androidTest-package Activity was rejected before the assertion because instrumentation target and `.test` are separate processes. The corrected plan/harness uses one generic debug-only target-process Compose host, absent from release, while all probe content remains androidTest. With non-saveable state, Activity recreation failed on the Timeline probe value as expected. Changing only the three probe values to `rememberSaveable` produced Activity recreation 1/1 and `StateRestorationTester` 1/1 across four independently seeded scroll/filter/date values and four saved child/global stacks.
+
+**Stale-result RED→GREEN:** the injected A(revision 0) → Today/B(revision 1) → late A sequence first failed because late A replaced B. Gating test-only injected results by `result.requestRevision == dateState.requestRevision` produced 1/1 and proves the required late-stale suppression without production data/query work.
+
+**Complete device gate:** `.superpowers/evidence/m1-t08-a5/app-31-raw.txt` reports 31 starts, 31 passes, zero `-2` failures, `OK (31 tests)`, and `INSTRUMENTATION_CODE: -1` in 51.849 seconds. The target app alone held `MIUIOP(10021)=allow` during the run; the test package remained unchanged.
+
+**Host/artifact gate:** the fresh combined `:app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest checkModuleDependencies check --console=plain` passed in 2m05s with 539 tasks (28 executed, 511 up-to-date); app unit XML is 25/0/0/0. Packaged release manifest/resource dumps prove the debug host is absent and the night `#171C1A` background remains present. Schema/build/module-path scans and `git diff --check` pass.
+
+**Rollback:** target AppOps readback changed `allow → ignore`; both freshly installed packages uninstalled successfully; package/process scans are empty and both final AppOps queries return `No UID`. Raw evidence and hashes: `.superpowers/evidence/m1-t08-a5/{preflight,app-31-raw,host-full-check-raw,release-manifest-dump,release-resources-dump,rollback,main-acceptance,sha256}.txt`.
+
+**Rereviews and acceptance:** the quality rereview returned APPROVED. The spec rereview returned APPROVED with one documentation gap — the plan's T08 Files list and commit command had not been synced for the real-shell `RecordShell.kt` seam and the new debug/androidTest files; commit `837da5f` closes it (verified against the T08 Files list directly). The main agent re-verified the A5 raw evidence independently (31 starts/31 passes/zero `-2`, SHA-256 manifest match, preflight target-op `allow` with the test op left `ignore`, rollback to `ignore` plus `No UID` readbacks, release-manifest cleanliness) and accepted T08; the remediation is committed in `37c49cb` and acceptance in this document update. Full airplane-mode routes and final policy/backup artifact gates remain T11, not A5 PASS rows.
 
 ### M1-T02-A1/A2 — retained implementation audit and device blocker
 
