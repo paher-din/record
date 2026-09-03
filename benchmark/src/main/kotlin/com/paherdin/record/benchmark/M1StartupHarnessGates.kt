@@ -39,6 +39,15 @@ internal object M1StartupHarnessGates {
     /** The merged-manifest variant marker key the setup surface requires. */
     const val VARIANT_METADATA_KEY = "m1BenchmarkVariant"
 
+    /**
+     * The exact string meta-data value the merged manifest must carry. A
+     * string is the only meta-data shape every package parser (including
+     * HyperOS's, which drops boolean-typed values at parse time) preserves;
+     * the Activity defines the same frozen literal across the process
+     * boundary.
+     */
+    const val EXPECTED_VARIANT_MARKER = "m1-benchmark"
+
     /** The sentinel mirror file the fixture Activity publishes. */
     const val SENTINEL_FILE_NAME = "m1_startup_sentinels.json"
 
@@ -105,8 +114,9 @@ internal object M1StartupHarnessGates {
 
     /** Requires the fixture Activity's published variant marker. */
     fun assertVariantMarker(marker: String?) {
-        check(marker == "true") {
-            "published variant marker '$marker' != 'true' (not the benchmark-variant app)"
+        check(marker == EXPECTED_VARIANT_MARKER) {
+            "published variant marker '$marker' != '$EXPECTED_VARIANT_MARKER' " +
+                "(not the benchmark-variant app)"
         }
     }
 

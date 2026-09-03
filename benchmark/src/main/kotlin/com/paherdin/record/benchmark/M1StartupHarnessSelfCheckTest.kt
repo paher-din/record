@@ -131,7 +131,7 @@ class M1StartupHarnessSelfCheckTest {
     fun identityGatesAcceptTheExactBenchmarkVariant() {
         M1StartupHarnessGates.requireExactTargetPackage(M1StartupHarnessGates.TARGET_PACKAGE)
         M1StartupHarnessGates.requireExactTestPackage(M1StartupHarnessGates.TEST_PACKAGE)
-        M1StartupHarnessGates.assertVariantMarker("true")
+        M1StartupHarnessGates.assertVariantMarker(M1StartupHarnessGates.EXPECTED_VARIANT_MARKER)
         M1StartupHarnessGates.assertDataDir("/data/user/0/${M1StartupHarnessGates.TARGET_PACKAGE}")
         M1StartupHarnessGates.assertNonDebuggable("pkgFlags=[ SYSTEM VISIBLE ]")
     }
@@ -161,7 +161,7 @@ class M1StartupHarnessSelfCheckTest {
 
     private fun validSetupSentinels(): Map<String, String> = mapOf(
         M1StartupSentinelKeys.PACKAGE_NAME to M1StartupHarnessGates.TARGET_PACKAGE,
-        M1StartupSentinelKeys.VARIANT_MARKER to "true",
+        M1StartupSentinelKeys.VARIANT_MARKER to M1StartupHarnessGates.EXPECTED_VARIANT_MARKER,
         M1StartupSentinelKeys.SIGNING_CERT_SHA256 to "b".repeat(64),
         M1StartupSentinelKeys.DATA_ROOT to "/data/user/0/${M1StartupHarnessGates.TARGET_PACKAGE}",
         M1StartupSentinelKeys.FIXTURE to "Typical",
@@ -226,7 +226,7 @@ class M1StartupHarnessSelfCheckTest {
                 testPackage = M1StartupHarnessGates.TEST_PACKAGE,
                 targetActivity = M1StartupHarnessGates.TARGET_ACTIVITY,
                 setupComponent = M1StartupHarnessGates.SETUP_COMPONENT,
-                variantMarker = "true",
+                variantMarker = M1StartupHarnessGates.EXPECTED_VARIANT_MARKER,
                 signingCertSha256 = "b".repeat(64),
                 dataDir = "/data/user/0/${M1StartupHarnessGates.TARGET_PACKAGE}",
             ),

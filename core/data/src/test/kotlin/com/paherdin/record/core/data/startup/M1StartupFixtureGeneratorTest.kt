@@ -650,7 +650,7 @@ class M1StartupReportValidatorTest {
     private fun defaultIdentityJson(): String =
         "{\"targetPackage\":\"$TARGET_PACKAGE\",\"testPackage\":\"$TEST_PACKAGE\"," +
             "\"targetActivity\":\"$TARGET_ACTIVITY\",\"setupComponent\":\"$SETUP_COMPONENT\"," +
-            "\"variantMarker\":\"true\",\"signingCertSha256\":\"${"b".repeat(64)}\"," +
+            "\"variantMarker\":\"m1-benchmark\",\"signingCertSha256\":\"${"b".repeat(64)}\"," +
             "\"dataDir\":\"/data/user/0/$TARGET_PACKAGE\"}"
 
     private fun defaultEnvironmentJson(): String =
@@ -1010,7 +1010,7 @@ class M1StartupReportValidatorTest {
                     "\"targetPackage\":\"com.other.app\"",
                 )
                 "marker" -> defaultIdentityJson().replace(
-                    "\"variantMarker\":\"true\"",
+                    "\"variantMarker\":\"m1-benchmark\"",
                     "\"variantMarker\":\"false\"",
                 )
                 "cert" -> defaultIdentityJson().replace(

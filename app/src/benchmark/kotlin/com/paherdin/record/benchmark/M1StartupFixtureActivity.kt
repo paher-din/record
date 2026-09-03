@@ -20,8 +20,8 @@ import java.util.UUID
  * token. The Activity fails closed unless
  *  - its own package name is exactly the benchmark variant package
  *    `com.paherdin.record.benchmark`, and
- *  - its application's merged manifest carries the `m1BenchmarkVariant=true`
- *    meta-data marker,
+ *  - its application's merged manifest carries the `m1BenchmarkVariant`
+ *    meta-data marker with the exact string value `m1-benchmark`,
  * then it consumes the one-shot token (a replayed intent is refused for the
  * lifetime of the install; `pm clear` resets the prefs, which is acceptable
  * because the harness always mints a fresh token per setup), publishes the
@@ -65,18 +65,18 @@ class M1StartupFixtureActivity : Activity() {
         recorder.write(SENTINEL_PACKAGE_NAME, packageName)
 
         // Gate 2: the manifest meta-data variant marker (not a BuildConfig).
-        // aapt2 compiles `android:value="true"` to TYPE_INT_BOOLEAN, so the
-        // Bundle entry is a Boolean and `getString` would return null; read
-        // the Boolean first and keep the string form as a compatibility
-        // fallback. The sentinel still publishes the exact "true" token.
+        // The value MUST be a string literal (`m1-benchmark`): HyperOS's
+        // package parser drops TYPE_INT_BOOLEAN application meta-data at
+        // parse time (the key is absent from the runtime Bundle entirely),
+        // while string values are supported by every parser, so the string
+        // form is the only shape the manifest guarantees. The sentinel
+        // publishes the marker verbatim.
         val metadata = applicationInfo.metaData
-        val marker = if (metadata?.getBoolean(VARIANT_METADATA_KEY, false) == true) {
-            "true"
-        } else {
-            metadata?.getString(VARIANT_METADATA_KEY) ?: ""
-        }
-        check(marker == "true") {
-            "merged manifest meta-data $VARIANT_METADATA_KEY must be 'true', got '$marker'"
+        val marker = metadata?.getString(VARIANT_METADATA_KEY) ?: ""
+        check(marker == EXPECTED_VARIANT_MARKER) {
+            "merged manifest meta-data $VARIANT_METADATA_KEY must be " +
+                "'$EXPECTED_VARIANT_MARKER', got '$marker' " +
+                "(observed meta-data keys: ${metadata?.keySet().orEmpty()})"
         }
         recorder.write(SENTINEL_VARIANT_MARKER, marker)
 
@@ -163,6 +163,13 @@ class M1StartupFixtureActivity : Activity() {
 
         /** The frozen merged-manifest variant marker key. */
         internal const val VARIANT_METADATA_KEY = "m1BenchmarkVariant"
+
+        /**
+         * The exact string value the merged manifest must carry. A string is
+         * the only meta-data shape every package parser (including HyperOS's,
+         * which drops boolean-typed values at parse time) preserves.
+         */
+        internal const val EXPECTED_VARIANT_MARKER = "m1-benchmark"
 
         internal const val EXTRA_FIXTURE = "m1Fixture"
         internal const val EXTRA_SETUP_TOKEN = "m1SetupToken"

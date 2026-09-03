@@ -68,7 +68,13 @@ object M1StartupReportParser {
         const val TEST_PACKAGE = "com.paherdin.record.benchmark.test"
         const val TARGET_ACTIVITY = "com.paherdin.record.MainActivity"
         const val SETUP_COMPONENT = "com.paherdin.record.benchmark.M1StartupFixtureActivity"
-        const val VARIANT_MARKER = "true"
+        /**
+         * The exact string meta-data value the merged manifest must carry
+         * (`m1-benchmark`): string values are the only application meta-data
+         * shape every package parser (including HyperOS's, which drops
+         * boolean-typed values at parse time) preserves.
+         */
+        const val VARIANT_MARKER = "m1-benchmark"
         const val DATA_DIR_PREFIX = "/data/user/0/"
 
         /** The only package tokens a logged command may carry. */

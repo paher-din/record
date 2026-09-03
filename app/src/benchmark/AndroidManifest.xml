@@ -2,12 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application>
-        <!-- M1-T09 Step 3: the benchmark-variant marker the fixture setup
-             surface requires at runtime (checked from applicationInfo.metadata,
-             never a generated BuildConfig). Absent from main/release. -->
+        <!-- M1-T09 Step 3 (plan ecd069e): the benchmark-variant marker the
+             fixture setup surface requires at runtime (checked from
+             applicationInfo.metadata, never a generated BuildConfig). The
+             value MUST stay a string literal: HyperOS's package parser drops
+             TYPE_INT_BOOLEAN application meta-data at parse time (the key is
+             absent from the runtime Bundle entirely), while string values are
+             supported by every parser. Absent from main/release. -->
         <meta-data
             android:name="m1BenchmarkVariant"
-            android:value="true" />
+            android:value="m1-benchmark" />
 
         <!-- Tech PoC P6: benchmark-variant-only profileable declaration so the
              Macrobenchmark tooling can capture profiles from the shell. Absent
