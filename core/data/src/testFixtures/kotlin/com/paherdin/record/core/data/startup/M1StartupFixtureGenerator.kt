@@ -762,7 +762,7 @@ object M1StartupFixtureGenerator {
             database.close()
         }
         val contentDir = File(generationDir, "attachments/content")
-        check(contentDir.isDirectory) { "failed to create content dir $contentDir" }
+        check(contentDir.mkdirs() || contentDir.isDirectory) { "failed to create content dir $contentDir" }
         plan.blobs.forEach { (identity, bytes) ->
             File(contentDir, identity).writeBytes(bytes)
         }
