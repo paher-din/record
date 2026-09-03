@@ -21,7 +21,9 @@ import java.util.UUID
  *  - its own package name is exactly the benchmark variant package
  *    `com.paherdin.record.benchmark`, and
  *  - its application's merged manifest carries the `m1BenchmarkVariant`
- *    meta-data marker with the exact string value `m1-benchmark`,
+ *    meta-data marker with the exact string value `m1-benchmark` (read through
+ *    an explicit `PackageManager.GET_META_DATA` query — the context-attached
+ *    `ApplicationInfo` does not carry `metaData`),
  * then it consumes the one-shot token (a replayed intent is refused for the
  * lifetime of the install; `pm clear` resets the prefs, which is acceptable
  * because the harness always mints a fresh token per setup), publishes the
@@ -65,13 +67,19 @@ class M1StartupFixtureActivity : Activity() {
         recorder.write(SENTINEL_PACKAGE_NAME, packageName)
 
         // Gate 2: the manifest meta-data variant marker (not a BuildConfig).
-        // The value MUST be a string literal (`m1-benchmark`): HyperOS's
-        // package parser drops TYPE_INT_BOOLEAN application meta-data at
-        // parse time (the key is absent from the runtime Bundle entirely),
-        // while string values are supported by every parser, so the string
-        // form is the only shape the manifest guarantees. The sentinel
+        // Application meta-data must be read through an explicit
+        // PackageManager query with GET_META_DATA: the ApplicationInfo object
+        // attached to the context does NOT carry `metaData` at all, so
+        // `applicationInfo.metaData` is always null here (this is the standard
+        // read for every meta-data consumer). The value stays a string literal
+        // (`m1-benchmark`) — the most portable manifest shape. The sentinel
         // publishes the marker verbatim.
-        val metadata = applicationInfo.metaData
+        val metadata = packageManager
+            .getApplicationInfo(
+                packageName,
+                PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
+            )
+            .metaData
         val marker = metadata?.getString(VARIANT_METADATA_KEY) ?: ""
         check(marker == EXPECTED_VARIANT_MARKER) {
             "merged manifest meta-data $VARIANT_METADATA_KEY must be " +
