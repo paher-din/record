@@ -16,6 +16,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -84,6 +85,26 @@ class M1AccessibilityTest {
     }
 
     @Test
+    fun recoveryGateKeepsRequiredTextUsableAtTwoHundredPercentFontInLight() {
+        assertRecoveryGateAtTwoHundredPercentFont(darkTheme = false)
+    }
+
+    @Test
+    fun recoveryGateKeepsRequiredTextUsableAtTwoHundredPercentFontInDark() {
+        assertRecoveryGateAtTwoHundredPercentFont(darkTheme = true)
+    }
+
+    @Test
+    fun realShellKeepsRequiredTextAndActionsUsableAtTwoHundredPercentFontInLight() {
+        assertRealShellAtTwoHundredPercentFont(darkTheme = false)
+    }
+
+    @Test
+    fun realShellKeepsRequiredTextAndActionsUsableAtTwoHundredPercentFontInDark() {
+        assertRealShellAtTwoHundredPercentFont(darkTheme = true)
+    }
+
+    @Test
     fun shellBottomBarExposesSelectedTabSemanticsAndDeterministicTraversalOrder() {
         composeRule.setContent {
             M1ShellHost(M1TestClocks.atSeptemberSecond(), M1TestClocks.zoneId)
@@ -97,6 +118,19 @@ class M1AccessibilityTest {
         assertTopBarActionOrder()
         composeRule.onNode(tabMatcher("时间线"))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+            .assertHeightIsAtLeast(48.dp)
+            .assertWidthIsAtLeast(48.dp)
+
+        listOf("时间线", "财务", "笔记", "项目").forEach { label ->
+            composeRule.onNode(tabMatcher(label))
+                .assertHeightIsAtLeast(48.dp)
+                .assertWidthIsAtLeast(48.dp)
+                .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus))
+        }
+        composeRule.onNode(todayButtonMatcher())
+            .assertHeightIsAtLeast(48.dp)
+            .assertWidthIsAtLeast(48.dp)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus))
 
         composeRule.onNode(tabMatcher("财务")).performClick()
         composeRule.onNodeWithText("财务功能将在 M2 提供").assertIsDisplayed()
@@ -129,6 +163,7 @@ class M1AccessibilityTest {
                     LiveRegionMode.Polite,
                 ),
             )
+        composeRule.onNodeWithTag(M1ShellTags.BOTTOM_NAVIGATION).assertDoesNotExist()
         composeRule.onNodeWithTag(M1ShellTags.RESTORE_RECOVERY_RETRY)
             .assertIsDisplayed()
             .assertIsEnabled()
@@ -200,6 +235,9 @@ class M1AccessibilityTest {
             .assertIsDisplayed()
             .assertIsEnabled()
             .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+            .assertWidthIsAtLeast(48.dp)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus))
         assertNoRawErrorText()
     }
 
@@ -215,14 +253,17 @@ class M1AccessibilityTest {
             )
         }
 
-        assertFullyWithinRoot(
+        assertFullyVisibleAndNonOverlapping(
             composeRule.onNodeWithText(loadingText, useUnmergedTree = true),
-            composeRule.onNodeWithText("时间线", useUnmergedTree = true),
+            *bottomTabLabelNodes(),
         )
         assertNoRawErrorText()
 
         composeRule.runOnIdle { presentation = ContentPresentation.Empty(EmptyReason.NoApplicableItems) }
-        assertFullyWithinRoot(composeRule.onNodeWithText("暂无内容", useUnmergedTree = true))
+        assertFullyVisibleAndNonOverlapping(
+            composeRule.onNodeWithText("暂无内容", useUnmergedTree = true),
+            *bottomTabLabelNodes(),
+        )
 
         composeRule.runOnIdle {
             presentation = ContentPresentation.Error(UiErrorCategory.TemporarilyUnavailable, canRetry = true)
@@ -236,26 +277,81 @@ class M1AccessibilityTest {
             .assertHasClickAction()
             .assertHeightIsAtLeast(48.dp)
             .assertWidthIsAtLeast(48.dp)
-        assertFullyWithinRoot(errorNode, retryNode)
-        val errorBounds = errorNode.getUnclippedBoundsInRoot()
-        val retryBounds = retryNode.getUnclippedBoundsInRoot()
-        assertTrue(
-            "error heading and Retry overlap: error=$errorBounds retry=$retryBounds",
-            errorBounds.bottom <= retryBounds.top || retryBounds.bottom <= errorBounds.top,
-        )
+        assertFullyVisibleAndNonOverlapping(errorNode, retryNode, *bottomTabLabelNodes())
         retryNode.performClick()
         composeRule.runOnIdle { assertTrue(retried) }
 
         composeRule.runOnIdle { presentation = ContentPresentation.Ready("two-hundred-percent") }
-        assertFullyWithinRoot(
+        assertFullyVisibleAndNonOverlapping(
             composeRule.onNodeWithText(
                 "${M1FixtureTags.PRESENTATION_READY_TEXT}:two-hundred-percent",
                 useUnmergedTree = true,
             ),
             composeRule.onNodeWithTag(M1PresentationReadyActionTag, useUnmergedTree = true),
-            composeRule.onNodeWithText("时间线", useUnmergedTree = true),
+            *bottomTabLabelNodes(),
         )
         assertNoRawErrorText()
+    }
+
+    private fun assertRecoveryGateAtTwoHundredPercentFont(darkTheme: Boolean) {
+        composeRule.setContent {
+            M1ShellHost(
+                clock = M1TestClocks.atSeptemberSecond(),
+                zoneId = M1TestClocks.zoneId,
+                darkTheme = darkTheme,
+                fontScale = 2f,
+            ) {
+                RestoreRecoverySurface(
+                    phase = Phase.RecoverableFailure,
+                    canRetry = true,
+                    onRetry = {},
+                )
+            }
+        }
+
+        assertFullyVisibleAndNonOverlapping(
+            composeRule.onNodeWithText("数据恢复未完成", useUnmergedTree = true),
+            composeRule.onNodeWithText("可以安全重试以继续恢复。", useUnmergedTree = true),
+            composeRule.onNodeWithTag(M1ShellTags.RESTORE_RECOVERY_RETRY, useUnmergedTree = true),
+        )
+        assertNoRawErrorText()
+    }
+
+    private fun assertRealShellAtTwoHundredPercentFont(darkTheme: Boolean) {
+        composeRule.setContent {
+            M1ShellHost(
+                clock = M1TestClocks.atSeptemberSecond(),
+                zoneId = M1TestClocks.zoneId,
+                darkTheme = darkTheme,
+                fontScale = 2f,
+            )
+        }
+
+        val today = composeRule.onNode(todayButtonMatcher())
+            .assertHeightIsAtLeast(48.dp)
+            .assertWidthIsAtLeast(48.dp)
+        val actionNodes = listOf(
+            M1ShellTags.CREATE_ACTION,
+            M1ShellTags.SEARCH_ACTION,
+            M1ShellTags.SETTINGS_ACTION,
+        ).map { tag ->
+            composeRule.onNodeWithTag(tag, useUnmergedTree = true)
+                .assertHeightIsAtLeast(48.dp)
+                .assertWidthIsAtLeast(48.dp)
+                .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus))
+        }
+        listOf("时间线", "财务", "笔记", "项目").forEach { label ->
+            composeRule.onNode(tabMatcher(label))
+                .assertHeightIsAtLeast(48.dp)
+                .assertWidthIsAtLeast(48.dp)
+        }
+        assertFullyVisibleAndNonOverlapping(
+            composeRule.onNodeWithText("2026年9月2日", useUnmergedTree = true),
+            today,
+            composeRule.onNodeWithText("时间线内容将在 M5 接入", useUnmergedTree = true),
+            *actionNodes.toTypedArray(),
+            *bottomTabLabelNodes(),
+        )
     }
 
     private fun assertSingleHeadingState(tag: String, label: String, stateDescription: String) {
@@ -284,6 +380,16 @@ class M1AccessibilityTest {
             .collectContentDescriptions()
             .filter { it in setOf("新建", "搜索", "设置") }
         assertEquals(listOf("新建", "搜索", "设置"), actions)
+        listOf(
+            M1ShellTags.CREATE_ACTION,
+            M1ShellTags.SEARCH_ACTION,
+            M1ShellTags.SETTINGS_ACTION,
+        ).forEach { tag ->
+            composeRule.onNodeWithTag(tag)
+                .assertHeightIsAtLeast(48.dp)
+                .assertWidthIsAtLeast(48.dp)
+                .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.RequestFocus))
+        }
     }
 
     private fun assertNoRawErrorText() {
@@ -296,22 +402,46 @@ class M1AccessibilityTest {
         )
     }
 
-    private fun assertFullyWithinRoot(vararg nodes: SemanticsNodeInteraction) {
+    private fun bottomTabLabelNodes(): Array<SemanticsNodeInteraction> =
+        listOf("时间线", "财务", "笔记", "项目")
+            .map { label -> composeRule.onNodeWithText(label, useUnmergedTree = true) }
+            .toTypedArray()
+
+    private fun assertFullyVisibleAndNonOverlapping(vararg nodes: SemanticsNodeInteraction) {
         val root = composeRule.onRoot(useUnmergedTree = true).getUnclippedBoundsInRoot()
-        nodes.forEach { node ->
-            val bounds = node.getUnclippedBoundsInRoot()
+        val bounds = nodes.map { node ->
+            node.assertIsDisplayed()
+            val clipped = node.getBoundsInRoot()
+            val unclipped = node.getUnclippedBoundsInRoot()
             assertTrue(
-                "required node has empty bounds: $bounds",
-                bounds.right > bounds.left && bounds.bottom > bounds.top,
+                "required node has empty bounds: $unclipped",
+                unclipped.right > unclipped.left && unclipped.bottom > unclipped.top,
             )
             assertTrue(
-                "required node is outside root bounds: node=$bounds root=$root",
-                bounds.left >= root.left && bounds.top >= root.top &&
-                    bounds.right <= root.right && bounds.bottom <= root.bottom,
+                "required node is clipped: unclipped=$unclipped clipped=$clipped",
+                unclipped == clipped,
             )
+            assertTrue(
+                "required node is outside root bounds: node=$unclipped root=$root",
+                unclipped.left >= root.left && unclipped.top >= root.top &&
+                    unclipped.right <= root.right && unclipped.bottom <= root.bottom,
+            )
+            unclipped
+        }
+        bounds.forEachIndexed { index, first ->
+            bounds.drop(index + 1).forEach { second ->
+                assertTrue(
+                    "required nodes overlap: first=$first second=$second",
+                    first.right <= second.left || second.right <= first.left ||
+                        first.bottom <= second.top || second.bottom <= first.top,
+                )
+            }
         }
     }
 
     private fun tabMatcher(label: String): SemanticsMatcher =
         hasText(label) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+
+    private fun todayButtonMatcher(): SemanticsMatcher =
+        hasText("今天") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)
 }

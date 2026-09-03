@@ -1,5 +1,9 @@
 package com.paherdin.record
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -12,6 +16,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -29,10 +37,12 @@ import com.paherdin.record.core.ui.RecordIcons
 import com.paherdin.record.core.ui.SharedContent
 import com.paherdin.record.core.ui.ShellChromePolicy
 import com.paherdin.record.core.ui.theme.RecordTheme
+import com.paherdin.record.core.ui.theme.RecordTokens
 import com.paherdin.record.feature.timeline.TimelineCardKind
 import com.paherdin.record.feature.timeline.TimelineCardUiModel
 import com.paherdin.record.feature.timeline.TimelineContent
-import com.paherdin.record.navigation.RecordNavHost
+import com.paherdin.record.feature.timeline.TimelineDateController
+import com.paherdin.record.feature.timeline.TimelineHomeScreen
 import com.paherdin.record.ui.RecordApp
 import java.time.Clock
 import java.time.Instant
@@ -43,7 +53,7 @@ import java.time.ZoneId
  * `androidTest` source set only: no test switch, hook, fixture, or synthetic
  * model exists in `main` or `release`. The synthetic Timeline cards are visibly
  * test-only [TimelineContent.Cards] values injected through the production
- * `RecordNavHost` content parameters; they never become product data (spec 6/7).
+ * `RecordApp` content parameters; they never become product data (spec 6/7).
  */
 
 /**
@@ -160,7 +170,7 @@ internal fun M1ShellHost(
 }
 
 /**
- * Test host around the production `RecordNavHost` with synthetic Timeline
+ * Test host around the production `RecordApp` shell with synthetic Timeline
  * content injected into the three Timeline-family destinations. This is the
  * only way representative cards can exist (spec 7: details are reached only
  * from injected representative UI); the host captures the app-owned controller
@@ -178,16 +188,51 @@ internal fun M1DispatchHost(
     FixtureTheme(darkTheme = false, fontScale = 1f) {
         val navController = rememberNavController()
         LaunchedEffect(navController) { onNavController(navController) }
-        RecordNavHost(
-            navController = navController,
+        RecordApp(
             clock = clock,
             zoneId = zoneId,
-            modifier = Modifier.fillMaxSize(),
+            providedNavController = navController,
             timelineContent = timelineContent,
             projectsContent = projectsContent,
             searchContent = searchContent,
         )
     }
+}
+
+internal data class M1TimelineTestResult(
+    val requestRevision: Long,
+    val content: TimelineContent,
+)
+
+/** Test-only asynchronous result host for the Timeline request-revision contract. */
+@Composable
+internal fun M1TimelineRequestHost(
+    clock: Clock,
+    zoneId: ZoneId,
+    resultProvider: () -> M1TimelineTestResult?,
+) {
+    val controller = remember(clock, zoneId) { TimelineDateController(clock, zoneId) }
+    var dateState by remember { mutableStateOf(controller.initial(restored = null)) }
+    var acceptedContent by remember { mutableStateOf<TimelineContent>(TimelineContent.Availability) }
+    val result = resultProvider()
+
+    LaunchedEffect(result, dateState.requestRevision) {
+        result
+            ?.takeIf { it.requestRevision == dateState.requestRevision }
+            ?.let { acceptedContent = it.content }
+    }
+
+    TimelineHomeScreen(
+        dateState = dateState,
+        onToday = {
+            dateState = controller.today(dateState)
+            acceptedContent = TimelineContent.Availability
+        },
+        onOpenTransaction = {},
+        onOpenNote = {},
+        content = acceptedContent,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 /** The test-only chrome lock kinds the progress destination proves (spec 8.2). */
@@ -275,12 +320,10 @@ internal fun M1PresentationHost(
             bottomBar = {
                 if (chrome.showBottomBar) {
                     NavigationBar(modifier = Modifier.testTag(M1FixtureTags.PRESENTATION_BAR)) {
-                        NavigationBarItem(
-                            selected = true,
-                            onClick = {},
-                            icon = { Icon(imageVector = RecordIcons.timeline, contentDescription = null) },
-                            label = { Text("时间线") },
-                        )
+                        M1PresentationTab("时间线", RecordIcons.timeline, selected = true)
+                        M1PresentationTab("财务", RecordIcons.finance)
+                        M1PresentationTab("笔记", RecordIcons.notes)
+                        M1PresentationTab("项目", RecordIcons.projects)
                     }
                 }
             },
@@ -292,22 +335,45 @@ internal fun M1PresentationHost(
                     .fillMaxSize()
                     .padding(contentPadding),
                 readyContent = { content ->
-                    Text(
-                        text = "${M1FixtureTags.PRESENTATION_READY_TEXT}:$content",
-                        modifier = Modifier
-                            .testTag(M1FixtureTags.PRESENTATION_READY_HEADING)
-                            .semantics { heading() },
-                    )
-                    Button(
-                        onClick = onReadyAction,
-                        modifier = Modifier.testTag(M1FixtureTags.PRESENTATION_READY_ACTION),
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(RecordTokens.spaceSmall),
                     ) {
-                        Text(text = "$content 操作")
+                        Text(
+                            text = "${M1FixtureTags.PRESENTATION_READY_TEXT}:$content",
+                            modifier = Modifier
+                                .testTag(M1FixtureTags.PRESENTATION_READY_HEADING)
+                                .semantics { heading() },
+                        )
+                        Button(
+                            onClick = onReadyAction,
+                            modifier = Modifier
+                                .testTag(M1FixtureTags.PRESENTATION_READY_ACTION)
+                                .defaultMinSize(
+                                    minWidth = RecordTokens.minimumTouchTarget,
+                                    minHeight = RecordTokens.minimumTouchTarget,
+                                ),
+                        ) {
+                            Text(text = "$content 操作")
+                        }
                     }
                 },
             )
         }
     }
+}
+
+@Composable
+private fun RowScope.M1PresentationTab(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean = false,
+) {
+    NavigationBarItem(
+        selected = selected,
+        onClick = {},
+        icon = { Icon(imageVector = icon, contentDescription = null) },
+        label = { Text(label) },
+    )
 }
 
 /** Collects visible text in deterministic traversal order. */

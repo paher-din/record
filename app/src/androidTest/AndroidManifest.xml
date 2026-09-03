@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ActivityScenario must stay in the instrumentation target process; no .test component is declared here. -->
+<manifest />

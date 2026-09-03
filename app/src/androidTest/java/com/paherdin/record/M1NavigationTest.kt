@@ -1,5 +1,6 @@
 package com.paherdin.record
 
+import android.view.KeyEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -7,14 +8,19 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.toRoute
+import androidx.test.platform.app.InstrumentationRegistry
 import com.paherdin.record.feature.timeline.TimelineContent
 import com.paherdin.record.navigation.ExpenseEditor
 import com.paherdin.record.navigation.FinanceHome
@@ -108,6 +114,16 @@ class M1NavigationTest {
             "generic Entry semantics leaked into the create sheet: $sheetTexts",
             sheetTexts.none { it.contains("Entry") || it.contains("记录") },
         )
+        listOf(
+            M1ShellTags.CREATE_EXPENSE,
+            M1ShellTags.CREATE_INCOME,
+            M1ShellTags.CREATE_TRANSFER,
+            M1ShellTags.CREATE_NOTE,
+        ).forEach { tag ->
+            composeRule.onNodeWithTag(tag)
+                .assertHeightIsAtLeast(48.dp)
+                .assertWidthIsAtLeast(48.dp)
+        }
     }
 
     @Test
@@ -151,6 +167,14 @@ class M1NavigationTest {
             composeRule.onNodeWithTag(M1ShellTags.BOTTOM_NAVIGATION).assertIsDisplayed()
             composeRule.onNodeWithTag(M1ShellTags.BACK_ACTION).performClick()
             composeRule.onNodeWithText(rootCopy).assertIsDisplayed()
+
+            composeRule.onNodeWithTag(M1ShellTags.CREATE_ACTION).performClick()
+            composeRule.onNodeWithTag(M1ShellTags.CREATE_SHEET).assertIsDisplayed()
+            composeRule.onNodeWithTag(M1ShellTags.CREATE_EXPENSE).performClick()
+            composeRule.onNodeWithText("支出编辑将在 M2 提供").assertIsDisplayed()
+            composeRule.onNodeWithTag(M1ShellTags.BOTTOM_NAVIGATION).assertDoesNotExist()
+            composeRule.onNodeWithTag("FinanceDestinationBack").performClick()
+            composeRule.onNodeWithText(rootCopy).assertIsDisplayed()
         }
     }
 
@@ -165,22 +189,24 @@ class M1NavigationTest {
 
         composeRule.onNodeWithText(M1TestCards.transaction.headline).assertIsDisplayed().performClick()
         composeRule.onNodeWithText("交易详情将在 M2 提供").assertIsDisplayed()
+        composeRule.onNodeWithTag(M1ShellTags.BOTTOM_NAVIGATION).assertIsDisplayed()
         composeRule.runOnIdle {
             detail = checkNotNull(navController).currentBackStackEntry?.toRoute<TransactionDetail>()
         }
         assertEquals(M1TestCards.TRANSACTION_ID, detail?.transactionId)
         assertEquals(TopLevelOrigin.Timeline, detail?.origin)
-        composeRule.onNodeWithText("返回").performClick()
+        pressSystemBack()
         composeRule.onNodeWithText(M1TestCards.transaction.headline).assertIsDisplayed()
 
         composeRule.onNodeWithText(M1TestCards.note.headline).assertIsDisplayed().performClick()
         composeRule.onNodeWithText("笔记详情将在 M3 版本中提供").assertIsDisplayed()
+        composeRule.onNodeWithTag(M1ShellTags.BOTTOM_NAVIGATION).assertIsDisplayed()
         composeRule.runOnIdle {
             noteRoute = checkNotNull(navController).currentBackStackEntry?.toRoute<NoteDetail>()
         }
         assertEquals(M1TestCards.NOTE_ID, noteRoute?.noteId)
         assertEquals(TopLevelOrigin.Timeline, noteRoute?.origin)
-        composeRule.onNodeWithText("返回").performClick()
+        pressSystemBack()
         composeRule.onNodeWithText(M1TestCards.note.headline).assertIsDisplayed()
     }
 
@@ -206,12 +232,13 @@ class M1NavigationTest {
         composeRule.onNodeWithText("项目功能将在 M4 接入").assertDoesNotExist()
         composeRule.onNodeWithText(M1TestCards.transaction.headline).assertIsDisplayed().performClick()
         composeRule.onNodeWithText("交易详情将在 M2 提供").assertIsDisplayed()
+        composeRule.onNodeWithTag(M1ShellTags.BOTTOM_NAVIGATION).assertIsDisplayed()
         composeRule.runOnIdle {
             detail = checkNotNull(navController).currentBackStackEntry?.toRoute<TransactionDetail>()
         }
         assertEquals(M1TestCards.TRANSACTION_ID, detail?.transactionId)
         assertEquals(TopLevelOrigin.Projects, detail?.origin)
-        composeRule.onNodeWithText("返回").performClick()
+        pressSystemBack()
         // Back restores the exact Projects origin with its injected card content.
         composeRule.onNodeWithText(M1TestCards.transaction.headline).assertIsDisplayed()
 
@@ -220,12 +247,13 @@ class M1NavigationTest {
         }
         composeRule.onNodeWithText(M1TestCards.note.headline).assertIsDisplayed().performClick()
         composeRule.onNodeWithText("笔记详情将在 M3 版本中提供").assertIsDisplayed()
+        composeRule.onNodeWithTag(M1ShellTags.BOTTOM_NAVIGATION).assertIsDisplayed()
         composeRule.runOnIdle {
             noteRoute = checkNotNull(navController).currentBackStackEntry?.toRoute<NoteDetail>()
         }
         assertEquals(M1TestCards.NOTE_ID, noteRoute?.noteId)
         assertEquals(TopLevelOrigin.Projects, noteRoute?.origin)
-        composeRule.onNodeWithText("返回").performClick()
+        pressSystemBack()
         // Back restores the exact Search origin with its injected card content.
         composeRule.onNodeWithText(M1TestCards.note.headline).assertIsDisplayed()
     }
@@ -255,6 +283,10 @@ class M1NavigationTest {
 
     @Test
     fun productionRoutesExposeNoRoomDaoPathUriOrPayloadArguments() {
+        var navController: NavHostController? = null
+        composeRule.setContent {
+            M1DispatchHost(clock, M1TestClocks.zoneId, onNavController = { navController = it })
+        }
         val canonicalId = M1TestCards.TRANSACTION_ID
         val serializedRoutes = listOf(
             "TimelineHome" to Json.encodeToString(TimelineHome.serializer(), TimelineHome),
@@ -280,7 +312,32 @@ class M1NavigationTest {
             "NoteEditor" to Json.encodeToString(NoteEditor.serializer(), NoteEditor(TopLevelOrigin.Notes)),
             "RestoreRecoveryRoute" to Json.encodeToString(RestoreRecoveryRoute.serializer(), RestoreRecoveryRoute),
         )
-        assertEquals("M1 registers exactly 13 production routes", 13, serializedRoutes.size)
+        composeRule.runOnIdle {
+            val destinations = checkNotNull(navController).graph.toList()
+            assertEquals("M1 registers exactly 13 production routes", 13, destinations.size)
+            val expectedRouteTypes = listOf(
+                TimelineHome::class,
+                FinanceHome::class,
+                NotesHome::class,
+                ProjectsHome::class,
+                UnifiedSearch::class,
+                Settings::class,
+                TransactionDetail::class,
+                NoteDetail::class,
+                ExpenseEditor::class,
+                IncomeEditor::class,
+                TransferEditor::class,
+                NoteEditor::class,
+                RestoreRecoveryRoute::class,
+            )
+            expectedRouteTypes.forEach { routeType ->
+                assertEquals(
+                    "production graph route count for ${routeType.simpleName}",
+                    1,
+                    destinations.count { destination -> destination.hasRoute(routeType) },
+                )
+            }
+        }
 
         val argumentKeys = mapOf(
             "UnifiedSearch" to setOf("origin"),
@@ -311,4 +368,9 @@ class M1NavigationTest {
 
     private fun tabMatcher(label: String): SemanticsMatcher =
         hasText(label) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+
+    private fun pressSystemBack() {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        composeRule.waitForIdle()
+    }
 }

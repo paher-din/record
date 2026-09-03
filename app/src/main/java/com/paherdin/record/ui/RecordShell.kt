@@ -49,6 +49,7 @@ import com.paherdin.record.core.ui.Phase
 import com.paherdin.record.core.ui.RecordIcons
 import com.paherdin.record.core.ui.ShellChromePolicy
 import com.paherdin.record.core.ui.theme.RecordTokens
+import com.paherdin.record.feature.timeline.TimelineContent
 import com.paherdin.record.navigation.ExpenseEditor
 import com.paherdin.record.navigation.FinanceHome
 import com.paherdin.record.navigation.IncomeEditor
@@ -165,8 +166,15 @@ private fun NavBackStackEntry.toShellDestination(): ShellDestination? {
  * independently, and an unmapped destination renders no shell chrome at all.
  */
 @Composable
-internal fun RecordApp(clock: Clock, zoneId: ZoneId) {
-    val navController = rememberNavController()
+internal fun RecordApp(
+    clock: Clock,
+    zoneId: ZoneId,
+    providedNavController: NavHostController? = null,
+    timelineContent: TimelineContent = TimelineContent.Availability,
+    projectsContent: TimelineContent = TimelineContent.Availability,
+    searchContent: TimelineContent = TimelineContent.Availability,
+) {
+    val navController = providedNavController ?: rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val shellDestination = backStackEntry?.toShellDestination()
     // Bottom navigation is derived only from the shared chrome policy; a
@@ -207,6 +215,9 @@ internal fun RecordApp(clock: Clock, zoneId: ZoneId) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(contentPadding),
+            timelineContent = timelineContent,
+            projectsContent = projectsContent,
+            searchContent = searchContent,
         )
     }
     if (createSheetVisible) {

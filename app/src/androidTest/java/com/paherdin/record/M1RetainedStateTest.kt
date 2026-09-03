@@ -1,25 +1,34 @@
 package com.paherdin.record
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ActivityScenario
+import com.paherdin.record.feature.timeline.TimelineContent
 import com.paherdin.record.feature.timeline.TimelineDateController
 import com.paherdin.record.feature.timeline.TimelineDateState
+import com.paherdin.record.navigation.TopLevelOrigin
 import java.time.Instant
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -106,7 +115,10 @@ class M1RetainedStateTest {
     @Test
     fun activityRecreationPreservesTheTimelineDayHeader() {
         awaitShell()
-        val expectedDay = todayText()
+        val expectedDay = composeRule.onRoot(useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .collectVisibleTexts()
+            .single { it.matches(Regex("\\d{4}年\\d{1,2}月\\d{1,2}日")) }
         awaitText(expectedDay)
 
         composeRule.activityRule.scenario.recreate()
@@ -115,11 +127,91 @@ class M1RetainedStateTest {
         composeRule.onNodeWithTag(M1ShellTags.SETTINGS_ACTION).assertIsDisplayed()
     }
 
-    private fun todayText(): String =
-        DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.SIMPLIFIED_CHINESE).format(LocalDate.now())
-
     private fun tabMatcher(label: String): SemanticsMatcher =
         hasText(label) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+}
+
+class M1FourTabActivityRetentionTest {
+
+    @get:Rule
+    val composeRule = createEmptyComposeRule()
+
+    private lateinit var scenario: ActivityScenario<M1DebugTestHostActivity>
+
+    @Before
+    fun launchProbeActivity() {
+        M1DebugTestContent.content = {
+            M1ShellHost(M1TestClocks.atSeptemberSecond(), M1TestClocks.zoneId) {
+                M1RetentionProbeHost()
+            }
+        }
+        scenario = ActivityScenario.launch(M1DebugTestHostActivity::class.java)
+    }
+
+    @After
+    fun closeProbeActivity() {
+        scenario.close()
+        M1DebugTestContent.content = null
+    }
+
+    @Test
+    fun activityRecreationPreservesFourIndependentProbeStatesAndStacks() {
+        configureFourProbeStacks()
+        scenario.recreate()
+        verifyFourProbeStacks()
+    }
+
+    private fun configureFourProbeStacks() {
+        TopLevelOrigin.entries.forEach { origin ->
+            composeRule.onNodeWithTag(M1RetentionProbeTags.tab(origin)).performClick()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.seed(origin)).performClick()
+            composeRule.onNodeWithText(M1RetentionProbeTags.expected(origin)).assertIsDisplayed()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.openStack(origin)).performClick()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.stack(origin)).assertIsDisplayed()
+        }
+    }
+
+    private fun verifyFourProbeStacks() {
+        TopLevelOrigin.entries.forEach { origin ->
+            composeRule.onNodeWithTag(M1RetentionProbeTags.tab(origin)).performClick()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.stack(origin)).assertIsDisplayed()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.BACK).performClick()
+            composeRule.onNodeWithText(M1RetentionProbeTags.expected(origin)).assertIsDisplayed()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.tab(origin)).performClick()
+            composeRule.onNodeWithText(M1RetentionProbeTags.expected(origin)).assertIsDisplayed()
+        }
+    }
+}
+
+class M1FourTabSavedStateRetentionTest {
+
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    @Test
+    fun savedInstanceStateRestorationPreservesFourIndependentProbeStatesAndStacks() {
+        val restorationTester = StateRestorationTester(composeRule)
+        restorationTester.setContent {
+            M1ShellHost(M1TestClocks.atSeptemberSecond(), M1TestClocks.zoneId) {
+                M1RetentionProbeHost()
+            }
+        }
+
+        TopLevelOrigin.entries.forEach { origin ->
+            composeRule.onNodeWithTag(M1RetentionProbeTags.tab(origin)).performClick()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.seed(origin)).performClick()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.openStack(origin)).performClick()
+        }
+
+        restorationTester.emulateSavedInstanceStateRestore()
+
+        TopLevelOrigin.entries.forEach { origin ->
+            composeRule.onNodeWithTag(M1RetentionProbeTags.tab(origin)).performClick()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.stack(origin)).assertIsDisplayed()
+            composeRule.onNodeWithTag(M1RetentionProbeTags.BACK).performClick()
+            composeRule.onNodeWithText(M1RetentionProbeTags.expected(origin)).assertIsDisplayed()
+        }
+    }
 }
 
 /** Controlled-clock Timeline date behaviour through the real shell (spec 8.4). */
@@ -185,6 +277,45 @@ class M1TimelineDateTest {
 
         composeRule.onNodeWithText("2026年9月1日").assertIsDisplayed()
         composeRule.onNodeWithText("2026年9月3日").assertDoesNotExist()
+    }
+
+    @Test
+    fun aLateStaleRevisionCannotReplaceTheVisibleCurrentRevision() {
+        val clock = M1TestClocks.beforeMidnight()
+        var result by mutableStateOf(
+            M1TimelineTestResult(
+                requestRevision = 0L,
+                content = TimelineContent.Cards(listOf(M1TestCards.transaction)),
+            ),
+        )
+        composeRule.setContent {
+            M1ShellHost(clock, M1TestClocks.zoneId) {
+                M1TimelineRequestHost(clock, M1TestClocks.zoneId, resultProvider = { result })
+            }
+        }
+
+        composeRule.onNodeWithText(M1TestCards.transaction.headline).assertIsDisplayed()
+        composeRule.runOnIdle { M1TestClocks.advancePastMidnight(clock) }
+        composeRule.onNodeWithText("今天").performClick()
+        composeRule.onNodeWithText("2026年9月2日").assertIsDisplayed()
+        composeRule.onNodeWithText(M1TestCards.transaction.headline).assertDoesNotExist()
+
+        composeRule.runOnIdle {
+            result = M1TimelineTestResult(
+                requestRevision = 1L,
+                content = TimelineContent.Cards(listOf(M1TestCards.note)),
+            )
+        }
+        composeRule.onNodeWithText(M1TestCards.note.headline).assertIsDisplayed()
+
+        composeRule.runOnIdle {
+            result = M1TimelineTestResult(
+                requestRevision = 0L,
+                content = TimelineContent.Cards(listOf(M1TestCards.transaction)),
+            )
+        }
+        composeRule.onNodeWithText(M1TestCards.note.headline).assertIsDisplayed()
+        composeRule.onNodeWithText(M1TestCards.transaction.headline).assertDoesNotExist()
     }
 
     private fun tabMatcher(label: String): SemanticsMatcher =
