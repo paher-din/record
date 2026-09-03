@@ -46,6 +46,13 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.metadata.jvm)
 
+    // M1-T09: the device-side fixture `prepare` writes generation databases
+    // through the production Room DAOs (openGenerationDatabase/recordDao) and
+    // awaits the production StagedGenerationValidator, so the testFixtures
+    // compile classpath must carry room-runtime (which also provides the
+    // coroutines entry points it uses).
+    testFixturesImplementation(libs.room.runtime)
+
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
 }
@@ -188,4 +195,32 @@ val validateP6BenchmarkReports = tasks.register<JavaExec>("validateP6BenchmarkRe
 
 tasks.named("check") {
     dependsOn(apiBoundaryCheck)
+}
+
+/**
+ * M1-T09 (Task 6): host JavaExec over the unit-test runtime that runs the
+ * strict M1 startup report validator (`M1StartupReportValidator`) against the
+ * copied device evidence. Invocation (the T10 device-task gate):
+ *
+ * ```
+ * .\gradlew.bat "-Dm1ReportDir=<copied benchmark report root>" :core:data:validateM1StartupReports
+ * ```
+ *
+ * The `-D` value arrives on the Gradle daemon JVM and is forwarded to the
+ * forked JVM here; an absent value fails with a precise error from the
+ * validator entry point. The task validates only copied host evidence: exact
+ * eight blocks, 30 positive finite samples per binding (TTFD present exactly
+ * on the ttfdRequired blocks, absent on the pending-migration blocks),
+ * nearest-rank rank-29 TTID/TTFD budgets, 240 Perfetto traces, and the exact
+ * frozen run manifest (identity, environment, command log, 240 ordered
+ * iteration records). Pure read: it never touches the device.
+ */
+val validateM1StartupReports = tasks.register<JavaExec>("validateM1StartupReports") {
+    group = "verification"
+    description = "Validates copied M1-T09/T10 startup benchmark reports against the frozen m1-startup-v1 contract and budgets"
+    val unitTest = tasks.named<Test>("testDebugUnitTest").get()
+    dependsOn("compileDebugUnitTestKotlin")
+    classpath = unitTest.classpath
+    mainClass.set("com.paherdin.record.core.data.startup.M1StartupReportValidatorKt")
+    System.getProperty("m1ReportDir")?.let { systemProperty("m1ReportDir", it) }
 }

@@ -2,6 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application>
+        <!-- M1-T09 Step 3: the benchmark-variant marker the fixture setup
+             surface requires at runtime (checked from applicationInfo.metadata,
+             never a generated BuildConfig). Absent from main/release. -->
+        <meta-data
+            android:name="m1BenchmarkVariant"
+            android:value="true" />
+
         <!-- Tech PoC P6: benchmark-variant-only profileable declaration so the
              Macrobenchmark tooling can capture profiles from the shell. Absent
              from main/release. TimelineBenchmarkActivity joins here in Task 4. -->
@@ -15,6 +22,14 @@
             android:name="com.paherdin.record.benchmark.TimelineBenchmarkActivity"
             android:exported="true"
             android:launchMode="singleTop" />
+
+        <!-- M1-T09 Step 3: benchmark-build-only fixture setup surface. The
+             out-of-process :benchmark harness launches it (exported) once per
+             fixture restoration with an explicit fixture enum name and a fresh
+             one-shot setup token. -->
+        <activity
+            android:name="com.paherdin.record.benchmark.M1StartupFixtureActivity"
+            android:exported="true" />
     </application>
 
 </manifest>
