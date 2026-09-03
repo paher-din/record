@@ -227,6 +227,14 @@ class M1StartupBenchmark {
                 )
             },
         )
+        // Publish the completed block's manifest state while still inside the
+        // test method: UTP synchronizes additional outputs at each test-method
+        // teardown and then uninstalls the test package, so a manifest first
+        // published from `@AfterClass` never survives to the host. Per-block
+        // publication is latest-wins; the final block's publish is the complete
+        // 240-record form the host validator requires. `finalizeSuite` still
+        // runs its exit-info assertion and the closing `finish()`.
+        manifest().publish()
     }
 
     // ------------------------------------------------------------------

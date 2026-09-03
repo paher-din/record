@@ -36,10 +36,17 @@ import org.json.JSONObject
  * `addIteration` is strict and fails closed: duplicate or out-of-range
  * `(block, iteration)`, thermal beyond LIGHT, a blank pid, and an unregistered
  * block are rejected, so an invalid iteration surfaces immediately inside the
- * measured block. `finish` publishes atomically: the full JSON is written to a
- * temp file in the publication directory and renamed over the target, so a
- * crash mid-write can never leave a partial manifest. Serialization uses
- * `org.json` (supplied by Android; no new dependency).
+ * measured block. `publish` writes the current manifest state atomically: the
+ * full JSON is written to a temp file in the publication directory and renamed
+ * over the target, so a crash mid-write can never leave a partial manifest.
+ * The harness calls `publish` once per completed block, still inside the test
+ * method: UTP synchronizes additional outputs at each test-method teardown and
+ * then uninstalls the test package (clearing `Android/media/<testpkg>`), so a
+ * manifest first published from `@AfterClass` never survives to the host —
+ * per-block publication makes each teardown's sync (and especially the final
+ * one) capture the manifest, latest-wins. `finish` marks the manifest closed
+ * and performs the final publish. Serialization uses `org.json` (supplied by
+ * Android; no new dependency).
  */
 internal class M1StartupRunManifest internal constructor(
     private val environment: M1StartupEnvironment,
@@ -148,12 +155,12 @@ internal class M1StartupRunManifest internal constructor(
     }
 
     /**
-     * Publishes `m1-run-manifest.json` atomically under [publicationDir]:
-     * full JSON to a temp file, then rename over the target. Single-shot.
+     * Publishes the current manifest state to `m1-run-manifest.json` atomically
+     * under [publicationDir]: full JSON to a temp file, then rename over the
+     * target. Idempotent and latest-wins — repeated calls simply republish the
+     * newest complete state.
      */
-    fun finish() {
-        check(!finished) { "M1StartupRunManifest already finished" }
-        finished = true
+    fun publish() {
         publicationDir.mkdirs()
         check(publicationDir.isDirectory) { "publication dir is not a directory: $publicationDir" }
         val target = File(publicationDir, MANIFEST_FILE)
@@ -162,6 +169,16 @@ internal class M1StartupRunManifest internal constructor(
         check(temp.renameTo(target)) {
             "atomic rename ${temp.name} -> ${target.name} failed in $publicationDir"
         }
+    }
+
+    /**
+     * Closes the manifest (no further blocks/iterations/commands are accepted)
+     * and performs the final [publish].
+     */
+    fun finish() {
+        check(!finished) { "M1StartupRunManifest already finished" }
+        finished = true
+        publish()
     }
 
     private fun buildJson(): String {

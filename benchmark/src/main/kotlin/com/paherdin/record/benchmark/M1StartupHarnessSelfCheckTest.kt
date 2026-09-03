@@ -332,6 +332,112 @@ class M1StartupHarnessSelfCheckTest {
     }
 
     // ------------------------------------------------------------------
+    // Per-block manifest publication (latest-wins; UTP teardown timing)
+    // ------------------------------------------------------------------
+
+    /**
+     * `publish` before `finish` already produces the manifest file, and a
+     * repeated publish is latest-wins: the file always reflects the newest
+     * complete state, never a partial or stale one.
+     */
+    @Test
+    fun manifestPublishBeforeFinishProducesTheFileAndRepeatsAreLatestWins() {
+        val manifest = newManifest()
+        manifest.logCommand(
+            "pm clear ${M1StartupHarnessGates.TARGET_PACKAGE}",
+            M1StartupHarnessGates.TARGET_PACKAGE,
+        )
+        manifest.addBlock("startup01Fresh", "Fresh", "a".repeat(64), ttfdRequired = true)
+        manifest.addIteration("startup01Fresh", 0, 0, 1, "1234")
+        manifest.publish()
+        val published = File(manifest.publicationDir, M1StartupRunManifest.MANIFEST_FILE)
+        assertTrue(published.isFile)
+        assertEquals(1, JSONObject(published.readText()).getJSONArray("iterations").length())
+        // A later publish overwrites the earlier file with the grown state.
+        manifest.addIteration("startup01Fresh", 1, 0, 0, "5678")
+        manifest.publish()
+        val root = JSONObject(published.readText())
+        assertEquals(2, root.getJSONArray("iterations").length())
+        assertEquals(
+            "5678",
+            root.getJSONArray("iterations").getJSONObject(1).getString("pid"),
+        )
+        // Atomic publication leaves no temp file behind.
+        assertTrue(!File(manifest.publicationDir, M1StartupRunManifest.MANIFEST_FILE_TEMP).exists())
+    }
+
+    /**
+     * The harness publishes after every completed block; `finish` closes the
+     * manifest with a final publish whose bytes are exactly the last
+     * per-block publication (the full 8x240 frozen shape on the synthetic
+     * run), so the UTP teardown sync of the last test method already carries
+     * the complete manifest.
+     */
+    @Test
+    fun manifestPerBlockPublishThenFinishMatchesTheLastPublish() {
+        val manifest = newManifest()
+        manifest.logCommand(
+            "pm clear ${M1StartupHarnessGates.TARGET_PACKAGE}",
+            M1StartupHarnessGates.TARGET_PACKAGE,
+        )
+        val blocks = listOf(
+            "startup01Fresh" to "Fresh",
+            "startup02Typical" to "Typical",
+            "startup03HighVolume" to "HighVolume",
+            "startup04PendingActivation" to "PendingActivation",
+            "startup05MigrationPrepared" to "PendingMigrationPrepared",
+            "startup06MigrationFailedSetIsolated" to "PendingMigrationFailedSetIsolated",
+            "startup07MigrationRestoreCopyValidated" to "PendingMigrationRestoreCopyValidated",
+            "startup08MigrationMainReplaced" to "PendingMigrationMainReplaced",
+        )
+        for ((index, block) in blocks.withIndex()) {
+            manifest.addBlock(block.first, block.second, "a".repeat(64), ttfdRequired = index < 4)
+            for (iteration in 0 until M1StartupRunManifest.ITERATIONS_PER_BLOCK) {
+                manifest.addIteration(block.first, iteration, 0, 1, "1234")
+            }
+            manifest.publish()
+        }
+        val published = File(manifest.publicationDir, M1StartupRunManifest.MANIFEST_FILE)
+        val lastPublishedBytes = published.readBytes()
+        manifest.finish()
+        assertEquals(
+            String(lastPublishedBytes),
+            published.readText(),
+        )
+        val root = JSONObject(published.readText())
+        assertEquals(8, root.getJSONArray("blocks").length())
+        assertEquals(240, root.getJSONArray("iterations").length())
+        val last = root.getJSONArray("iterations").getJSONObject(239)
+        assertEquals("startup08MigrationMainReplaced", last.getString("block"))
+        assertEquals(29, last.getInt("iteration"))
+    }
+
+    /** The fail-closed doors stay shut after `finish` (and it is single-shot). */
+    @Test
+    fun manifestRejectsEveryMutationAfterFinish() {
+        for (mutation in listOf<() -> Unit>(
+            { finishedManifest().addBlock("startup01Fresh", "Fresh", "a".repeat(64), true) },
+            { finishedManifest().addIteration("startup01Fresh", 0, 0, 0, "1234") },
+            {
+                finishedManifest().logCommand(
+                    "pm clear ${M1StartupHarnessGates.TARGET_PACKAGE}",
+                    M1StartupHarnessGates.TARGET_PACKAGE,
+                )
+            },
+            { finishedManifest().finish() },
+        )) {
+            try {
+                mutation()
+            } catch (expected: RuntimeException) {
+                continue
+            }
+            fail("a finished manifest must refuse further mutation or publication")
+        }
+    }
+
+    private fun finishedManifest(): M1StartupRunManifest = newManifest().also { it.finish() }
+
+    // ------------------------------------------------------------------
     // Nearest-rank p95 gate (the frozen rank 29 of 30)
     // ------------------------------------------------------------------
 
