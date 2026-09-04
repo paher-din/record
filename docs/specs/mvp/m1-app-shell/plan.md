@@ -1,5 +1,7 @@
 # MVP M1 App Shell Implementation Plan
 
+**Status:** `completed` — 2026-09-04. All tasks (M1-T00, S01, T01–T11) are executed and accepted with raw evidence in [verification.md](verification.md); all 19 acceptance criteria PASS; every execution correction is recorded in the deviations block above. The unique active spec becomes `none`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the approved product-grade M1 Android shell with safe startup gating, typed four-tab navigation, retained state, A/A1 theme, accessible shared presentations, isolated startup benchmarks, and complete offline/artifact evidence.

@@ -1,6 +1,6 @@
 # MVP M1 — App Shell Verification
 
-- **Spec:** [spec.md](spec.md) — `in-progress` from 2026-08-29.
+- **Spec:** [spec.md](spec.md) — `completed` from 2026-09-04 (was `in-progress` from 2026-08-29).
 - **Plan:** [plan.md](plan.md) — approved 2026-08-29.
 - **Architecture:** [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md) — accepted 2026-08-29.
 - **Evidence rule:** a task's worker result is not acceptance; the main agent records acceptance only after raw-evidence and combined-state checks.
