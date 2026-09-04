@@ -17,7 +17,7 @@
 | Remaining steps | none — M1 slice closed; M2 is out of scope for this worktree |
 | Next command | none |
 | `blocked-on` | cleanup of generated `.kotlin/` (worktree root; only an empty `sessions` directory, invisible to git) still awaits explicit deletion approval |
-| Frozen environment | worktree `D:\record\.worktrees\m1-app-shell`, branch `codex/m1-app-shell`; dependency baseline from M1-T01; A/A1 palette and exact Phase contract from active spec |
+| Frozen environment | worktree `D:\record\.worktrees\m1-app-shell` (detached HEAD at `0990007`, retained as the evidence archive; branch `codex/m1-app-shell` merged to main and deleted 2026-09-04); dependency baseline from M1-T01; A/A1 palette and exact Phase contract from the completed spec |
 | Contract references | plan M1-T11 Steps 1–6 complete; spec criteria 1–19 all PASS |
 | Last raw evidence | T11 accepted: `.superpowers/evidence/m1-t11-a1/` (verifier RED/GREEN/real PASS 9/9 checks=90 exit 0 + full clean build 9m26s) + `m1-t11-a2/` (airplane-mode 31/31 + self-check 15/15 + rollback, manifest `fbafe12b…`); verifier `tools/verify-m1-artifacts.ps1` SHA-256 `5753f5e9…` |
 | Last updated | 2026-09-04 Asia/Shanghai |
