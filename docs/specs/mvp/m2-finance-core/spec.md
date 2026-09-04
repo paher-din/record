@@ -1,7 +1,9 @@
 # MVP M2 — Finance Core
 
-- **Status:** `draft` — the written specification has not yet been approved. No plan, ADR, schema change, migration, interface, dependency, route, or implementation work is authorized by this draft.
+- **Status:** `approved` — 2026-09-04. The user delegated independent written-spec review and forward lifecycle progress by saying “你来审阅spec吧，如果没有问题，就继续往前推进”. Codex corrected the review findings recorded below, reran the complete consistency review, and accepted the written spec under that delegation. A plan may now be drafted, but M2 is not active and no schema change, migration, dependency, route, interface, or implementation work is authorized until the remaining lifecycle and redline gates pass.
 - **Drafted:** 2026-09-04
+- **Spec approved:** 2026-09-04 — approval context and independent-review delegation are recorded in the Status line above.
+- **Independent review corrections:** added the missing typed Withdraw/Restore confirmation route; froze amount grammar, allocation behavior after total edits, and DST gap/overlap handling; made Category concurrency an explicit tuple compare-and-set without a new revision column; added canonical-UUID compatibility preflight for legacy vaults/backups; added the forbidden-finance-diagnostic evidence; and aligned approval/ADR/plan ordering with the project lifecycle.
 - **Design inputs confirmed:** 2026-09-04 — the user approved all five pre-spec design sections: the single vertical-slice approach; the product and interaction boundary; the domain/application boundary; the schema, migration, and backup-compatibility design; and the verification design. These confirmations are design inputs, not approval of this written `spec.md`, a future `plan.md`, or execution of a database migration.
 - **Roadmap:** [MVP M2 — finance core](../../../roadmap.md)
 - **Product:** [Product vision](../../../product/vision.md), [MVP requirements](../../../product/mvp-requirements.md)
@@ -29,7 +31,7 @@ The M2 draft begins from these repository facts:
 - Logical backup `formatVersion=1` serializes the eight current-schema datasets and does not carry M2 transaction fields or Category facts.
 - The recoverable migration snapshot, generation layout, startup resolver, logical backup/restore pipeline, application-facing startup gate, API guards, and network/system-backup policy are already implemented and must be extended rather than replaced.
 
-M2 may become `approved` only after the user explicitly accepts this written specification. The owning core-document conflicts and ADR prerequisite in section 12 must be synchronized before plan approval. M2 may become `in-progress` only after the written spec and plan are explicitly approved, those approvals are recorded, ADR 0017 is accepted, and the user separately authorizes execution of the schema and data migration redline.
+M2 is `approved` under the recorded independent-review delegation. The owning core-document conflicts and ADR prerequisite in section 12 must be synchronized before plan approval. M2 may become `in-progress` only after the plan is explicitly approved, both approval facts are recorded, ADR 0017 is accepted, and the user separately authorizes execution of the schema and data migration redline.
 
 ## 3. Scope
 
@@ -93,7 +95,7 @@ M2's new-account picker exposes exactly these codes and minor-unit scales:
 | `HKD` | 港币 | 2 |
 | `GBP` | 英镑 | 2 |
 
-The selected currency is immutable after account creation. Amount input accepts ordinary decimal notation appropriate to the declared scale, rejects exponent notation and excess fractional digits, and converts exactly to integer minor units without floating-point arithmetic. Income, Expense, and Transfer magnitudes are in `1..Long.MAX_VALUE` minor units. Opening balance accepts the complete signed `Long` range, including zero.
+The selected currency is immutable after account creation. After Unicode `White_Space` trim, amount input accepts ASCII decimal grammar only: Income, Expense, and Transfer use `[0-9]+` with an optional `.` followed by one to the currency scale digits; Opening additionally permits one leading `-`; a scale-zero currency permits digits only. Group separators, exponent notation, a leading `+`, a bare decimal point, a trailing decimal point, and excess fractional digits are rejected. Parsing and display formatting remain separate, and conversion to integer minor units uses no floating-point arithmetic. Income, Expense, and Transfer magnitudes are in `1..Long.MAX_VALUE` minor units. Opening balance accepts the complete signed `Long` range, including zero.
 
 Cross-currency conversion is a post-MVP candidate. Adding it later requires a separate product decision, accepted ADR, specification, plan, schema/migration review, and explicit migration approval.
 
@@ -102,6 +104,8 @@ Cross-currency conversion is a post-MVP candidate. Adding it later requires a se
 Finance → Create Account opens one combined editor with required account name, required currency, and required opening balance. Account-name validation remains exactly the owning product rule: it must be non-blank after trimming; M2 does not invent uniqueness or a new length limit.
 
 The first valid Create press captures the injected current local date-time once as the opening Transaction occurrence time, generates and retains every required ID, then enters `Phase.Saving`. Retry reuses the same captured time and IDs. Account, same-ID Transaction `EntityRef`, `OPENING_BALANCE` Transaction, and unique AccountEntry commit as one operation.
+
+Every occurrence persists as epoch millis UTC. Opening captures the injected current instant directly. For an explicitly edited local date/time, the ViewModel resolves against the injected `ZoneId`: a nonexistent DST-gap value is a field error, while an overlap uses the earlier valid offset deterministically. Tests bind the zone and cover both cases; persistence never depends on the host default zone.
 
 Durable success opens the new `AccountDetail`. The opening record remains visible in history with a fixed localized **Opening balance** description. It has no user memo, edit, withdrawal, or restore action.
 
@@ -116,6 +120,8 @@ The approved allocation interaction is total-first:
 3. Adding another Category adds one allocation row; the user adjusts row amounts.
 4. The UI shows exact allocated and remaining minor-unit totals.
 5. Save is enabled only when every allocation is positive, each Category appears at most once, and the exact allocation sum equals the transaction magnitude.
+
+After allocation rows exist, editing or clearing the total never silently rewrites a row. The complete row set remains in the draft, allocated/remaining values recompute from the new valid total, and Save stays disabled while the total is absent/invalid or the remaining amount is non-zero. Removing a row likewise updates the remainder without auto-changing another row.
 
 Expense stores one negative AccountEntry; Income stores one positive AccountEntry. Allocation amounts are positive absolute values. Editing cannot change the Transaction type. It may change account, magnitude, occurrence time, memo, and available allocations subject to the complete atomic-save and archived-reference rules.
 
@@ -242,7 +248,7 @@ Changing or removing ICU4J cannot silently recalculate persisted keys. A future 
 
 The existing coordinator publishes and verifies a recoverable snapshot before any version-3 Room open. Version 2 upgrades through `MIGRATION_2_3`; version 1 upgrades through the accepted `1→2→3` chain. Production destructive fallback remains forbidden.
 
-Before mutation, the version-3 migration preflight validates that every existing Account currency is one of M2's supported six and that every existing Income/Expense magnitude can be represented as a positive M2 allocation amount. Unsupported currency or an Expense entry of `Long.MIN_VALUE` fails closed: the old vault and published snapshot remain unchanged, Room and shell remain blocked, and no guessed scale, truncated amount, or partial schema is exposed.
+Before mutation, the version-3 migration preflight validates that every persisted domain ID governed by the UUID invariant is canonical lowercase UUID text, every FK endpoint preserves that identity, every existing Account currency is one of M2's supported six, and every existing Income/Expense magnitude can be represented as a positive M2 allocation amount. A non-canonical legacy ID, unsupported currency, or Expense entry of `Long.MIN_VALUE` fails closed: the old vault and published snapshot remain unchanged, Room and shell remain blocked, and no identity rewrite, guessed scale, truncated amount, or partial schema is exposed.
 
 For a compatible legacy database:
 
@@ -269,7 +275,7 @@ M2 exports `formatVersion=2` with:
 - CategoryAllocation identity and endpoints;
 - the existing manifest hash/count/path/resource contracts and encountered name-key-version summary.
 
-The M2 reader supports format versions 1 and 2. A format-1 candidate is imported only into isolated staging and up-converted with the same rules as section 5.4: occurrence from matching EntityRef creation, null memo, and a migration-only uncategorized Category when legacy Income/Expense rows exist. The reader then validates the complete current invariant set before overwrite confirmation. `databaseSchemaVersion` remains provenance and cannot replace format-version dispatch.
+The M2 reader supports format versions 1 and 2. A format-1 candidate is imported only into isolated staging and up-converted with the same rules as section 5.4: canonical persisted/FK identities are required, occurrence comes from matching EntityRef creation, memo is null, and a migration-only uncategorized Category is created when legacy Income/Expense rows exist. The reader then validates the complete current invariant set before overwrite confirmation. `databaseSchemaVersion` remains provenance and cannot replace format-version dispatch.
 
 Format-2 export/import is strict: missing required datasets or fields, extra/unknown fields, invalid Category state, unsupported/mismatched name-key version, duplicate normalized key, duplicate Transaction/Category pair, non-positive or non-exact allocations, dangling endpoints, balance overflow, or any other current invariant rejects the complete candidate. An allocation targeting an archived Category remains valid historical data and must survive restore unchanged.
 
@@ -353,6 +359,7 @@ M2 extends the M1 typed route allowlist only with routes used by this slice:
 - `CategoryPicker(draftId)`
 - `CategoryEditor(mode, categoryId?, returnContext)`
 - `CatalogArchiveConfirm(categoryId, returnContext)`
+- `TransactionStatusConfirm(transactionId, action, origin)` where `action` is exactly Withdraw or Restore
 - `WithdrawnTransactions(origin)`
 - `ExpenseEditor(origin, transactionId?)`
 - `IncomeEditor(origin, transactionId?)`
@@ -360,7 +367,9 @@ M2 extends the M1 typed route allowlist only with routes used by this slice:
 
 `TransactionDetail` retains its stable Transaction ID and origin. Route arguments contain stable IDs, modes, and navigation context only. The complete parent draft remains in the Finance-scoped ViewModel/state holder and is not serialized into the route.
 
-Finance home, Account detail, Transaction detail, Category catalog, and the withdrawn list are stable browse/detail destinations with bottom navigation visible under the owning IA rule. Editors, pickers, Category editor, and archive/withdraw/restore confirmations hide bottom navigation. Tab switching and child round trips retain the Finance list/account/filter/scroll state independently from the other top-level tabs.
+`TransactionStatusConfirm` reloads the exact Transaction, current effective/withdrawn state, and financial impact rather than trusting display data from route arguments. Durable completion returns to the same `TransactionDetail`; stale state keeps the confirmation open with Reload/Back and mutates nothing.
+
+Finance home, Account detail, Transaction detail, Category catalog, and the withdrawn list are stable browse/detail destinations with bottom navigation visible under the owning IA rule. Editors, pickers, Category editor, and archive/withdraw/restore confirmation routes hide bottom navigation. Tab switching and child round trips retain the Finance list/account/filter/scroll state independently from the other top-level tabs.
 
 ## 9. Verification design
 
@@ -368,10 +377,11 @@ Finance home, Account detail, Transaction detail, Category catalog, and the with
 
 Pure tests cover:
 
-- six-currency parsing/formatting, scale, zero, one minor unit, maximum values, excess fractions, exponent rejection, and no floating-point API;
+- exact ASCII amount grammar, six-currency parsing/formatting, scale, zero, one minor unit, maximum values, invalid signs/separators/fractions/exponents, and no floating-point API;
 - exact sign/cardinality/allocation/transfer/balance rules, including `Long.MIN_VALUE` handling and widened overflow checks;
 - one-allocation-per-Category and exact sum;
 - 500-code-point memo boundaries and Unicode trimming;
+- injected-zone occurrence conversion, DST-gap rejection, and deterministic earlier-offset overlap handling;
 - fixed-seed histories containing create, edit, withdraw, and restore, with every prefix balance equal to the sum of effective entries;
 - context-specific templates, active collision, archived collision, and no persisted template identity.
 
@@ -384,7 +394,7 @@ Real Room tests verify:
 - exact version-3 schema JSON, tables, fields, indexes, FKs, and unique constraints;
 - v1→v2→v3 and v2→v3 fixtures through the recoverable coordinator;
 - compatible legacy conversion and migration-only Category creation;
-- unsupported legacy currency and `Long.MIN_VALUE` Expense fail closed with unchanged old vault/snapshot;
+- non-canonical persisted/FK identity, unsupported legacy currency, and `Long.MIN_VALUE` Expense fail closed with unchanged old vault/snapshot;
 - atomic account/opening, Income/Expense aggregate, Transfer, edit, Withdraw, Restore, and Category lifecycle writes;
 - injected failure before, between, and after every logical child write and commit response;
 - observers see only the complete old or complete new aggregate;
@@ -427,7 +437,8 @@ Verification retains:
 - no M3+ field, route, interface, or persisted placeholder;
 - source/merged/final manifest and APK proof of no `INTERNET` or unexpected network capability;
 - source/packaged system-backup and device-transfer exclusions;
-- ICU4J coordinate/license/packaging/size/network/removal-path review.
+- ICU4J coordinate/license/packaging/size/network/removal-path review;
+- synthetic sentinel proof that account names, amounts, balances, currencies tied to records, memos, Category names, IDs, and raw failures never enter retained/exported diagnostics.
 
 M2 introduces no performance benchmark family. Timeline performance belongs to M5, thumbnail performance to M3, aggregation performance to M5, and startup performance remains under the M1/M6/M7 boundaries. M2 still fails on ANR, OOM, or an unresponsive acceptance journey.
 
@@ -437,7 +448,7 @@ M2 can become `completed` only when `verification.md` contains accepted raw evid
 
 1. **Lifecycle and prerequisites:** written spec and plan approvals are recorded, M2 is the unique `in-progress` spec during implementation, ADR 0017 and owning core-document synchronization are accepted, and explicit schema/migration execution approval is recorded before that redline runs.
 2. **Module and API boundaries:** the production graph remains exactly seven modules; no forbidden dependency exists; typed finance APIs expose no Room/DAO/path/raw exception/floating-point money; all positive and negative API guards pass.
-3. **Money and currency:** exactly six new-account currencies and their scales pass exact parsing/formatting and boundary tests; no unlike-currency total or cross-currency Transfer/conversion path exists.
+3. **Money, currency, and occurrence:** exactly six new-account currencies, exact input grammar, scales, parsing/formatting, boundaries, injected-zone conversion, DST-gap rejection, and overlap selection pass; no unlike-currency total or cross-currency Transfer/conversion path exists.
 4. **Account/opening atomicity:** valid account creation durably commits Account plus visible opening history together with captured time/IDs; every invalid/fault/retry case creates both or neither and routes only after durable completion.
 5. **Income/Expense aggregate:** one signed entry plus one or more unique positive Category allocations sum exactly to magnitude; create/edit, memo, occurrence, archived-reference, validation, failure, and reconciliation cases pass with no partial visibility.
 6. **Transfer aggregate:** two distinct same-currency equal-and-opposite entries commit/edit atomically; every invalid, failure, stale, and ambiguous-response case changes neither account or both exactly once.
@@ -447,12 +458,12 @@ M2 can become `completed` only when `verification.md` contains accepted raw evid
 10. **Category lifecycle:** Settings and inline Create, Rename, Archive, Restore, duplicates, archived history, no hard delete, first-level-only shape, storage failure, and active-only new allocation all pass offline.
 11. **Transaction memo and occurrence:** occurrence and the one optional 500-code-point plain-text memo persist/edit/restore/backup exactly; no merchant/payee/Markdown/per-allocation/category-note field exists.
 12. **Withdraw and Restore:** ordinary Transaction withdrawal/restoration preserves one identity and every child, atomically removes/reapplies all account effects, retains marked history, enforces read-only withdrawn detail, and never permits opening withdrawal or hard delete.
-13. **Schema and migration:** exact v3 schema, v1→v2→v3 and v2→v3, snapshot publication, legacy conversion, restart, failure mapping, unsupported-edge fail-closed behavior, no destructive fallback, and unchanged old-vault evidence all pass.
+13. **Schema and migration:** exact v3 schema, v1→v2→v3 and v2→v3, snapshot publication, canonical-identity preflight, legacy conversion, restart, failure mapping, unsupported-edge fail-closed behavior, no destructive fallback, and unchanged old-vault evidence all pass.
 14. **Logical backup:** strict format-2 round trip and format-1 isolated up-conversion preserve/derive every declared M2 field and pass activation/startup revalidation; invalid fixtures leave the current vault unchanged and no incomplete backup/restore is reported successful.
-15. **State and navigation:** all phase transitions, Saving locks, draft/ID/time retention, stale-revision handling, exact typed routes, origin/tab state, bottom-navigation visibility, and durable-success destination rules pass.
+15. **State and navigation:** all phase transitions, Saving locks, draft/ID/time retention, stale-revision handling, exact typed routes including `TransactionStatusConfirm`, origin/tab state, bottom-navigation visibility, and durable-success destination rules pass.
 16. **Finance UI:** the approved account-first home and total-first allocation editor complete the required journeys with truthful loading/empty/error/ready states, no cross-currency sum, and no premature Timeline/statistics claim.
 17. **Accessibility:** all M2 production surfaces pass semantic, focus, selected-state, touch-target, 200%-font, clipping, and contrast gates in light/dark M1 themes.
-18. **Offline/network/system backup:** every M2 route and required journey passes in network isolation; source/merged/final artifacts add no network capability and retain complete cloud-backup/device-transfer exclusion.
+18. **Privacy/offline/network/system backup:** forbidden-finance sentinel values never enter retained/exported diagnostics; every M2 route and required journey passes in network isolation; source/merged/final artifacts add no network capability and retain complete cloud-backup/device-transfer exclusion.
 19. **No premature later-slice work:** scans and route/schema/API review find no exchange-rate, account lifecycle, attachment, Tag, Project, Note relation, production Timeline/search/statistics, CSV UI, Backup/Restore UI, or generic Entry placeholder.
 20. **Verification record:** actual commands, environment, test counts, property seeds, fixture and corpus versions, hashes, artifact paths, fault points, deviations, and remaining risks are retained; no missing or failed result is waived or relabeled.
 
@@ -462,6 +473,7 @@ M2 can become `completed` only when `verification.md` contains accepted raw evid
 - **Compatibility expansion:** Transaction occurrence/memo cannot be represented by format version 1 without ambiguity. ADR 0017 and format version 2 are blocking; silent optional-field reinterpretation is rejected.
 - **Legacy uncategorized transactions:** adding a required allocation invariant without conversion would strand valid P1/P2 facts. The migration-only Category is mandatory when those facts exist.
 - **Legacy numeric/currency edge:** `Long.MIN_VALUE` Expense and unsupported account currency cannot be interpreted losslessly under the approved M2 UI model. Migration must fail closed with recovery evidence; it cannot coerce or delete.
+- **Legacy identity edge:** the pre-M2 public repository did not enforce canonical UUID text even though the domain and M1 typed routes require it. Rewriting identity would break stable IDs and every FK, so migration/restore rejects a non-canonical legacy vault before mutation and preserves it for explicit future recovery work.
 - **ICU artifact cost:** full ICU4J adds package weight. The exact release size and R8 result must be recorded before plan approval. Runtime Android ICU is not a fallback because its data version is not a persisted compatibility contract.
 - **Ambiguous commit:** a post-commit response fault can duplicate money if Retry changes identity. Stable IDs plus full aggregate reconciliation are mandatory.
 - **Withdrawal semantics:** hiding soft-deleted entries from all history would make balance changes unauditable. Account history must retain a marked withdrawn row while active recent lists exclude it.
@@ -480,17 +492,18 @@ Before the M2 plan may be approved:
 4. Update interaction rules with the one memo field, approved allocation interaction, Withdraw/Restore confirmation and phases, template-create semantics, and exact navigation results.
 5. Update the domain model with supported M2 money range, unique Transaction/Category allocation, withdrawal/restore availability, and compatibility treatment of legacy uncategorized transactions.
 6. Update data and storage with schema version 3, migration preflight/conversion, frozen ICU implementation, backup format version 2, format-1 up-conversion, and strict validation.
-7. Update architecture overview/conventions/testing strategy only for facts they own: typed surface/module flow, deterministic/reconciliation rules, dependency review, fixtures, and gates.
-8. Draft and obtain explicit acceptance for ADR 0017 covering schema v3, migration compatibility, normalization implementation/dependency, backup format v2, old-format up-conversion, failure behavior, and rollback/removal consequences.
-9. Recheck this spec after the accepted core documents and ADR. Any behavior or acceptance change requires written-spec reapproval.
+7. Update security and privacy with the M2 finance sentinel set only if its existing forbidden-content boundary is not already sufficient; never duplicate the diagnostic envelope contract in a downstream document.
+8. Update architecture overview/conventions/testing strategy only for facts they own: typed surface/module flow, deterministic/reconciliation rules, dependency review, fixtures, and gates.
+9. Draft and obtain explicit acceptance for ADR 0017 covering schema v3, migration compatibility, normalization implementation/dependency, backup format v2, old-format up-conversion, failure behavior, and rollback/removal consequences.
+10. Recheck this spec after the accepted core documents and ADR. Any behavior or acceptance change requires written-spec reapproval.
 
 These synchronization steps are lifecycle/documentation work. They do not authorize creating `plan.md`, modifying schema, running a migration, or implementing routes/interfaces.
 
 ## 13. Lifecycle path
 
-1. **`draft` (current):** only this `spec.md` exists. The user reviews the written result and may request changes. No plan or implementation is authorized.
-2. **`approved`:** the user explicitly accepts this written spec and the approval date/context is recorded. Section 12 synchronization and ADR work may then proceed while the plan is drafted and reviewed; the plan cannot be approved until they pass.
+1. **`draft` (completed 2026-09-04):** the design sections and written document were reviewed without plan or implementation authority.
+2. **`approved` (current):** the user delegated independent written-spec review and forward progress on 2026-09-04; Codex corrected the recorded findings, reran the review, and accepted the written spec under that delegation. Section 12 synchronization and ADR work may now proceed while the plan is drafted and reviewed; the plan cannot be approved until they pass.
 3. **`in-progress`:** section 12 is complete, ADR 0017 is accepted, the plan is explicitly approved, spec and plan approvals are recorded, the user has separately approved the schema/migration redline, and M2 becomes the unique active specification. Functional work is dispatched under the agentic execution workflow.
 4. **`completed`:** every section 10 criterion has accepted raw evidence in `verification.md`, all affected core documents and ADR 0017 remain synchronized, no failed/missing result is waived, and no blocker remains.
 
-Approval of pre-spec design sections does not advance this document from `draft`. Codex generation, self-review, or commit of this file is not user approval.
+Approval of the pre-spec design sections alone did not advance this document from `draft`. The later explicit delegation to review, correct, and continue is the recorded written-spec approval context; Codex generation or commit by itself remains insufficient approval.
