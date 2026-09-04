@@ -7,6 +7,7 @@ This document is the source of truth for implementation discipline. Module direc
 - Kotlin types, sealed hierarchies, and composables use `UpperCamelCase`; functions, properties, parameters, and local values use `lowerCamelCase`; constants use `UPPER_SNAKE_CASE` only for compile-time constants.
 - Composable screen and component names are nouns or noun phrases. UI event types describe user intent, such as `SaveExpense` or `RetryRestore`; handlers use `on...` names. Do not name an event after a widget callback when the product intent is more specific.
 - Prefer immutable value types and exhaustive sealed types for domain and UI states. Monetary values use integer minor units; `Float` and `Double` are forbidden for money.
+- Finance amount input is parsed directly from the approved ASCII decimal grammar into integer minor units at the declared currency scale. Display localization is a separate formatting step and never becomes a parse round trip. Exact sign, magnitude, allocation, transfer, and balance checks use widened arithmetic before narrowing to `Long`.
 - Each file has one public focus: one screen contract, one ViewModel, one repository contract, one domain type family, or one cohesive private implementation. Split a file when unrelated public responsibilities change for different reasons; do not split a cohesive type merely to reduce line count.
 - Keep composables declarative. Business validation, persistence orchestration, retry policy, and durable-success decisions do not live in composables.
 - `:core:model` remains pure Kotlin. Android framework types, Room types, URIs, and storage paths cannot enter its public API.
@@ -25,11 +26,14 @@ This document is the source of truth for implementation discipline. Module direc
 - Inject coroutine dispatchers used for I/O, CPU work, and scheduling. Production defaults may bind to platform dispatchers only at the composition root; tests provide controlled dispatchers.
 - Inject clocks and time-zone providers wherever time affects a fact, filename, retention decision, retry schedule, or UI state. Tests never depend on the wall clock.
 - Generate IDs through an injected application-facing generator when deterministic identity is required by a test.
+- Persist occurrence as epoch millis UTC. Resolve an edited local date/time only through an injected `ZoneId`; reject DST gaps and select the earlier offset for overlaps according to the owning interaction contract.
 - Structured concurrency owns every operation lifetime. A detached coroutine is allowed only for a documented application-scoped, idempotent background responsibility with an explicit owner and cancellation policy.
 
 ## Transaction and orchestration ownership
 
 - A repository owns the atomic transaction for one aggregate and returns only after its durable boundary is known. Callers cannot compose DAO calls into an application transaction.
+- New aggregate drafts retain their generated IDs across a recoverable retry. If a response fails after commit may have occurred, the data boundary re-reads that identity and compares the complete requested aggregate: exact match is success, confirmed absence/prior revision is recoverable failure, and mismatch is a blocking conflict. A caller never retries with new IDs or guesses commit state.
+- Transaction edits and effective-state changes compare the last-read `EntityRef.updatedAt`; Category lifecycle changes compare the exact last-read persisted tuple without adding a redundant revision column. A stale compare-and-set changes nothing and is never silently resolved by last-write-wins.
 - Create a Use Case only when an operation requires cross-aggregate atomicity, is shared by multiple ViewModels, or centralizes a domain invariant. A table, screen, or DAO does not automatically receive a Use Case.
 - Transaction, finance children, requested relations, attachment metadata, and links that belong to one owner save are one repository/Use Case result. A partial result is not representable as success.
 - From a saved Detail, a relation or assignment editor may replace its complete set as an independent atomic operation. From any owner Editor, the same subflow updates only the parent draft; the parent save owns the single durable commit. The implementation must not create a placeholder owner to satisfy a draft relation.

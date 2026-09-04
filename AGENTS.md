@@ -20,7 +20,7 @@
 - User experience: docs/experience/*
 - Engineering quality: docs/engineering/*
 - Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none — [MVP M1 — app shell](docs/specs/mvp/m1-app-shell/spec.md) is `completed` (2026-09-04): all tasks (T00, S01, T01–T11) are accepted with raw-evidence records in its [verification.md](docs/specs/mvp/m1-app-shell/verification.md) and all 19 acceptance criteria PASS; [ADR 0016](docs/architecture/decisions/0016-application-facing-startup-gate-handoff.md) is accepted and owning core documents are synchronized. M2 finance core starts only under its own approved spec and plan. Tech PoC P6 — timeline performance is `completed` (2026-08-28, [Spec](docs/specs/tech-poc/p6-timeline-performance/spec.md); ADR 0011–0015 accepted). Tech PoC P5 — export/restore is `completed` (2026-08-16, [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md) accepted). Tech PoC P0–P4 are `completed`.
+- Current active spec: none — [MVP M2 — finance core](docs/specs/mvp/m2-finance-core/spec.md) is `approved` (2026-09-04) after delegated independent review; owning core documents are synchronized and [ADR 0017](docs/architecture/decisions/0017-m2-finance-schema-normalization-and-backup-v2.md) is accepted. M2 remains inactive until its plan is explicitly approved and schema/migration execution consent is recorded. [MVP M1 — app shell](docs/specs/mvp/m1-app-shell/spec.md) is `completed` (2026-09-04) with all 19 acceptance criteria PASS. Tech PoC P0–P6 are `completed`.
 - Current change when active: the unique `in-progress` spec under docs/specs/*
 
 ## Non-negotiable data rules

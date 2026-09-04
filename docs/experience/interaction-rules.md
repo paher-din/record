@@ -85,6 +85,14 @@ The global `+` chooser and feature-local typed actions all dispatch to one of fo
 | Transfer | Finance | Distinct source and destination accounts in the same currency, and positive amount | Forbidden | `TRANSFER` transaction |
 | Note | Notes | Non-empty trimmed Markdown body or at least one confirmed image | Not applicable | `Note` |
 
+### Shared finance amount and occurrence input
+
+New accounts support exactly `CNY`, `USD`, `EUR`, `JPY`, `HKD`, and `GBP`. `JPY` has scale zero; the other five have scale two. Account currency is immutable, and different currencies are never added into one amount.
+
+After Unicode `White_Space` trim, Income, Expense, and Transfer amount text uses ASCII digits with an optional decimal point followed by one to the currency scale digits. Opening balance additionally permits one leading minus sign. A scale-zero currency permits digits only. Group separators, exponent notation, a leading plus sign, bare/trailing decimal points, and excess fractional digits are invalid. Parsing converts directly to integer minor units without `Float` or `Double`.
+
+Occurrence is stored as epoch millis UTC. Opening captures the injected current instant directly on the first valid Create. An explicitly selected local date/time resolves through the injected `ZoneId`: a nonexistent DST-gap value remains a field error, and an overlap uses the earlier valid offset deterministically.
+
 ### Deterministic finance post-save navigation
 
 The following outcomes apply only after `Phase.Completed`. An Editor-context relation, assignment, image, picker, or other child subflow never applies this table; it returns to its parent draft with that draft's navigation context intact. A saved Detail relationship subflow may complete independently but returns to that same Detail.
@@ -96,6 +104,7 @@ The following outcomes apply only after `Phase.Completed`. An Editor-context rel
 | Create Transfer | Finance-owned `TransactionDetail` for the new transfer | Return to the exact launch context with its retained tab, scroll, filters, and date |
 | Edit Expense, Income, or Transfer | The source Finance-owned `TransactionDetail` | Preserve that detail's existing origin so its subsequent Back remains deterministic |
 | Create Account with opening balance | Finance-owned `AccountDetail` for the new account | Return to the exact Finance launch context with its retained state |
+| Withdraw or Restore an ordinary Transaction | The same Finance-owned `TransactionDetail`, with the new effective/withdrawn state | Preserve that detail's existing origin; `OPENING_BALANCE` exposes neither action |
 
 Navigation must not occur before durable success. A failed save remains in the editor with its complete draft. Returning from an Editor child subflow must not jump to a top-level destination or a newly synthesized detail route; a saved Detail relationship subflow returns only to its source Detail.
 
@@ -116,15 +125,17 @@ The selected transaction type is fixed by the typed entry point. A new draft sta
 - required amount in the selected account currency;
 - required occurrence date/time;
 - one or more required first-level category allocations selected from the active Category catalog; an empty picker exposes inline Create Category;
-- optional descriptive transaction fields;
+- one optional transaction-level multi-line plain-text memo, Unicode-trimmed to absent when empty and limited to 500 code points;
 - optional shared tags, one optional primary project, links to saved notes, and pending confirmed images.
 
 The UI displays allocation values as positive magnitudes. It does not ask the user to enter a sign: an Expense reduces the selected balance and an Income increases it.
 
+The allocation editor is total-first. Selecting the first Category initially assigns the complete valid magnitude to it. Adding another Category creates an empty allocation row; every row remains independently editable while the UI reports exact allocated and remaining minor units. Once rows exist, editing or clearing the total never silently changes any row, and removing a row updates the remainder without auto-changing another row.
+
 **Validation**
 
 - Account and occurrence date/time must be present and available.
-- Amount must be parseable in the account currency, representable in integer minor units, and greater than zero.
+- Amount must match the shared finance amount grammar above, be representable in integer minor units, and be greater than zero.
 - At least one available first-level category is selected. An unchanged historical allocation may continue to reference a category archived after the original save, but an archived category cannot be newly selected or receive a changed allocation.
 - Every allocation is positive and the allocation sum equals the transaction amount exactly in minor units.
 - Requested tags, project, note links, and images must pass their typed selection and attachment rules before the save can commit.
@@ -158,14 +169,14 @@ A new draft fixes the type as Transfer, starts with blank amount and destination
 - required destination account;
 - required positive amount in their shared currency;
 - required occurrence date/time;
-- optional descriptive transaction fields;
+- one optional transaction-level multi-line plain-text memo, Unicode-trimmed to absent when empty and limited to 500 code points;
 - optional shared tags, one optional primary project, links to saved notes, and pending confirmed images;
 - no category field or category allocation.
 
 **Validation**
 
 - Both accounts must exist, be available, be distinct, and use the same currency.
-- Amount must be parseable in that currency, representable in integer minor units, and greater than zero.
+- Amount must match the shared finance amount grammar above, be representable in integer minor units, and be greater than zero.
 - Occurrence date/time is required.
 - Requested relations and images must remain valid at confirmation.
 
@@ -233,7 +244,7 @@ The combined editor starts in `Phase.Idle` with blank account name, no currency,
 **Fields and selections**
 
 - required trimmed account name;
-- required currency;
+- required currency selected from `CNY`, `USD`, `EUR`, `JPY`, `HKD`, or `GBP`; it cannot be changed after account creation;
 - required opening balance valid in that currency;
 - no visible or editable opening date/time field in MVP.
 
@@ -241,7 +252,7 @@ The displayed balance is not directly persisted as an editable account field. It
 
 **Validation**
 
-Name must remain non-blank after trimming. Currency must be selected. Opening balance must be parseable and representable in integer minor units for that currency. A rejected value creates nothing.
+Name must remain non-blank after trimming. A supported currency must be selected. Opening balance must match the shared finance amount grammar and be representable in integer minor units for that currency. A rejected value creates nothing.
 
 **Save/confirm**
 
@@ -254,6 +265,16 @@ Before `Phase.Saving`, use the shared dirty-draft rule. Cancellation creates nei
 **Failure/retry**
 
 Any failure leaves no partial account or opening transaction and shows no success. The complete draft retains name, currency, amount, and the opening time captured by the first Create press. Retry reuses that same captured time rather than reading the device clock again; only discard followed by a new draft causes recapture.
+
+## Transaction editing, withdrawal, and restore
+
+Income, Expense, and Transfer may be edited from their Finance-owned detail. The existing editor loads the complete aggregate in `Phase.Loading`, then exposes an `Idle` draft with a fixed Transaction type and the last-read `EntityRef.updatedAt`. Save replaces the complete requested aggregate only when that revision still matches. A stale revision changes nothing and requires Reload/Back rather than last-write-wins.
+
+An effective non-opening Transaction detail exposes **Withdraw transaction**. A withdrawn Transaction detail is read-only and exposes **Restore transaction**. Both actions open `TransactionStatusConfirm`, which loads the exact current identity, effective/withdrawn state, revision, and financial impact before enabling Confirm. `OPENING_BALANCE` exposes no edit, Withdraw, or Restore action.
+
+Confirm enters `Phase.Saving`. Withdraw atomically sets `EntityRef.deletedAt`, updates its revision, and makes every owned AccountEntry ineffective without deleting the Transaction, entries, allocations, or historical references. Restore atomically clears `deletedAt` on the same identity and makes every owned entry effective again. A Transfer's two account effects always change together. Existing allocations to a Category archived after the original save remain valid history during Restore because no new allocation is created.
+
+`Phase.Completed` returns to the same `TransactionDetail`; Withdraw renders it read-only and Restore renders it effective/editable. During Saving the shared navigation lock applies. Cancel/Back before Saving returns to the unchanged detail. Validation, stale revision, storage failure, or ambiguous-commit mismatch changes neither Transaction nor balance and retains a safe Reload/Retry/Back action. Hard delete and creation of a compensating transaction are absent.
 
 ## Category, Tag, and Project catalog lifecycle
 
@@ -274,6 +295,8 @@ Each list row shows the current name and active/archived state. An active row of
 ### Picker and inline-create state
 
 A Category, Tag, or Project picker starts in `Phase.Loading` until its active choices and current parent selection are known, then enters `Phase.Idle`. A first-install empty picker shows a type-specific empty state plus Create. For a new selection, only active items are enabled.
+
+The Category picker may also show fixed creation templates without persisting or preselecting them. Expense offers 餐饮、娱乐、购物、旅游、生活缴费、交通、医疗、服饰、教育、服务、其他; Income offers 工资、奖金、理财收益、退款、其他收入. Choosing a template first performs the same normalized lookup as manual creation: an active match is selected, an archived match opens Restore, and no match opens the ordinary Category create form with the proposed name. Only durable Create produces a Category row. The created identity has no persisted income/expense type and remains reusable in either editor; Transfer has no Category picker.
 
 An existing archived reference is shown as archived when loading a saved owner. It may remain unchanged or be removed, but it cannot be added to a different owner, re-added after removal, or receive a changed Category allocation. If an active item selected in the current draft becomes archived before parent Save, the picker retains and marks the invalid selection and requires Reselect or Restore.
 
@@ -476,7 +499,7 @@ Android Sharesheet → this app → choose Note draft or a typed Transaction dra
 
 **Fields and selections**
 
-For Note, shared text prepopulates the Markdown body. For a Transaction, it prepopulates the approved descriptive field only; account, amount, transaction type requirements, categories where applicable, and date remain explicit typed draft fields.
+For Note, shared text prepopulates the Markdown body. For a Transaction, it prepopulates the one approved transaction-level plain-text memo only; account, amount, transaction type requirements, categories where applicable, and date remain explicit typed draft fields.
 
 **Validation**
 
@@ -956,12 +979,15 @@ Future ViewModel and Compose tests must cover at least:
 - **Diagnostic export modal:** assert Diagnostics shows only UTC-day segment coverage window, event count, estimated size, and retention rule, with no per-event time; SAF selection requires explicit confirmation; Running/Cancelling blocks every navigation escape; cancellation waits for acknowledgement; Success/Cancelled/Failed returns to Diagnostics; failures preserve the vault and ring buffer; no path automatically shares or uploads.
 - **Restore cancellation boundary:** Cancel in candidate selection enters `Phase.Cancelled`; Cancel during `Phase.Checking` enters `Phase.Cancelling` and waits before reaching `Phase.Cancelled`; both return to Settings → Restore unchanged. After final Confirm enters `Phase.Running`, assert Cancel is absent and every Back/bottom-navigation path is blocked through `Phase.Recovering` until startup validation reaches `Phase.Completed` or verified Failure/Rollback.
 - **Opening time:** use a controlled device clock. Assert that the opening date/time field is absent, the first valid Create press captures the clock once, a failed save plus Retry reuses that captured time even after the clock advances, and Discard followed by a fresh draft captures the new clock value.
+- **Finance amount and occurrence:** assert the exact six-currency scale table and ASCII grammar, reject signs/separators/exponents/excess fractions as specified, use no floating-point money, reject DST-gap local times, and resolve overlaps with the earlier offset under injected time sources.
+- **Transaction withdrawal/restore:** from an effective ordinary detail, load and confirm Withdraw; assert one durable soft-delete revision makes every owned entry ineffective together, returns to the same read-only detail, retains marked history, and enters the withdrawn list. Restore the same identity and assert all effects return atomically. Cover stale revision, Cancel/Back, Saving lock, storage/commit-response failure, archived historical Category, two-account Transfer, and absence of every action on `OPENING_BALANCE`.
 - **Finance destination table:** assert new Expense/Income/Transfer → Finance-owned transaction detail, new Account → account detail, and owner edit → source detail. An Editor child subflow returns to its parent draft without independent save; a saved Detail relationship subflow returns to that Detail after its own success. Back restores the exact retained launch state and no owner-save navigation occurs before `Phase.Completed`.
 
 | Interaction | Success assertion | Required failure assertion |
 |---|---|---|
 | Expense / Income | One saved account effect and exact allocations | No optimistic success; complete draft retained; no partial allocation |
 | Transfer | Two distinct same-currency account effects sum to zero | Neither account changes on any failure |
+| Withdraw / Restore Transaction | The same ordinary Transaction identity and all of its account effects become ineffective/effective together | Stale/cancelled/failed confirmation changes no Transaction, allocation, history, or balance; opening exposes no action |
 | Note | Body or confirmed image is sufficient; no title required | Prior saved revision unchanged; draft retained |
 | Opening balance | Account and matching opening-balance history both exist with the first-confirmation time | Neither appears after failed save; Retry retains fields and captured time |
 | Transaction–note linking | Saved Detail set replaces independently; any Editor set becomes visible only with parent Save | Saved set unchanged or Editor changes remain draft-only; selections remain available after failure |

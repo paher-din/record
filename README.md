@@ -12,7 +12,7 @@ A private Android timeline connecting money with life context.
 - Tech PoC P5 completed (export/restore: non-destructive generation bootstrap per [ADR 0010](docs/architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md), complete logical ZIP backup and overwrite restore, 154 device tests green)
 - Tech PoC P6 completed (timeline performance: selected-day bounded query per ADR 0013; query-to-first-correct-draw p95 39.26 ms ≤ 60 ms and frame-CPU p95 14.99 ms ≤ 16.67 ms on the Xiaomi 14 Pro; replacement-workload deadline jank 37.96 % recorded as a diagnostic, ≤2 % native-deadline jank gate deferred to M5 per ADR 0014; post-clean Rev5 rerun passed every absolute gate and the one-sided 10 % regression — ADR 0015)
 - MVP M1 — app shell completed (2026-09-04: safe startup gating, typed four-tab shell, A/A1 theme, accessible shared presentations, isolated startup benchmarks, offline routes — all 19 acceptance criteria PASS with device evidence on the Xiaomi 14 Pro; startup TTID p95 ≤324.7 ms / TTFD p95 ≤422.6 ms within the approved budgets; full record in [docs/specs/mvp/m1-app-shell/verification.md](docs/specs/mvp/m1-app-shell/verification.md))
-- Next: MVP M2 — finance core (enters the lifecycle only through a new approved specification)
+- MVP M2 — finance core specification approved and ADR 0017 accepted (2026-09-04); implementation remains inactive pending explicit plan approval and schema/migration execution consent
 - Supported baseline: Android 14+
 
 ## Start here

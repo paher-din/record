@@ -8,7 +8,7 @@ This document defines the observable MVP behavior for the owner's daily use with
 
 ### Preconditions
 
-The user can provide an account name, currency, and opening balance.
+The user can provide an account name, one of the MVP account currencies (`CNY`, `USD`, `EUR`, `JPY`, `HKD`, or `GBP`), and an opening balance.
 
 ### User action
 
@@ -16,7 +16,7 @@ The user enters the account details and confirms creation.
 
 ### Success state
 
-After the account and its opening-balance transaction are durably saved together, the account appears with the requested balance. The opening balance remains visible as history so the current balance can be recomputed from the account's complete history.
+After the account and its opening-balance transaction are durably saved together, the account appears with the requested balance. The opening balance remains visible as history so the current balance can be recomputed from the account's complete history. Account currency is immutable in MVP, and unlike currencies are never added into one displayed amount.
 
 ### Validation failure
 
@@ -34,11 +34,11 @@ At least one account is available. The first-level category catalog may be empty
 
 ### User action
 
-The user chooses income or expense, enters an amount and details, selects one or more available first-level categories or creates one inline, distributes the amount across those categories, and confirms the transaction.
+The user chooses income or expense, enters an amount, occurrence date/time, and optional transaction-level plain-text memo, selects one or more available first-level categories or creates one inline or from an offered template, distributes the amount across those categories, and confirms the transaction.
 
 ### Success state
 
-After durable save, the transaction appears in account history and the timeline. An expense reduces the selected account balance, an income increases it, and the category allocation totals equal the transaction amount's magnitude.
+After durable save, the transaction appears in account history. An expense reduces the selected account balance, an income increases it, and the category allocation totals equal the transaction amount's magnitude. M2 closes this finance-owned result; M5 adds and verifies the transaction's production Timeline visibility, after which the complete cross-slice Journey 2 success assertion is satisfied.
 
 ### Validation failure
 
@@ -56,7 +56,7 @@ At least two accounts exist and the user can select a source and destination.
 
 ### User action
 
-The user selects both accounts, enters the transfer amount and details, and confirms the transfer.
+The user selects both accounts, enters the transfer amount, occurrence date/time, and optional transaction-level plain-text memo, and confirms the transfer.
 
 ### Success state
 
@@ -69,6 +69,14 @@ If the accounts are the same, their currencies differ, or the amount is missing,
 ### Infrastructure failure
 
 If any part of the save cannot complete, neither account is changed and no success is shown. The cross-cutting draft-preservation rule applies.
+
+## Cross-cutting finance lifecycle
+
+Income, Expense, and Transfer can be edited without changing their Transaction type. An edit replaces the complete requested finance aggregate atomically; stale or failed edits leave the prior saved aggregate and both affected balances unchanged.
+
+An effective non-opening Transaction can be withdrawn after confirmation. Withdrawal is recoverable: it retains the same Transaction identity and history while excluding all of its AccountEntry effects from effective balances together. A withdrawn Transaction is read-only until explicitly restored; Restore re-enables the same aggregate and all of its account effects atomically. `OPENING_BALANCE` cannot be edited, withdrawn, or restored independently. MVP exposes no Transaction hard delete and creates no compensating transaction type for this action.
+
+Income, Expense, and Transfer each have at most one optional transaction-level plain-text memo. After Unicode trim it contains at most 500 Unicode code points; an empty result is absent. Category and individual allocation rows do not have notes.
 
 ## Journey 4: Create and edit a Markdown note
 
@@ -295,6 +303,8 @@ If the draft cannot be saved completely, the app shows no success and creates no
 Category, Tag, and Project catalogs are empty-capable. A first install does not seed personalized categories, tags, or projects. Every empty catalog state provides the type-appropriate create entry, and all catalog lifecycle operations work offline.
 
 All three catalog types use the same name rule: after trimming, a name contains 1–40 Unicode code points and is unique within its catalog under case-insensitive Unicode normalization across both active and archived items. A collision with an archived item offers Restore instead of creating a duplicate. Catalog names are ordinary user content, not secrets, but they never enter diagnostic logs.
+
+When Category is empty or the user wants another classifier, Finance may offer fixed context-specific creation templates. Expense offers 餐饮、娱乐、购物、旅游、生活缴费、交通、医疗、服饰、教育、服务、其他; Income offers 工资、奖金、理财收益、退款、其他收入. A template is not persisted until the user chooses it and completes the ordinary Category create flow. It creates no template identity or type restriction: an existing active normalized match is selected, an archived match offers Restore, and a newly created Category remains reusable by either Income or Expense. Transfer never uses Category.
 
 - **Category:** first-level only, with no parent/child hierarchy in MVP. It can be created inline from an Expense/Income category picker or managed from Settings → Categories. The user can create, rename, archive, and restore it; MVP exposes no hard delete. An archived category cannot receive a new allocation. Existing allocations and statistics remain intact and show its current name and archived status.
 - **Tag:** it can be created inline from a tag selector or managed from Settings → Tags. The user can create, rename, archive, and restore it; MVP exposes no hard delete. An archived tag cannot receive a new assignment. Existing tag assignments remain intact and display the tag's current name and archived status. Tags still apply only to Transaction and Note.

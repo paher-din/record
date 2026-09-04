@@ -8,9 +8,10 @@
 - **Roadmap:** [MVP M2 — finance core](../../../roadmap.md)
 - **Product:** [Product vision](../../../product/vision.md), [MVP requirements](../../../product/mvp-requirements.md)
 - **Experience:** [Information architecture](../../../experience/information-architecture.md), [Interaction rules](../../../experience/interaction-rules.md)
-- **Architecture:** [Architecture overview](../../../architecture/overview.md), [Domain model](../../../architecture/domain-model.md), [Data and storage](../../../architecture/data-and-storage.md), [ADR 0004](../../../architecture/decisions/0004-catalog-lifecycle-and-normalized-names.md), [ADR 0006](../../../architecture/decisions/0006-version-1-persistence-contract.md), [ADR 0007](../../../architecture/decisions/0007-recoverable-migration-snapshot-ownership.md), [ADR 0010](../../../architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md), [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md)
+- **Architecture:** [Architecture overview](../../../architecture/overview.md), [Domain model](../../../architecture/domain-model.md), [Data and storage](../../../architecture/data-and-storage.md), [ADR 0004](../../../architecture/decisions/0004-catalog-lifecycle-and-normalized-names.md), [ADR 0006](../../../architecture/decisions/0006-version-1-persistence-contract.md), [ADR 0007](../../../architecture/decisions/0007-recoverable-migration-snapshot-ownership.md), [ADR 0010](../../../architecture/decisions/0010-generation-bootstrap-and-live-session-handoff.md), [ADR 0016](../../../architecture/decisions/0016-application-facing-startup-gate-handoff.md), [ADR 0017](../../../architecture/decisions/0017-m2-finance-schema-normalization-and-backup-v2.md)
 - **Engineering:** [Engineering conventions](../../../engineering/conventions.md), [Testing strategy](../../../engineering/testing-strategy.md), [Agentic execution workflow](../../../engineering/agentic-workflow.md)
 - **Predecessor:** [MVP M1 — app shell](../m1-app-shell/spec.md) is `completed` (2026-09-04); no specification is currently `in-progress`.
+- **Architecture prerequisite satisfied:** 2026-09-04 — ADR 0017 is Accepted under the recorded design approval and review delegation; product, roadmap, experience, domain, data/storage, architecture, conventions, and testing sources are synchronized. The existing security/privacy boundary already forbids every M2 finance sentinel and required no duplicate rule.
 
 ## 1. Purpose
 
@@ -31,7 +32,7 @@ The M2 draft begins from these repository facts:
 - Logical backup `formatVersion=1` serializes the eight current-schema datasets and does not carry M2 transaction fields or Category facts.
 - The recoverable migration snapshot, generation layout, startup resolver, logical backup/restore pipeline, application-facing startup gate, API guards, and network/system-backup policy are already implemented and must be extended rather than replaced.
 
-M2 is `approved` under the recorded independent-review delegation. The owning core-document conflicts and ADR prerequisite in section 12 must be synchronized before plan approval. M2 may become `in-progress` only after the plan is explicitly approved, both approval facts are recorded, ADR 0017 is accepted, and the user separately authorizes execution of the schema and data migration redline.
+M2 is `approved` under the recorded independent-review delegation. The owning core-document conflicts and ADR prerequisite in section 12 are synchronized. M2 may become `in-progress` only after the plan is explicitly approved, both approval facts are recorded, and the user separately authorizes execution of the schema and data migration redline.
 
 ## 3. Scope
 
@@ -474,7 +475,7 @@ M2 can become `completed` only when `verification.md` contains accepted raw evid
 - **Legacy uncategorized transactions:** adding a required allocation invariant without conversion would strand valid P1/P2 facts. The migration-only Category is mandatory when those facts exist.
 - **Legacy numeric/currency edge:** `Long.MIN_VALUE` Expense and unsupported account currency cannot be interpreted losslessly under the approved M2 UI model. Migration must fail closed with recovery evidence; it cannot coerce or delete.
 - **Legacy identity edge:** the pre-M2 public repository did not enforce canonical UUID text even though the domain and M1 typed routes require it. Rewriting identity would break stable IDs and every FK, so migration/restore rejects a non-canonical legacy vault before mutation and preserves it for explicit future recovery work.
-- **ICU artifact cost:** full ICU4J adds package weight. The exact release size and R8 result must be recorded before plan approval. Runtime Android ICU is not a fallback because its data version is not a persisted compatibility contract.
+- **ICU artifact cost:** full ICU4J adds package weight. Before plan approval, the plan must define a blocking dependency sequence: T01 records the exact dependency/license/maintenance/removal/Android contract and raw artifact size; T02 records the reachable migration-path R8/package-size impact before the public finance data/UI work proceeds. Runtime Android ICU is not a fallback because its data version is not a persisted compatibility contract.
 - **Ambiguous commit:** a post-commit response fault can duplicate money if Retry changes identity. Stable IDs plus full aggregate reconciliation are mandatory.
 - **Withdrawal semantics:** hiding soft-deleted entries from all history would make balance changes unauditable. Account history must retain a marked withdrawn row while active recent lists exclude it.
 - **Scope pressure:** account lifecycle, conversion, richer transaction metadata, category decoration, Timeline, and statistics are plausible follow-ups but remain unauthorized candidates.
@@ -484,7 +485,7 @@ Any implementation-discovered contradiction with an owning core document stops t
 
 ## 12. Documentation and ADR synchronization
 
-Before the M2 plan may be approved:
+Completed 2026-09-04 before M2 plan drafting/approval:
 
 1. Update the roadmap M2/M5 wording so M2 owns the finance portion of Journeys 1–3 and M5 owns Journey 2's production Timeline visibility without double ownership.
 2. Update MVP requirements only where needed to make the staged Journey 2 visibility assertion explicit; do not weaken the eventual complete journey.
@@ -502,8 +503,8 @@ These synchronization steps are lifecycle/documentation work. They do not author
 ## 13. Lifecycle path
 
 1. **`draft` (completed 2026-09-04):** the design sections and written document were reviewed without plan or implementation authority.
-2. **`approved` (current):** the user delegated independent written-spec review and forward progress on 2026-09-04; Codex corrected the recorded findings, reran the review, and accepted the written spec under that delegation. Section 12 synchronization and ADR work may now proceed while the plan is drafted and reviewed; the plan cannot be approved until they pass.
-3. **`in-progress`:** section 12 is complete, ADR 0017 is accepted, the plan is explicitly approved, spec and plan approvals are recorded, the user has separately approved the schema/migration redline, and M2 becomes the unique active specification. Functional work is dispatched under the agentic execution workflow.
+2. **`approved` (current):** the user delegated independent written-spec review and forward progress on 2026-09-04; Codex corrected the recorded findings, reran the review, and accepted the written spec under that delegation. Section 12 synchronization and ADR 0017 are complete, so the plan may be drafted and reviewed.
+3. **`in-progress`:** the plan is explicitly approved, spec and plan approvals are recorded, the user has separately approved the schema/migration redline, and M2 becomes the unique active specification. Functional work is dispatched under the agentic execution workflow.
 4. **`completed`:** every section 10 criterion has accepted raw evidence in `verification.md`, all affected core documents and ADR 0017 remain synchronized, no failed/missing result is waived, and no blocker remains.
 
 Approval of the pre-spec design sections alone did not advance this document from `draft`. The later explicit delegation to review, correct, and continue is the recorded written-spec approval context; Codex generation or commit by itself remains insufficient approval.

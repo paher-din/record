@@ -24,6 +24,8 @@ erDiagram
     TRANSACTION {
         string id PK,FK
         string type
+        timestamp occurredAt
+        string memo "optional"
         string primaryProjectId FK "optional"
     }
     NOTE {
@@ -35,9 +37,15 @@ erDiagram
     }
     ACCOUNT {
         string id PK
+        string currency
     }
     CATEGORY {
         string id PK
+        string displayName
+        string nameKey UK
+        int nameKeyVersion
+        string state
+        timestamp archivedAt "optional"
     }
     ACCOUNT_ENTRY {
         string id PK
@@ -103,13 +111,13 @@ Persistent implementation note (Tech PoC P3, [ADR 0008](decisions/0008-zero-link
 
 ## Finance aggregate
 
-`Transaction` is an independent business fact and the header of a financial business event. It owns the event type, occurrence information, descriptive fields, and the references needed to interpret the event; it is not an account balance.
+`Transaction` is an independent business fact and the header of a financial business event. It owns an immutable event type, `occurredAt` as epoch millis UTC, and at most one optional transaction-level plain-text `memo`; it is not an account balance. The memo is absent when Unicode-trimmed empty and contains at most 500 Unicode code points. Merchant, payee, Markdown, per-allocation notes, and Category notes are not Transaction fields in MVP.
 
 `AccountEntry` is an account effect owned by a `Transaction`. It associates one account with a signed integer amount in that account's currency. An MVP income or expense owns exactly one non-zero entry. Its transaction magnitude is the absolute value of that entry's `amountMinor`.
 
-`CategoryAllocation` is a positive absolute allocation whose lifecycle is owned by a `Transaction`. It references exactly one required `Category` as its classifier; the category does not own the allocation. An income or expense has one or more allocations whose amounts sum exactly to the transaction magnitude.
+`CategoryAllocation` is a positive absolute allocation whose lifecycle is owned by a `Transaction`. It references exactly one required `Category` as its classifier; the category does not own the allocation. An income or expense has one or more allocations whose amounts sum exactly to the transaction magnitude, and one Transaction has at most one allocation row for a given Category.
 
-`Account` identifies a balance-bearing account and its currency. Its balance is derived from effective entries rather than stored as a directly editable fact. `Category` is a first-level-only classifier for income or expense; MVP has no category parent, child, path, or hierarchy field.
+`Account` identifies a balance-bearing account and its immutable currency. New MVP accounts use exactly `CNY`, `USD`, `EUR`, `JPY`, `HKD`, or `GBP`; `JPY` has zero fractional minor-unit digits and the other five have two. Its balance is derived from effective entries rather than stored as a directly editable fact, and unlike currencies are never summed into one monetary value. `Category` is a first-level-only classifier for income or expense; MVP has no category parent, child, path, hierarchy, type discriminator, icon, color, or note field.
 
 The financial rules in this document refine, but do not duplicate, the user journeys in the [MVP requirements](../product/mvp-requirements.md).
 
@@ -133,6 +141,8 @@ The financial rules in this document refine, but do not duplicate, the user jour
 
 Each item has a user-visible name. After Unicode trim, the name must contain 1–40 Unicode code points. Name semantics version 1 derives the comparison key by applying Unicode trim, then NFKC, then full Unicode case folding without locale dependence. Within each catalog, that versioned key is unique across active and archived items together. The comparison key is an invariant, not a second user-visible name. Renaming updates the one referenced catalog fact, so every historical allocation, tag association, or project assignment resolves the current name. A create request colliding with an archived item is rejected as a duplicate and identifies Restore as the valid transition.
 
+Finance-owned Category templates are creation suggestions rather than catalog facts. They have no stable ID, persisted row, backup record, or income/expense discriminator. Choosing a template resolves through the same normalized Category namespace and ordinary Create/Restore transitions as typed manual creation.
+
 The availability rule distinguishes a historical reference from a new request:
 
 - only an active `Category` may be introduced by a new or changed `CategoryAllocation`;
@@ -147,7 +157,7 @@ Catalog names are user content even though they are not credentials or cryptogra
 
 ## Deletion and archive
 
-- `Transaction` and `Note` use soft delete first: deletion records a deleted timestamp on their `EntityRef` and excludes the fact from effective reads while preserving recoverability and history.
+- `Transaction` and `Note` use soft delete first: deletion records a deleted timestamp on their `EntityRef` and excludes the fact from effective reads while preserving recoverability and history. For an ordinary Income, Expense, or Transfer, the M2 user-visible action is **Withdraw** rather than hard delete. Withdraw sets `EntityRef.deletedAt` and updates its revision atomically; Restore clears it on the same identity. A withdrawn Transaction remains historical and read-only, and all of its AccountEntry effects become ineffective together. `OPENING_BALANCE` cannot be edited, withdrawn, or restored independently.
 - User-visible Project Archive uses the Project `EntityRef` soft-delete state. It removes the project from the default active list and new-assignment choices, but existing primary assignments continue to resolve it as archived. Restore makes it active and selectable again.
 - Category and Tag use an explicit recoverable archived state. Archiving prevents new allocation or assignment without altering historical `CategoryAllocation` or `EntityTag` records; Restore makes the item available again.
 - `Account` with history is archived, not deleted. Its account-specific lifecycle is outside the shared catalog contract.
@@ -169,6 +179,7 @@ The following concepts are explicitly deferred and must not acquire placeholder 
 
 - generic `EntityRelation`;
 - cross-currency transfers or rate snapshots;
+- currency-conversion bookkeeping or exchange-rate history;
 - `Task` and `Reminder`;
 - sync metadata or a change log;
 - a full chart of accounts.
@@ -194,14 +205,17 @@ The following concepts are explicitly deferred and must not acquire placeholder 
 
 - All money is stored and calculated as integer minor units. `Float` and `Double` are forbidden for monetary amounts.
 - Financial invariant arithmetic is exact integer arithmetic. Persisted amounts remain signed `Long` values, but validation, absolute magnitude, zero-sum checks, allocation sums, and derived-balance reference calculations must use overflow-safe comparisons or widened intermediates; two's-complement wraparound is never a valid financial result.
+- New Income, Expense, and Transfer magnitudes are in `1..Long.MAX_VALUE` minor units. An Expense entry is therefore in `-Long.MAX_VALUE..-1`; `Long.MIN_VALUE` is not a representable new Expense because its positive magnitude cannot be expressed by the M2 amount contract. `OPENING_BALANCE` alone accepts the complete signed `Long` range, including zero.
+- Every finance write validates the post-write balance of every affected account with widened exact arithmetic and rejects the complete operation when a balance cannot be represented as a signed `Long`.
 - An MVP income or expense has exactly one non-zero `AccountEntry`. An expense entry is negative; an income entry is positive; the transaction magnitude is `abs(AccountEntry.amountMinor)`.
 - Every category allocation amount is a positive absolute value.
 - An income or expense has one or more category allocations that sum exactly to the transaction magnitude.
+- An income or expense has at most one category allocation for each Category identity.
 - A same-currency transfer has exactly two `AccountEntry` rows, references two distinct accounts, and is zero-sum (its algebraic sum is zero; 代数和为零) across those entries.
 - A transfer has no category allocation.
 - `OPENING_BALANCE` is a transaction with exactly one `AccountEntry`; its signed value, including zero, defines the opening balance, and there is no direct balance field.
 - Creating an `Account`, its `OPENING_BALANCE` transaction, and that transaction's unique `AccountEntry` is one atomic operation: all three are created or none is created.
-- Account balance equals the sum of all effective `AccountEntry` values and must be reproducible from those entries. An entry is effective when its owning transaction is not soft-deleted.
+- Account balance equals the sum of all effective `AccountEntry` values and must be reproducible from those entries. An entry is effective when its owning transaction is not withdrawn/soft-deleted. Withdraw and Restore change the effectiveness of every entry owned by one Transaction atomically; a Transfer can never become one-sided.
 - A `Transaction`, its entries, allocations, and requested relations commit atomically. Failure leaves none of the requested changes committed.
 - MVP does not claim full double-entry accounting.
 

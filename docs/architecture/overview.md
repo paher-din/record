@@ -114,6 +114,8 @@ flowchart LR
 
 Each ViewModel exposes an immutable `StateFlow<UiState>`. The UI sends events and renders state; it does not receive persistence representations. A ViewModel keeps all entered fields and selected media in draft state until the complete durable save succeeds. Failure leaves the draft available for correction or retry and does not surface a success state. The precise user-visible durability contract is defined by the [MVP requirements](../product/mvp-requirements.md).
 
+For M2 finance, `:app` passes the startup-verified repository binding and typed navigation callbacks into `:feature:finance`; it does not translate finance commands or own drafts. Finance ViewModels consume typed application values and Flows from `:core:data`. Account/opening, Income/Expense plus allocations, Transfer, Transaction Withdraw/Restore, and Category lifecycle each cross one repository-owned atomic boundary. A potentially committed response is reconciled by stable identity inside the data boundary before UI success; no ViewModel or composable infers commit state from an exception.
+
 ## Deferred maintenance boundary
 
 AndroidX WorkManager is part of the approved native stack. It schedules only delayed, idempotent, non-user-blocking maintenance whose correctness preconditions are already durably represented: zero-reference attachment cleanup after its grace period, retry of retiring-generation cleanup, and another maintenance operation only after explicit architecture approval.

@@ -28,7 +28,7 @@ The shell does not offer a generic **Entry**, **Record**, or **Create anything**
 | Destination or screen family | Owning feature | Responsibility and write boundary |
 |---|---|---|
 | Timeline | `:feature:timeline` | Default home and mixed day read model for transactions and notes. It reads projections and never writes source facts. |
-| Finance | `:feature:finance` | Accounts, account history, transaction details and editors, first-level Category catalog lifecycle, balances, monthly income/expense totals, and category statistics. |
+| Finance | `:feature:finance` | Accounts, account history, transaction details and editors, recoverable ordinary-transaction withdrawal/restore, first-level Category catalog lifecycle, balances, monthly income/expense totals, and category statistics. |
 | Notes | `:feature:notes` | Note list, Markdown note details and editor, confirmed note images, note-side transaction linking, and shared Tag catalog lifecycle. |
 | Projects | `:feature:timeline` | Active/archived Project lists, Project create/rename/archive/restore, Project detail, and aggregation of transactions and notes by their one optional primary project. It never edits transaction/note facts or acts as a generic relation editor. |
 | Unified Search | `:feature:timeline` | Rebuildable mixed result projection with transaction/note type filtering. It dispatches selection to the owning detail screen. |
@@ -78,6 +78,8 @@ flowchart TD
     TX_DETAIL["Transaction detail (Finance-owned)"]
     NOTE_DETAIL["Note detail (Notes-owned)"]
     ACCOUNT_DETAIL["Account detail"]
+    WITHDRAWN_TX["Withdrawn transactions"]
+    TX_STATUS_CONFIRM["Transaction withdraw/restore confirmation"]
     PROJECT_DETAIL["Project detail"]
 
     EXPENSE_EDIT["Expense editor"]
@@ -130,6 +132,8 @@ flowchart TD
     FI_HOME --> ACCOUNT_DETAIL
     FI_HOME --> TX_DETAIL
     FI_HOME --> ACCOUNT_EDIT
+    FI_HOME --> WITHDRAWN_TX
+    WITHDRAWN_TX --> TX_DETAIL
     NO_HOME --> NOTE_DETAIL
     PR_HOME --> PROJECT_DETAIL
     PR_HOME --> PROJECT_EDITOR
@@ -142,6 +146,8 @@ flowchart TD
     TX_DETAIL --> EXPENSE_EDIT
     TX_DETAIL --> INCOME_EDIT
     TX_DETAIL --> TRANSFER_EDIT
+    TX_DETAIL --> TX_STATUS_CONFIRM
+    TX_STATUS_CONFIRM --> TX_DETAIL
     NOTE_DETAIL --> NOTE_EDIT
     TX_DETAIL --> ATTACHMENT_PREVIEW
     NOTE_DETAIL --> ATTACHMENT_PREVIEW
@@ -211,6 +217,8 @@ Typed route keys are stable screen contracts for future Compose implementation. 
 | `ProjectEditor` | Create-or-rename mode and item ID only for rename | Projects retained list/detail, or the same picker for inline create |
 | `CatalogArchiveConfirm` | Catalog type, item ID, and exact launching context; current name/state and impact summary are loaded rather than trusted as route arguments | Launching Category/Tag catalog or Projects state |
 | `TransactionDetail` | `transactionId` plus optional origin context | The exact originating Timeline, Finance, Project, or Search state |
+| `WithdrawnTransactions` | Retained withdrawn-list position/filter plus Finance origin context | Exact retained Finance state |
+| `TransactionStatusConfirm` | `transactionId`, exact Withdraw-or-Restore action, and origin; current state and financial impact are loaded rather than trusted as route arguments | Same `TransactionDetail`; durable completion returns there with the new effective/withdrawn state |
 | `NoteDetail` | `noteId` plus optional origin context | The exact originating Timeline, Notes, Project, or Search state |
 | `AccountDetail` | `accountId` | Prior Finance state |
 | `ProjectDetail` | `projectId` plus origin-derived read-only or Projects-management mode; an archived historical target remains resolvable | Exact originating Transaction/Note detail or retained Projects state |
@@ -238,7 +246,7 @@ An origin context is navigation-only state needed to return to the previous scro
 | Unified Search, Settings, `CategoryCatalog`, `TagCatalog`, `SettingsExport`, `SettingsBackup`, `SettingsRestore` | Stable browse/result state | Visible | Returns to retained origin | Catalog lists retain active/archived mode and list position |
 | `PrivacySecuritySettings`, `DiagnosticsSettings` | Stable browse/result state | Visible | Returns to Settings | Authentication prompts and export selection follow [interaction rules](interaction-rules.md) |
 | `AppLockRoute`, `LockedRecoverySurface` | `Phase.Checking`, `Phase.RecoverableFailure`, `Phase.BlockingFailure`, or transient `Phase.Completed` | Not constructed | Cannot enter the shell before Completed routing; Back only backgrounds/exits the app | Authentication success routes according to the already-evaluated recovery gate; failure/cancel remains locked |
-| Any transaction, note, account, Category, Tag, or Project Editor; catalog archive confirmation; attachment preview | Any | Hidden | Draft/confirmation/preview rule in [interaction rules](interaction-rules.md) | Editor or lifecycle `Phase.Saving` blocks Cancel/Discard until Completed or Failure |
+| Any transaction, note, account, Category, Tag, or Project Editor; catalog or transaction-status confirmation; attachment preview | Any | Hidden | Draft/confirmation/preview rule in [interaction rules](interaction-rules.md) | Editor or lifecycle `Phase.Saving` blocks Cancel/Discard until Completed or Failure |
 | `CategoryPicker`, `TagPicker`, `ProjectPicker` | `Phase.Idle` or selection failure | Hidden | Returns to the same parent without writing | Inline create returns here only after durable success and auto-selects the new item |
 | Saved Detail relationship/assignment subflow | Before `Phase.Saving` | Hidden | Returns to the same Detail without writing | Confirm enters locked `Phase.Saving`; terminal returns to same Detail |
 | Editor relationship/assignment subflow | `Phase.Idle` | Hidden | Returns to the same parent draft without writing | Done updates only parent draft; parent Save owns visibility |
@@ -259,7 +267,7 @@ Each top-level destination owns an independent navigation back stack and a retai
 | Tab | Retained scroll position | Retained filters | Retained date state |
 |---|---|---|---|
 | Timeline | Mixed-card list position and offset | Active timeline filters, if any | Selected day |
-| Finance | Active account/statistics list position and offset | Selected account/category/type filters | Selected statistics month or transaction-history date range |
+| Finance | Active account, transaction-history, or withdrawn-list position and offset | Selected account/category/type/effective-withdrawn filters | Selected statistics month or transaction-history date range |
 | Notes | Note-list position and offset | Active note/tag/project filters | Selected note-date filter or date anchor |
 | Projects | Project-list or current project-feed position and offset | Active/archived list mode plus project/entity-type filters | Selected project-feed date filter or date anchor |
 
@@ -279,7 +287,7 @@ Compose implementation must hoist these values out of disposable list items and 
 4. Editing is dispatched by source type. Timeline and Search never host a generic editor and never mutate a projection. Projects may create, rename, archive, or restore Project facts, but it never edits transaction/note facts or writes an aggregation projection.
 5. Transaction-to-note and note-to-transaction links open the linked source detail in the owning feature. Back returns to the originating detail.
 6. An active primary-project chip or an archived historical primary-project reference opens the matching `ProjectDetail`; navigation alone never changes the assignment. An archived Project detail is read-only when opened from Transaction/Note history and clearly marks the archived state. Restore is the only permitted mutation and is exposed only in an authorized Projects-management context after normal shell access is allowed; restoring does not create a new assignment.
-7. A missing target, or a soft-deleted Transaction/Note target, renders an unavailable state with safe Back and never redirects to an unrelated record. A soft-deleted Project is the user-facing archived state, so an existing historical reference resolves to the read-only archived `ProjectDetail` instead of the unavailable state. Archived Projects remain excluded from every new-assignment selector.
+7. A missing target renders an unavailable state with safe Back and never redirects to an unrelated record. A soft-deleted Transaction is unavailable from active Timeline, Project, and Search results, but a Finance account-history reference or `WithdrawnTransactions` opens its marked read-only `TransactionDetail` so it can be restored. A soft-deleted Note remains unavailable. A soft-deleted Project is the user-facing archived state, so an existing historical reference resolves to the read-only archived `ProjectDetail` instead of the unavailable state. Archived Projects remain excluded from every new-assignment selector.
 8. Successful creation of an Expense, Income, or Transfer opens its Finance-owned `TransactionDetail`; successful account creation opens `AccountDetail`. Back restores the exact retained launch context. Successful edit returns to its source detail. A relationship/assignment action launched from a saved Detail may save independently and returns to that Detail; the same action launched from any Editor only updates and returns to the parent draft. Image/picker subflows also return to the parent draft. None applies a top-level success route.
 9. Search result and error updates are scoped to the current query/filter request revision. Clearing, closing, or leaving Search invalidates pending updates, except that opening a current result preserves the completed Search state for Back.
 10. App startup evaluates the restore/migration recovery gate before Room and before the shell. When App Lock is enabled and authentication has not succeeded, pending recovery may show only `LockedRecoverySurface`; detailed status, diagnostics, terminal outcomes, counts, and user data remain hidden. Authentication then routes to the detailed recovery state. Replacement verification leads to terminal success, verified rollback leads to terminal failure with access to the original data, and unresolved recovery never enters the shell.
@@ -287,6 +295,7 @@ Compose implementation must hoist these values out of disposable list items and 
 12. Diagnostic export is reachable only after shell authentication or an authenticated detailed recovery route. It never becomes a route around App Lock or unresolved recovery.
 13. Category, Tag, and Project selectors show only active items for new selection, while an existing archived historical reference remains visibly marked. Inline Create opens the typed catalog editor; durable success returns to the same picker, auto-selects the new item, and preserves every other parent-draft field.
 14. Settings → Categories and Settings → Tags own active/archived catalog browsing and lifecycle entry. Projects owns the equivalent active/archived list and lifecycle entry for Project. Archive confirmation and all catalog editors are modal; Cancel/Back changes no catalog fact.
+15. An effective non-opening Transaction detail may open `TransactionStatusConfirm` for Withdraw; a withdrawn Transaction detail is read-only and may open the same route for Restore. The confirmation reloads current state and financial impact, durable completion returns to the same detail, and stale/failure outcomes change neither Transaction nor balance. `OPENING_BALANCE` exposes neither action.
 
 ## Navigation acceptance checks
 
@@ -299,8 +308,9 @@ Future Compose navigation and UI tests must demonstrate:
 - global Search and Settings are reachable from every top-level app bar;
 - editors, attachment preview, and Restore Wizard hide bottom navigation and restore the prior context on return;
 - cards from Timeline and Search dispatch to the correct source detail and Back restores origin state;
-- missing or soft-deleted Transaction/Note targets show unavailable, while a historical reference to an archived Project opens its marked read-only detail; only Projects-management context may expose Restore, and archived Projects never appear as new assignment choices;
+- missing targets and soft-deleted Notes show unavailable; a withdrawn Transaction opens read-only only from Finance history/withdrawn context and remains absent from active Timeline/Project/Search; a historical reference to an archived Project opens its marked read-only detail; only Projects-management context may expose Project Restore, and archived Projects never appear as new assignment choices;
 - new finance/account success routes and edit/subflow returns follow the deterministic destinations above;
+- Finance exposes a retained withdrawn-transactions entry; Withdraw/Restore confirmation hides bottom navigation, reloads rather than trusts route display data, returns to the same Transaction detail only after durable completion, and never exposes an opening-balance action;
 - relationship and assignment subflows choose save behavior from saved Detail versus any Editor context; an existing-record Editor never uses the independent Detail save path;
 - empty Category/Tag/Project lists expose type-appropriate Create, inline create returns to the same picker with the new item selected, and the parent draft otherwise remains byte-for-byte equivalent at the UI-state boundary;
 - Settings → Categories and Settings → Tags retain active/archived list state; Projects defaults to active, can switch to archived, and Restore returns the item to active selection without changing existing historical references;
