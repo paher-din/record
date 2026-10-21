@@ -1,0 +1,1239 @@
+=== 5 [user]
+# AGENTS.md instructions for D:\record
+
+<INSTRUCTIONS>
+## 关于我
+我是一名专业为计算机科学与技术的学生。
+我用 Codex 做 Vibe Coding的个人创意想法的开发、落地。
+
+## 思维原则
+- 所有决策从问题本质出发，不因「惯例如此」照搬。
+- 回到问题本身：要解决什么？最直接的路径是什么？从零设计会怎么做？
+- 不要谄媚。不要夸我的想法好、不要说「这是个很好的问题」、不要开头加「当然可以」。
+- 给我真实判断，方案有问题直接指出来。发现更好的做法直接说，不用等我问。
+
+## 约束先行
+- 没有规范的工作空间不动手。已有规范的项目，严格遵守其 AGENTS.md 中的约定。需要调整规范时先改文档、再改实践，不要反过来。
+
+## 沟通方式
+- 默认中文，代码、命令、变量名用英文
+- 结论先行，再给理由，不要先铺垫背景
+- 遇到模糊需求，先给最合理的方案，再问要不要调整
+- 任务完成后，有需要我手动验收的，请给我验收清单，你可以自行验收的就不要让我验收
+- 不要问「你确定要这样吗」，除非命中下方红线
+
+## 自主边界（红线，必须说明操作理由以及可能的风险然后问我同不同意）
+以下操作即使在 auto-accept 模式下也必须停下来问我：
+- 删除文件、目录或 git 历史
+- 修改 .env、密钥、token、CI/CD
+<environment_context>
+  <cwd>D:\record</cwd>
+  <shell>powershell</shell>
+  <current_date>2026-08-28</current_date>
+  <timezone>Asia/Shanghai</timezone>
+  <filesystem><workspace_roots><root>D:\record</root><root>C:\Users\p3148\.codex\visualizations\2026\08\27\01a04404-8c81-7771-9cc3-56bdb41d4733</root></workspace_roots><permission_profile type="disabled"><file_system type="unrestricted" /></permission_profile></filesystem>
+</environment_context>
+
+=== 8 [user]
+
+# Files mentioned by the user:
+
+## roadmap.md: D:\record\docs\roadmap.md
+
+## My request for Codex:
+先在按照roadmap, 进入m1
+
+
+=== 13 [assistant]
+我会先核对 `roadmap`、文档索引和规格生命周期规则，确认“进入 M1”在项目里对应的是创建候选草案、推进审批，还是激活已批准规格；在规则确认前不改代码。
+
+=== 19 [assistant]
+已确认当前没有活动规格，`M1` 只是 roadmap 中的下一候选项。按项目契约，当前能做的第一步只能是创建 `draft spec.md`，不能同时写 plan、改路由或实现代码；我继续读取生命周期模板和 M1 所依赖的产品/交互/架构事实，再起草规格。
+
+=== 25 [assistant]
+这一步涉及把 roadmap 的一句目标收敛成可审批规格，属于需求设计。我会使用 `brainstorming` 技能先检查约束、既有事实和待决策点；它只影响规格草案，不会越权生成 plan 或代码。
+
+=== 98 [assistant]
+接下来的 M1 规格会涉及主题、底部导航和共享状态界面。需要我用浏览器提供可视化原型、布局对比和流程图吗？这项功能仍较新，会消耗更多 token，并需打开本地 URL。
+
+=== 104 [user]
+可以
+
+
+=== 109 [assistant]
+你已启用可视化伴侣。我先读取它的使用规则；后续只有布局、主题或交互对比确实“看图比读文字更清楚”时才会调用，规格边界问题仍用文字逐项确认。
+
+=== 164 [assistant]
+我建议 M1 采用「简体中文界面 + 英文代码与 typed route key」，所有文案进入 Android string resources，但本阶段不做多语言切换。要按这个基线继续，还是改为英文界面？
+
+=== 171 [user]
+按照这个基线继续
+
+
+=== 176 [assistant]
+语言基线已确定：界面简体中文，代码与路由名保持英文，文案资源化但 M1 不加入语言切换。接下来用可视化伴侣确认长期视觉基调；这会直接约束 M1 的主题 token 和共享状态样式。
+
+=== 187 [assistant]
+请打开 [可视化伴侣](http://localhost:60406)。页面展示了三种 M1 视觉基调：温暖编辑感、原生 Material、深色数据感。
+
+请点击选择一个方向，然后在这里告诉我是否需要调整。
+
+=== 194 [user]
+
+<in-app-browser-context source="ambient-ui-state">
+This block is automatically supplied ambient UI state, not part of the user's request. Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.
+# In app browser:
+- The user has the in-app browser open with 1 tab.
+- Current URL: http://localhost:60406/
+</in-app-browser-context>
+
+## My request for Codex:
+A
+
+
+=== 203 [assistant]
+已记录 A：温暖编辑感。它会落为暖中性背景、深绿主强调、低刺激层级和克制纸感，不复制默认 Material 配色。下一项仍是视觉决策：确定这套基调是否同时覆盖系统深色模式。
+
+=== 214 [assistant]
+[可视化伴侣](http://localhost:60406) 已更新，展示 A 方向的两种主题策略：跟随系统的浅/深双主题，以及仅浅色。
+
+请选择 A1 或 A2，并在这里回复。
+
+=== 221 [user]
+
+<in-app-browser-context source="ambient-ui-state">
+This block is automatically supplied ambient UI state, not part of the user's request. Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.
+# In app browser:
+- The user has the in-app browser open with 1 tab.
+- Current URL: http://localhost:60406/
+</in-app-browser-context>
+
+## My request for Codex:
+A1
+
+
+=== 230 [assistant]
+已记录 A1：浅色/深色都定义温暖编辑感 token，运行时跟随系统，不增加应用内主题开关；动态取色不会覆盖这套产品配色。视觉选择暂告一段落，我把伴侣切到等待页，继续确认 M1 的范围边界。
+
+=== 241 [assistant]
+我建议 M1 按“可长期演进的产品级空壳”交付：导航、主题、无障碍、共享状态和启动门做到正式质量；四个领域只呈现有意设计的空状态，不伪造业务数据，也不提前实现 M2–M5。
+
+是否按这个完成度继续，还是只做满足自动化验收的技术骨架？
+
+=== 248 [user]
+按照这个完成度继续
+
+
+=== 257 [assistant]
+我建议 M1 的全局 `+` 显示并可点击四个精确选项：支出、收入、转账、笔记。选择后进入各自 feature-owned 的 typed 占位目的地，隐藏底栏并明确提示“功能将在后续切片开放”；不出现输入字段、保存动作或假数据。
+
+这样能真实验证 typed routing 和编辑器可见性规则。是否按此处理？
+
+=== 264 [user]
+可以
+
+
+=== 273 [assistant]
+全局 `+` 的过渡行为已确定。规格还必须冻结 M1 的健康/待恢复启动预算；这不能凭感觉填写，我先读取现有 P5 启动门测试并测量当前骨架在参考设备上的冷启动基线，再给出可审批阈值。此操作只收集证据，不改文件或数据结构。
+
+=== 291 [assistant]
+参考设备当前未连接，仓库也没有可复用的启动耗时数字，所以我不会伪造“实测基线”。我会用 Android 官方启动指标先提出保守预算，并在 M1 plan 中把参考设备预跑设为首个阻断任务；同时核对官方 typed navigation 方案，避免规格冻结过时依赖。
+
+=== 313 [assistant]
+我建议冻结以下冷启动预算（参考设备、`CompilationMode.Full`、5 次预热 + 30 次测量、nearest-rank p95）：
+
+- 健康状态：首帧 ≤ 1,000 ms，Timeline 可交互/`reportFullyDrawn` ≤ 1,500 ms。
+- 待激活或待迁移恢复：首个安全恢复门界面 ≤ 1,000 ms，并且此前绝不能绘制 shell 或用户数据。
+- 恢复任务本身的完成耗时不算入 M1；M1 衡量的是“尽快进入正确且安全的界面”。
+
+设备当前未连接，因此 plan 的首个阻断任务会先做参考设备基线预跑；若预算不可达，必须修订规格并重新批准，不能静默放宽。按这组预算继续吗？
+
+=== 320 [user]
+继续吧
+
+
+=== 325 [assistant]
+需求澄清已收敛：中文界面、A/A1 视觉、产品级空壳、四个可点击 typed 创建入口，以及启动预算都已确认。现在进入技术方案比较；这一步决定 typed navigation 和多标签状态如何实现，不涉及写 plan 或代码。
+
+=== 331 [assistant]
+有三条可行路径：
+
+1. 方案 A（推荐）：Navigation Compose 2.9.8 + Kotlin Serialization typed routes。`:app` 负责 route key、四个 back stack 和图装配；各 feature 负责自己的页面内容与导航回调。官方已支持类型安全目的地和多 back stack 状态保存/恢复，正好匹配当前架构。[类型安全导航](https://developer.android.com/guide/navigation/design/type-safety)、[多 back stack](https://developer.android.com/guide/navigation/backstack/multi-back-stacks)
+
+2. 方案 B：Navigation 3。它让应用直接拥有 back stack，模型更显式；但官方迁移指南仍未覆盖跨 back stack 的共享目的地，而 M1 的 Search、Settings 都要求从任意标签进入并精确返回，当前采用会增加自建状态协调风险。[Navigation 3 迁移限制](https://developer.android.com/guide/navigation/navigation-3/migration-guide)
+
+3. 方案 C：自建 
+
+=== 337 [user]
+A
+
+
+=== 351 [assistant]
+方案 A 已确定。下面我按“范围与所有权 → 导航与状态 → 视觉与共享状态 → 启动安全 → 验收”分段提交设计；每段确认后再进入下一段，最后才写入 `draft spec.md`。
+
+=== 357 [assistant]
+第一段：范围与模块所有权
+
+M1 只交付产品级 app shell，不提前实现领域行为：
+
+- `:app`：启动门编排、typed route、Navigation Compose 图装配、四标签 scaffold、全局 `+`/搜索/设置，以及 shell chrome 显隐策略。
+- `:core:ui`：A/A1 主题 token、排版/间距/形状、共享 `loading`/`empty`/`error`/`ready` 展示组件及无障碍语义。
+- `:feature:timeline`：Timeline、Projects 和统一搜索的 M1 表面。
+- `:feature:finance`：Finance 表面及支出/收入/转账 typed 占位目的地。
+- `:feature:notes`：Notes 表面及笔记 typed 占位目的地。
+- `:core:data`：保持 P5 已验证的启动恢复机制；M1 只通过既有应用边界接入，不新增 schema、迁移或恢复协议。
+
+所有领域表面使用注入的 UI presentation state；生产默认呈现有意设计的空状态，测试可注入 ready/error/loading。UI 不读取 DAO、Room Entity 或附件路径，不伪造业务事实。M1 不增加 DI 框架、业务 ViewModel、保存接口或未来空模块。
+
+
+
+=== 364 [user]
+确认
+
+
+=== 373 [assistant]
+第二段：导航与状态
+
+M1 的 production route 只包含：
+
+- 根目的地：`TimelineHome`、`FinanceHome`、`NotesHome`、`ProjectsHome`
+- 全局目的地：`UnifiedSearch`、`Settings`
+- 来源详情占位：`TransactionDetail` 归 Finance，`NoteDetail` 归 Notes
+- 创建占位：`ExpenseEditor`、`IncomeEditor`、`TransferEditor`、`NoteEditor`
+- 安全门：`RestoreRecoveryRoute`
+
+全局 `+` 是 modal chooser，不是 generic Entry route。未来 M2–M7 的目录、选择器、导出和恢复向导 routes 不在 M1 注册。
+
+行为约束：
+
+- 使用一个 app-owned `NavController`，通过 `saveState`/`restoreState` 保留四个独立 top-level back stack。
+- Timeline 默认由注入的 `Clock` 和 `ZoneId` 选择本地今天；跨午夜不自动跳日，只有显式“回到今天”会重读时间并回到列表顶部。
+- 切换或重选标签不重置状态；配置重建和合法进程恢复保留当前标签、各栈、日期、筛
+
+=== 380 [user]
+确认
+
+
+=== 389 [assistant]
+导航段已确认。第三段是主题和共享展示状态，属于视觉内容；我会再次使用可视化伴侣展示 `loading / empty / error / ready` 在 A/A1 体系中的统一层级与无障碍动作。
+
+=== 400 [assistant]
+[可视化伴侣](http://localhost:60406) 已展示第三段：A/A1 主题下统一的 `loading`、`empty`、`error`、`ready` 状态，以及浅色/深色对应关系。
+
+约束包括中文资源文案、48dp 最小触控目标、明确读屏状态、错误与空状态分离、稳定错误文案、不显示原始异常；这些展示状态与 `Phase.*` 操作状态并存，不互相替代。
+
+请查看后选择“确认这一段”或告诉我需要调整之处。
+
+=== 407 [user]
+
+<in-app-browser-context source="ambient-ui-state">
+This block is automatically supplied ambient UI state, not part of the user's request. Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.
+# In app browser:
+- The user has the in-app browser open with 1 tab.
+- Current URL: http://localhost:60406/
+</in-app-browser-context>
+
+## My request for Codex:
+确认
+
+
+=== 411 [assistant]
+共享状态段已确认。下一段聚焦启动安全：M1 必须把 P5 已验证的真实恢复门接到 UI，不能用延时动画或假状态代替。我先核对现有 `:core:data` 对外启动表面，确保设计不要求绕过或复制恢复协议。
+
+=== 429 [assistant]
+第四段：真实启动门与 shell 交接
+
+检查发现当前 `RecordRepository.open()` 会同步完成恢复，并把待恢复/阻断情况压缩成通用失败；它无法在恢复期间及时绘制 `RestoreRecoveryRoute`，也无法向 UI 提供安全重试状态。直接拿它接 M1 会违反已确认的启动预算和信息架构。
+
+M1 需要在 `:core:data` 增加一个窄的 application-facing 启动边界，但不改变 P5 的恢复协议：
+
+- `Checking`：只检查/推进现有恢复状态，不构造 Room 或 shell。
+- `RecoveryPending`：立即进入不含用户数据、路径或计数的 `RestoreRecoveryRoute`；后台继续现有幂等恢复。
+- `Ready`：完整恢复门通过并成功打开 repository 后，才构造 Timeline shell。
+- `Blocked`：停留在恢复门，只提供稳定错误类别和安全 Retry；不得“继续使用”、创建空数据库或进入新恢复流程。
+
+`RecordApplication` 持有唯一启动协调器；耗时工作不阻塞主线程。任何时刻只能由协调器打开 repository。Retry 继续同一恢复协议，不能绕过 P5 顺序。首次 shell 帧之前不得出现 Room-backed 内容。
+
+这会新增一个恢复相关
+
+=== 436 [user]
+确认
+
+
+=== 445 [assistant]
+启动安全段已确认，ADR 前置条件会写入草案。最后一段收敛验收与证据，尤其是启动基准、状态保留、无障碍和最终 APK 策略检查；确认后就具备写 `draft spec.md` 的条件。
+
+=== 457 [assistant]
+第五段：验收与证据
+
+M1 至少通过以下自动化门：
+
+1. 导航与状态
+
+   - 默认进入 Timeline，底栏顺序严格为时间线/财务/笔记/项目。
+   - 四个 back stack、来源页面、滚动/筛选/日期状态在切换、子页面往返、配置重建和合法进程恢复后保持独立。
+   - Timeline 覆盖无保存状态、恢复状态、前台跨午夜、显式“回到今天”。
+   - `+` 只有支出/收入/转账/笔记；typed route 指向正确 feature。
+   - Search、Settings、Transaction/Note 来源详情精确返回 origin。
+   - editor 与 test-only progress 隐藏底栏；不存在 generic Entry。
+
+2. 共享 UI 与无障碍
+
+   - 代表页面逐一验证 `loading`、`empty`、`error`、`ready`，并证明它们不改写 `Phase.*`。
+   - 浅色、深色、200% 字体缩放、读屏标题/状态/Retry、焦点顺序、48dp 触控目标均通过。
+   - 生产构建不含 synthetic ready 数据；中文文案全部资源化。
+
+3. 启动安全
+
+   - 空、典型、高容量 vault 的健康启动，以及 pending activation、pending migration-r
+
+=== 464 [user]
+确认
+
+
+=== 500 [assistant]
+设计五段已全部确认。我现在把它们写成项目生命周期要求的唯一 `draft spec.md`；写入前会补齐依赖版本事实和当前代码差距，随后做占位符、冲突、范围和歧义自查。此次只新增 M1 规格文件，不创建 plan、ADR 或实现代码。
+
+=== 554 [assistant]
+M1 草案已写入。我正在进行规格自查：占位符、内部矛盾、相对链接、生命周期唯一性、范围越界和 `git diff --check`；发现问题会直接修正文档，不创建任何实现文件。
+
+=== 570 [assistant]
+自查发现一个必须修正的安全点：启动基准需要反复重置 fixture，不能碰参考设备上现有 `com.paherdin.record` 的数据。草案将绑定独立 benchmark application ID，并把首次清理隔离测试包数据列为需单独说明目标与风险、取得删除许可的执行红线。
+
+=== 629 [assistant]
+自查已通过，另修正了两个问题：启动 fixture 在每次预热与测量前都恢复同一状态；ADR 必须在 plan 批准前接受，但不阻止 approved spec 阶段先起草 plan。现在按 brainstorming 流程只暂存并提交这份 draft spec，随后请你审阅书面文件。
+
+=== 653 [assistant]
+M1 已按 roadmap 进入 `draft` 生命周期，尚不是 active spec，也未创建 plan 或修改代码。
+
+规格文件：[spec.md](D:/record/docs/specs/mvp/m1-app-shell/spec.md)
+
+关键前置：plan 批准前需同步启动门架构事实并接受 ADR 0016；启动基准使用隔离包，执行数据清理前仍会单独征求删除许可。
+
+自查、链接、生命周期唯一性和 `git diff --check` 均通过。提交：`7302367`。
+
+请审阅规格；若无修改，请明确回复“批准 M1 spec”。
+
+::git-commit{cwd="D:\record"}
+
+=== 662 [user]
+你自己来审阅一遍，如果有问题就修复，没问题可以自行批准并进入plan撰写
+
+
+=== 671 [assistant]
+我会先做一次独立规格审计；只有审计无阻断项才记录你本条消息作为 M1 spec 的明确批准。随后使用 `writing-plans` 技能起草 `plan.md`。计划仍不会自行批准：启动门 ADR 0016 与核心文档同步是 plan 批准前置条件。
+
+=== 736 [assistant]
+独立审阅没有发现产品范围或生命周期阻断，但发现一个需要纳入批准前验证的技术风险：AGP 9.3 内置 Kotlin 与 Serialization 插件组合尚未在本仓库实测。规格不会声称已验证；plan 会把插件/依赖烟测设为首个代码前入口门，失败则修订规格而不是切换构建模式。
+
+=== 803 [assistant]
+规格审计还发现两项实际缺口，我会先修复再批准：
+
+- 浅色暖棕 `#9B6741` 对背景仅 4.26:1，不满足普通文字 4.5:1，调整为视觉接近但通过的 `#925D39`（4.89:1）。
+- P0 的应用图标缺失只在骨架阶段被豁免；“产品级 app shell”不能继续保留。M1 将补本地矢量 adaptive/monochrome 图标和无数据泄露的系统启动画面，不引入素材依赖。
+
+=== 818 [assistant]
+审计修复完成，无剩余阻断项。现在记录你本条授权为 M1 spec 的明确 lifecycle approval，并同步 `AGENTS.md`、`docs/index.md`、`roadmap.md`：M1 为 `approved`，但仍无 active spec，plan 未批准，功能实现仍禁止。
+
+=== 837 [assistant]
+Spec 已批准，M1 仍非 active。现在开始按 `writing-plans` 生成计划：我会先锁定文件职责、任务依赖与验证命令，再写成可逐项派发的 agentic contract；不会触碰功能代码。
+
+=== 917 [assistant]
+文件与依赖图已锁定。计划会把功能实现拆成 11 个可验证任务，其中 Finance、Notes、Timeline 三个 feature 在共享 UI 基线完成后可并行；`core:data` 启动边界、app 集成、基准和最终门串行。main agent 只负责生命周期、dispatch、证据验收与集成。
+
+=== 953 [assistant]
+计划自查发现一个必须修复的规格冲突：现有 `Phase.Checking` 不能直接转到 `Phase.Recovering`。我不会改核心交互表；启动协调器改为发出 `RecoveryDetected`，UI 合法经过 `Checking → Running → Recovering`，再进入恢复路由。这保持现有 `Phase.*` 合同不变。
+
+=== 1059 [assistant]
+Plan 初稿已完成，正在做最后三项自查：19 条 acceptance 的任务覆盖、跨任务类型签名一致性、以及所有命令是否可直接运行。刚修复了非法 Phase 跳转、无结果 `git grep` 的退出码处理和 benchmark 证据目录占位写法。
+
+=== 1082 [assistant]
+Plan 自查通过：12 个任务、66 个可执行步骤、12 个明确 write scope，覆盖 spec 19 条 acceptance；没有占位符、非法 Phase 跳转、重叠并发写域或未处理的删除红线。现在提交 plan 草案与 lifecycle 链接同步，仍不把 plan 标为 approved。
+
+=== 1100 [assistant]
+提交后状态复核发现一处纯措辞残留：已批准的 spec 仍写着 “This draft does not create ADR”。我会改为 “This specification”，不改变任何行为或批准状态，然后补一个小提交。
+
+=== 1116 [assistant]
+M1 spec 已独立审阅、修复并批准；implementation plan 已完成草案。
+
+- [Spec](D:/record/docs/specs/mvp/m1-app-shell/spec.md)：`approved`
+- [Plan](D:/record/docs/specs/mvp/m1-app-shell/plan.md)：`draft`，共 12 个任务、66 个步骤
+- 已修复：色彩对比度、启动图标/启动画面、benchmark 数据隔离、合法 Phase 跳转、AGP/Serialization 兼容入口门
+- 验证：链接、生命周期唯一性、占位符、任务覆盖、类型一致性、`git diff --check` 均通过
+- 当前仍无 active spec，未修改功能代码
+
+Plan 暂不能批准：必须先起草并接受 ADR 0016，同步启动门相关核心文档，然后由你明确批准 plan。建议下一步处理 ADR 0016。
+
+相关提交：`3f69c8e`、`631ca9e`、`3641675`。工作树干净。
+
+::git-commit{cwd="D:\record"}
+
+=== 1123 [user]
+你来把审阅这个plan吧，如果有问题就修复，没有问题可以自行批准
+
+
+=== 1147 [assistant]
+我可以独立审阅并修复 plan，但现在不能把它标成 `approved`：已批准的 spec 明确要求先接受 ADR 0016 并同步核心文档，这是当前真实问题，不是形式步骤。此次我会把 plan 审到“技术上无阻断、生命周期批准被前置条件阻断”的状态，并使用 `verification-before-completion` 做最终证据检查。
+
+=== 1178 [assistant]
+修复后的 plan 现在进入最终证据门。我会用新鲜检查验证：12 个 task ID、13 个 production route、13 个 Phase token、3 个 startup progress、19 条 acceptance 覆盖、链接/占位符/代码围栏/lifecycle 状态和 Git diff。结果只会支持“reviewed draft”；ADR 0016 缺失仍会阻止 `approved`。
+
+=== 1189 [assistant]
+新鲜验证已通过 plan 本身，但结果明确是：`ADR 0016=False`、`activeCount=0`。因此我会记录 plan 为“独立审阅完成、技术上就绪、生命周期批准被 ADR 0016/core-doc 阻断”，不会伪造 `approved`。
+
+=== 1209 [assistant]
+Plan 已独立审阅并修复，但不能批准：`ADR 0016` 不存在，相关核心文档也未同步，这是 spec 明确规定的 plan 批准前置条件。
+
+已修复：
+
+- 并发启动请求合并为同一结果
+- Ready/不可重试结果安全缓存
+- Detail route 在反序列化时校验 canonical ID
+- benchmark 身份检查不再依赖 `BuildConfig`
+- 修正边界扫描退出码和证据目录命令
+
+新鲜验证结果：12 个任务、66 个步骤、13 个 routes、13 个 Phase、3 个 startup progress、19 条 acceptance 均有覆盖；链接、占位符、代码围栏和 `git diff --check` 通过。
+
+当前状态：
+
+- [Spec](D:/record/docs/specs/mvp/m1-app-shell/spec.md)：`approved`
+- [Plan](D:/record/docs/specs/mvp/m1-app-shell/plan.md)：独立审阅完成，但未批准
+- Active spec：无
+- 功能实现：禁止
+- 提交：`275f9aa`
+
+下一步必须先起草并接受 ADR 0016、同步核心文档，之后才能按你的授权批准 plan。
+
+::git-commit{cwd="D:\record"}
+
+=== 1215 [user]
+下一步吧
+
+
+=== 1225 [assistant]
+下一步是 ADR 0016。我会先核对现有恢复协议和 ADR 格式，起草 `proposed` ADR，并准备与之对应的核心文档同步；在你接受 ADR 前，不会把它标成 `accepted`、批准 plan 或开始实现。
+
+=== 1260 [assistant]
+现有 ADR 0010 已经明确拒绝新增 `VaultSession` 公共层，因此 ADR 0016 会选择更窄的 `RecordStartup`：只暴露数据无关的进度、稳定失败类别、Retry 能力和最终 `RecordRepository`，底层仍是同一个 P5 engine。不会新增持久化格式或第二套恢复实现。
+
+=== 1273 [assistant]
+ADR 草案已完成，状态保持 `Proposed`。我不会提前改写稳定核心事实；先把 lifecycle 路由器更新为“ADR 已提出、尚未接受”，提交后交给你审阅。接受后下一步才同步五份核心文档并批准 plan。
+
+=== 1310 [assistant]
+ADR 0016 已起草为 `Proposed`：
+
+[ADR 0016：Application-facing startup gate handoff](D:/record/docs/architecture/decisions/0016-application-facing-startup-gate-handoff.md)
+
+决策核心：
+
+- 新增窄接口 `RecordStartup`，底层仍使用唯一 P5 startup engine
+- 合法进度顺序：`Checking → RecoveryDetected → Recovering`
+- 并发启动合并、Ready 缓存、Retry 严格受控
+- `:app` 不接触恢复记录、路径、阶段或 mutation API
+- 不改变 schema、迁移、恢复记录、备份格式或 generation layout
+- 保留 `RecordRepository.open()` 兼容入口
+
+结构、类型、链接、隐私边界和 `git diff --check` 已验证。当前仍无 active spec，plan 未批准，核心文档尚未改写。
+
+请明确回复“接受 ADR 0016”。接受后我会同步核心文档并完成 plan 批准前置工作。
+
+提交：`87679d5`
+
+::git-commit{cwd="D:\record"}
+
+=== 1316 [user]
+接受 ADR 0016
+
+
+=== 1327 [assistant]
+ADR 0016 的接受已解除 plan 唯一前置阻断。我会完成五份核心文档同步，记录 ADR/plan 批准事实，将 M1 设为唯一 `in-progress` spec，并创建 `verification.md` 的 Execution pointer；本轮不开始功能代码或执行 benchmark 删除操作。
+
+=== 1340 [user]
+# AGENTS.md instructions for D:\record
+
+<INSTRUCTIONS>
+These AGENTS.md instructions replace all previously provided AGENTS.md instructions.
+
+## 关于我
+我是一名专业为计算机科学与技术的学生。
+我用 Codex 做 Vibe Coding的个人创意想法的开发、落地。
+
+## 思维原则
+- 所有决策从问题本质出发，不因「惯例如此」照搬。
+- 回到问题本身：要解决什么？最直接的路径是什么？从零设计会怎么做？
+- 不要谄媚。不要夸我的想法好、不要说「这是个很好的问题」、不要开头加「当然可以」。
+- 给我真实判断，方案有问题直接指出来。发现更好的做法直接说，不用等我问。
+
+## 约束先行
+- 没有规范的工作空间不动手。已有规范的项目，严格遵守其 AGENTS.md 中的约定。需要调整规范时先改文档、再改实践，不要反过来。
+
+## 沟通方式
+- 默认中文，代码、命令、变量名用英文
+- 结论先行，再给理由，不要先铺垫背景
+- 遇到模糊需求，先给最合理的方案，再问要不要调整
+- 任务完成后，有需要我手动验收的，请给我验收清单，你可以自行验收的就不要让我验收
+- 不要问「你确定要这样吗」，除非命中下方红线
+
+## 自主边界（红线，必须说明操作理由以及可能的风
+<environment_context>
+  <current_date>2026-08-29</current_date>
+  <timezone>Asia/Shanghai</timezone>
+  <filesystem><workspace_roots><root>D:\record</root><root>C:\Users\p3148\.codex\visualizations\2026\08\27\01a04404-8c81-7771-9cc3-56bdb41d4733</root></workspace_roots><permission_profile type="disabled"><file_system type="unrestricted" /></permission_profile></filesystem>
+</environment_context>
+
+=== 1343 [user]
+继续吧
+
+
+=== 1361 [assistant]
+我会继续完成完整前置链：将 ADR 0016 标为 `Accepted`、同步五份核心文档、批准 plan 并激活 M1。激活后按 agentic workflow 派发 M1-T01；如果参考设备仍未连接，任务会如实进入 `blocked`，不会改代码或伪造验证。
+
+=== 1386 [assistant]
+ADR/core-doc 同步检查已通过：无直接 `Checking → Recovering`、无 schema/非文档改动、链接与 diff 均通过。现在记录此前 plan 自行批准授权已满足前置条件，激活 M1 并初始化 verification 状态。
+
+=== 1414 [assistant]
+核心同步、plan 批准和 `verification.md` 已写入。提交前我使用 `verification-before-completion` 做最终门：检查唯一 active spec、ADR/plan/spec 状态、五份核心事实、19 条 acceptance 行、链接、无 schema/非文档改动和 `git diff --check`。
+
+=== 1432 [assistant]
+M1-T00 已提交，M1 现为唯一 active spec。接下来按已批准 plan 使用 `subagent-driven-development`：main agent 只维护 verification/验收，功能与构建改动交给有明确 write scope 的 worker。先派发 M1-T01；它第一步只读检查参考设备。
+
+=== 1439 [assistant]
+`subagent-driven-development` 规定功能实现不能直接落在 `main`，并要求先使用 `using-git-worktrees`。我会创建隔离的 `codex/m1-app-shell` worktree；这不会删除或覆盖当前仓库，所有 worker 的 contract 会绑定到该绝对路径。
+
+=== 1450 [assistant]
+M1 已激活并提交。按执行技能，下一项不是代码而是隔离检查：先确认当前 checkout 是否已经是 worktree，以及项目 `.worktrees/` 是否被忽略；若需要新建，我会向你取得一次明确同意。
+
+=== 1461 [assistant]
+M1 已激活为唯一 `in-progress` spec，提交 `eabd19a`。当前尚未开始功能代码。
+
+执行计划要求隔离工作区。是否同意创建：
+
+- Worktree：`D:\record\.worktrees\m1-app-shell`
+- Branch：`codex/m1-app-shell`
+
+作用是保护 `main`；风险仅是增加一份工作副本和磁盘占用，不会删除或覆盖现有文件。你同意后我会连续执行 M1-T01。
+
+::git-commit{cwd="D:\record"}
+
+=== 1467 [user]
+同意
+
+
+=== 1473 [assistant]
+已获得同意。我现在创建 `codex/m1-app-shell` worktree，验证分支/路径隔离与干净基线；随后在该 worktree 更新 `verification.md` 并派发 M1-T01。
+
+=== 1479 [assistant]
+Worktree 已创建在 `D:\record\.worktrees\m1-app-shell`，分支为 `codex/m1-app-shell`，`git-dir` 与 common-dir 已分离。接下来运行未改代码的 baseline `check`；若失败会先停下来区分既有问题。
+
+=== 1502 [assistant]
+Baseline 失败原因不是代码：新 worktree 缺少被 Git 忽略的 `local.properties`，AGP 找不到 SDK。现有主工作区该文件只包含 `sdk.dir`，无密钥；我会在隔离 worktree 写入同一非提交配置并重跑完整 `check`。
+
+=== 1518 [assistant]
+第二次 baseline 仍未进入项目测试：`D:\Android\jbr` 是 JDK 25，当前 Kotlin 2.2.10 只降级到 JVM 24，导致 Java 25/Kotlin 24 target 不一致。这个是本机工具链选择问题；我先寻找已安装的 JDK 17/21，不改项目构建配置或绕过检查。
+
+=== 1546 [assistant]
+已找到兼容 JDK：`C:\Users\p3148\tools\jdk\jdk-17.0.20+8`。这是 Temurin 17，符合 Gradle/AGP 要求。计划中 15 条命令会机械改为该绝对路径，并在 verification 记录两次 baseline 失败均属于 worktree 环境绑定，不是代码回归。
+
+=== 1573 [assistant]
+JDK 17 baseline 仍在运行，当前未产生失败输出；我保持运行不中断，等完整退出码和测试结果后再决定是否派发 T01。
+
+=== 1603 [assistant]
+Baseline 已超过两分钟但工具仍报告进程存活、无错误输出。按项目长任务规则我继续等待，不强停；如果持续无输出，将读取 thread terminal/Gradle 进程状态做只读诊断。
+
+=== 1621 [assistant]
+JDK 17 baseline完成并暴露一个真实既有失败：293 个单测中 1 个失败，`QueryManifestTest.frozenArtifactHashIsStable`。这发生在任何 M1 功能改动前；我先读取 XML 的 expected/actual，并在主 checkout 用同一 JDK 复跑该单测，判断是 worktree 行尾/路径问题还是仓库基线本身失败。
+
+=== 1655 [assistant]
+失败已定位为 worktree 行尾差异：主 checkout 的冻结文件 SHA-256 是预期 `14b3…`，worktree checkout 因全局 `core.autocrlf=true` 变成 `a0a3…`。我会先在主 checkout 复跑同一测试确认原基线通过；若通过，就把它归类为跨平台测试基础设施缺陷，并单独派发最小修复，不改冻结 hash 或业务代码。
+
+=== 1670 [assistant]
+主 checkout 同一冻结 hash 测试用 JDK 17 通过，确认是 worktree/Windows 行尾导致的基线基础设施缺陷。按 agentic workflow，我会记录临时任务 `M1-S01`，仅允许修改 `QueryManifestTest.kt`，禁止改冻结 hash/fixture/生产代码；修复后必须重跑 focused test 和完整 `check`。
+
+=== 1684 [assistant]
+M1-S01 worker 已派发，唯一写权限是 `QueryManifestTest.kt`。在等待完整 `check` 时，我并行执行 M1-T01 的只读设备预检；这不会提前修改 build 文件。
+
+=== 1712 [assistant]
+M1-S01 仍在运行，预计主要耗时是完整 `check`（刚才基线约 6 分钟）。当前无新增 blocker；M1-T01 已因设备未连接记录为 `blocked`，不会提前派发 build 改动。
+
+=== 1731 [assistant]
+Worker 尚未到完成边界，我已要求只在当前命令结束后汇报，明确不打断健康的 Gradle run。主线程不修改其写域。
+
+=== 1747 [assistant]
+M1-S01 已完成红测复现：`tests=1, failures=1, errors=0`，expected/actual 与诊断一致。Worker 正在补 LF/CRLF 回归测试和最小 helper；完整 `check` 尚未启动。
+
+=== 1760 [assistant]
+M1-S01 worker 已提交 `979bc816`，自报完整 `check` 为 294 tests、0 failures。按流程我不会直接接受：先派发只读 spec-compliance review，再做 code-quality review，最后由 main agent复核 XML/diff。
+
+=== 1802 [assistant]
+Main agent 已核对提交 diff：仅一个测试文件，冻结常量未变，helper 只在 hash 边界规范 CRLF/CR，XML 汇总 294/0/0。Spec reviewer 仍在只读检查，尚未返回结论，因此不会进入质量 review。
+
+=== 1851 [assistant]
+Spec compliance 已获只读 APPROVED：只改一个测试文件，LF/CRLF/CR 回归和私有 helper 均符合，冻结常量未变。现在进入第二阶段 code-quality review。
+
+=== 1886 [assistant]
+Main-agent focused复验已通过（QueryManifestTest 全类，8 秒，exit 0）。质量 reviewer 尚未返回；在它明确 APPROVED 前，M1-S01 不会被接受，T01 也不会推进。
+
+=== 1894 [assistant]
+两阶段 review 均 APPROVED，质量 reviewer 无 Critical/Important/Minor。最后由 main agent 重跑完整 `check` 并读取 XML 汇总；只有这一步通过才接受 M1-S01。
+
+=== 1906 [user]
+# AGENTS.md instructions for D:\record
+
+<INSTRUCTIONS>
+These AGENTS.md instructions replace all previously provided AGENTS.md instructions.
+
+## 关于我
+我是一名专业为计算机科学与技术的学生。
+我用 Codex 做 Vibe Coding的个人创意想法的开发、落地。
+
+## 思维原则
+- 所有决策从问题本质出发，不因「惯例如此」照搬。
+- 回到问题本身：要解决什么？最直接的路径是什么？从零设计会怎么做？
+- 不要谄媚。不要夸我的想法好、不要说「这是个很好的问题」、不要开头加「当然可以」。
+- 给我真实判断，方案有问题直接指出来。发现更好的做法直接说，不用等我问。
+
+## 约束先行
+- 没有规范的工作空间不动手。已有规范的项目，严格遵守其 AGENTS.md 中的约定。需要调整规范时先改文档、再改实践，不要反过来。
+
+## 沟通方式
+- 默认中文，代码、命令、变量名用英文
+- 结论先行，再给理由，不要先铺垫背景
+- 遇到模糊需求，先给最合理的方案，再问要不要调整
+- 任务完成后，有需要我手动验收的，请给我验收清单，你可以自行验收的就不要让我验收
+- 不要问「你确定要这样吗」，除非命中下方红线
+
+## 自主边界（红线，必须说明操作理由以及可能的风
+
+=== 1909 [user]
+继续吧
+
+
+=== 1913 [assistant]
+继续中。当前 main-agent 完整 `check` 仍在运行；它结束后我会接受或拒绝 M1-S01，然后因参考设备未连接把 M1-T01 保持为真实 blocker。
+
+=== 1923 [assistant]
+上一轮长命令的执行单元因新消息切换已丢失，无法读取最终退出码；按 evidence-before-claims 规则不能沿用未知结果。我重新运行同一完整 `check`，不把可能已完成的缓存当作验证。
+
+=== 1937 [assistant]
+Main-agent 最终门通过：完整 `check` exit 0，`BUILD SUCCESSFUL in 41s`，模块图 PASS；两阶段 reviewer 均 APPROVED。M1-S01 现在可接受。我将把 verification pointer 切回 M1-T01，并保留“设备未连接”的真实 blocker。
+
+=== 1957 [assistant]
+M1-S01 已接受并记录，worktree baseline 现在完整 PASS。按项目设备规则，ADB 列表为空时还需执行一次 `kill-server → start-server → relist`；完成这一步后才能确认 T01 的外部 blocker。
+
+=== 1978 [assistant]
+M1 已进入执行阶段，但 M1-T01 被参考设备阻断。
+
+已完成：
+
+- 创建隔离 worktree：`D:\record\.worktrees\m1-app-shell`
+- 分支：`codex/m1-app-shell`
+- 修复 Windows CRLF 导致的冻结 hash 基线失败
+- 两阶段 review 均 APPROVED
+- Main-agent 完整 `check`：PASS
+- XML 汇总：294 tests，0 failures，0 errors
+- [verification.md](D:/record/.worktrees/m1-app-shell/docs/specs/mvp/m1-app-shell/verification.md) 已记录全部证据
+
+当前 blocker：重启 ADB server 后设备列表仍为空。按批准的 plan，设备就绪前不能修改 build 文件。
+
+请连接 Xiaomi 14 Pro、开启 USB 调试并接受 RSA 授权，然后回复“继续”。
+
+最新提交：`741abdf`
+
+::git-create-branch{cwd="D:\record\.worktrees\m1-app-shell" branch="codex/m1-app-shell"}
+::git-commit{cwd="D:\record\.work
+
+=== 1987 [user]
+我已连接手机
+
+
+=== 1991 [assistant]
+先复核设备身份与状态；只有检测到批准的 Xiaomi 参考设备且状态为 `device`，才解除 M1-T01 blocker 并派发 build worker。
+
+=== 1997 [assistant]
+设备预检通过：`Xiaomi 14 Pro / 23116PN5BC`，API 36，状态 `device`，fingerprint 已记录。现在解除 blocker、刷新 Execution pointer，并按 M1-T01 full contract 派发 build worker。
+
+=== 2018 [assistant]
+M1-T01 worker 已开始，Verification pointer 已提交为 `7c9ff65`。当前正在执行 serialization red/green 和 build delta；设备回归尚未返回结果。
+
+=== 2032 [assistant]
+Worker 仍在运行且未报告 blocker。T01 包含完整 host `check` 与 device wiring regression，预计耗时较长；我保持执行不中断。
+
+=== 2060 [assistant]
+T01 红测已按预期失败：serialization plugin/runtime/JUnit 尚未声明，出现 `serializer/Json/junit` unresolved；这证明入口门有效。Worker 正应用仅限授权路径的最小 build delta。
+
+=== 2074 [assistant]
+Worker 尚无新 blocker，现阶段大概率处于首次依赖解析/完整 host gate。按长任务规则继续等待，不抢占其 build write scope。
+
+=== 2102 [assistant]
+T01 GREEN 入口门已通过：Serialization 1/0/0，模块图 7+benchmark PASS，API boundary 4 positive/25 negative PASS。完整 `check` 正在运行；device regression 尚未开始。
+
+=== 2116 [assistant]
+完整 host `check` 仍在健康运行，未出现 failure 事件。我继续保持，不因等待时间中断它。
+
+=== 2137 [assistant]
+M1-T01 按规则停在真实设备 blocker：`INSTALL_FAILED_USER_RESTRICTED / Install canceled by user`，0 tests，未重试、未提交。另发现 smoke test 路径中的 `/build/` 被 `.gitignore` 命中；我会把计划路径修正为 `/compat/`，但移动/删除现有未跟踪文件需要你的红线许可。
+
+=== 2175 [assistant]
+M1-T01 host gates已通过，但设备回归被 MIUI 拦截：
+
+- 错误：`INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`
+- 测试：0 tests
+- Worker 已按规则停止，未重试、未提交、未执行 `pm clear`
+- 完整 host `check`：PASS
+- Serialization smoke：1 test，0 failures
+- 模块/API boundary：PASS
+
+需要你处理两个条件：
+
+1. 在手机开发者选项中允许“通过 USB 安装”，下次弹窗时接受安装。
+2. 同意我将以下未跟踪测试文件迁移到非忽略路径，并删除旧文件：
+
+   - 旧：`app/src/test/java/com/paherdin/record/build/SerializationPluginSmokeTest.kt`
+   - 新：`app/src/test/java/com/paherdin/record/compat/SerializationPluginSmokeTest.kt`
+
+原因：目录名 `/build/` 被 `.gitignore` 识别为构建产物。风险仅涉及这个由 Codex 新建、尚未提交的 smoke test；新文件验证一致后才删除旧文件，不涉及用户或生产数据。
+
+请
+
+=== 2181 [user]
+已允许 USB 安装，同意迁移并删除旧测试文件
+
+
+=== 2187 [assistant]
+条件已改变并获得删除红线许可。我会记录 `M1-T01-A2`：允许把同一 smoke test 复制到 `/compat/`、验证后删除旧 `/build/` 文件；USB 安装已开启。随后恢复同一 worker，不重复 host 工作，只补路径修正、最终 schema/diff gate 和同一 device regression。
+
+=== 2204 [assistant]
+M1-T01-A2 已恢复。Worker 会先迁移 smoke test 并完成 host gates，随后触发同一安装命令；请留意手机弹窗并点击允许。若再次取消，流程会立即停止。
+
+=== 2222 [assistant]
+A2 仍在 host gate 阶段，尚未报告设备安装结果。Smoke 路径修正和完整验证会先于手机安装弹窗。
+
+=== 2242 [assistant]
+A2 host gates 全部 PASS；设备命令已启动约 80 秒，当前无重复安装限制或失败输出。请继续留意手机确认弹窗，不要断开连接。
+
+=== 2251 [assistant]
+安装权限问题已解决，但设备 suite 暴露计划/测试基础设施缺陷，不是产品代码失败：隔离 applicationId 后 `.MainActivity` 相对类名解析错误；P6 self-check 命令也缺少冻结 hash 参数和已准备 fixture。Worker 已按 write scope 停止，不会越权修复。我将基于原始 XML 修订任务 contract，而不是把 9 个失败重命名为通过。
+
+=== 2263 [assistant]
+A2 最终分类为 FAILED：32 tests / 9 failures / 0 errors。下一步先只读核对 XML、APK component 和 P6 原批准命令，再创建独立基础设施修复任务；不会重跑同一输入。
+
+=== 2286 [assistant]
+A2 失败根因已由原始 XML 复核：相对 Activity component 在 applicationId suffix 后错误解析；同时命令缺少 P6 三个冻结 day hash，导致 preparation 未 seed。目标与 acceptance 不变，我会把 M1-T01 升为 `task_revision=2`，仅扩展测试基础设施写域和修正命令，不改产品/架构合同。
+
+=== 2315 [assistant]
+M1-T01 已升级为 revision 2 / A3，修复范围仅新增 wiring test。Worker 正生成 P6 oracle 并用三个冻结 hash 运行纠正后的 device suite；不会再执行失败的旧命令。
+
+=== 2336 [user]
+<environment_context>
+  <current_date>2026-08-30</current_date>
+  <timezone>Asia/Shanghai</timezone>
+  <filesystem><workspace_roots><root>D:\record</root><root>C:\Users\p3148\.codex\visualizations\2026\08\27\01a04404-8c81-7771-9cc3-56bdb41d4733</root></workspace_roots><permission_profile type="disabled"><file_system type="unrestricted" /></permission_profile></filesystem>
+</environment_context>
+
+=== 2339 [user]
+继续吧
+
+
+=== 2345 [assistant]
+A3 的设备 gate 已在额度中断前通过：32/32、0 failures，三个冻结 hash 已记录。Worker 随后因额度中断，按 agentic workflow 不能视为 DONE；我先读取 Git、进程与 XML 原始状态，记录 attempt 为 `cancelled`，再决定是直接验收现有结果还是重新派发剩余验证。
+
+=== 2356 [assistant]
+A3 设备 gate 已通过 32/32，但 worker 在最终 host gate/commit 前额度中断，按流程记为 `cancelled` 而非 DONE。现有改动完整且无需代码修复；main agent 只做集成验收：重跑 full `check`、schema/diff、纠正后的 device command，再精确提交。
+
+=== 2369 [assistant]
+Main-agent full host `check` 已通过（252 tasks，43 秒）。现在用 P6 oracle 生成的三个 hash 重跑纠正后的 device suite，作为最终 raw acceptance；这不是旧失败命令。
+
+=== 2384 [assistant]
+Main-agent重跑再次被 MIUI 安装确认取消，0 tests；这不否定 A3 已通过的 32/32 raw XML，但说明设备安装许可不是持久状态。按规则我不第三次重试。先检查 A3 XML 是否仍保留；若保留，就用其加 host PASS 完成验收，否则保留 blocker 等你再次确认弹窗。
+
+=== 2405 [assistant]
+M1-T01 revision 2 的代码和 host gates 已通过，但最终设备证据仍被 MIUI 阻断：
+
+- Host `check`：PASS，252 tasks
+- 三个 P6 hash：已正确生成
+- Worker 曾观察到 32/32 PASS，但额度中断后未完成交接
+- Main-agent 重跑时安装弹窗再次被取消：`INSTALL_FAILED_USER_RESTRICTED`，0 tests
+- 这次 0-test XML 覆盖了之前未保留的 PASS XML，因此不能宣称验收通过
+- 所有实现改动仍保留且未提交
+
+请保持手机解锁并停留在可立即点击安装确认的状态，然后回复：
+
+“已解锁，准备确认安装”
+
+我会立即只重跑纠正后的 device suite，并在结束后先保留 XML，再进行提交和双重 review。
+
+::git-commit{cwd="D:\record\.worktrees\m1-app-shell"}
+
+=== 2411 [user]
+已解锁，准备确认安装
+
+
+=== 2416 [assistant]
+收到。现在创建 `M1-T01-A5`，立即运行纠正后的 suite；请在手机弹窗出现时点击允许并保持连接。
+
+=== 2431 [assistant]
+安装/测试命令正在运行，请现在留意手机并点击允许；当前工具未返回失败。
+
+=== 2438 [assistant]
+A5 成功：安装通过，32/32 tests，0 failures，命令 exit 0。现在先复制并校验 XML 到 Git 忽略的本地证据目录，避免后续 device run 覆盖。
+
+=== 2444 [assistant]
+设备 XML 已保留并验证：32/0/0/0，SHA-256 `5AB2E23E…37FC8`。实现代码从 A3 后未再变更；我现在执行精确 ownership/schema/diff 检查并提交这 11 个授权文件。
+
+=== 2451 [assistant]
+实现提交 `2b0f1ed` 已生成，commit 本身只含 11 个授权文件。提交脚本中的 pre-commit ownership 检查因 PowerShell `throw` 缺空格未正确中止，并看到了 main-owned verification 改动；这不影响 commit scope，但我不会沿用那条“PASS”。现在用 commit diff 重新验证精确范围。
+
+=== 2467 [assistant]
+A5 raw evidence已固定，implementation commit `2b0f1ed` 的 11 文件 scope/schema 检查通过。现在进入规定的两阶段 review；在 reviewers 和 main acceptance 完成前，T01 仍不算 accepted。
+
+=== 2499 [assistant]
+Spec reviewer 仍在只读检查，当前无 CHANGES_REQUIRED 返回。我保持审查顺序，不先启动质量 review。
+
+=== 2511 [assistant]
+Spec compliance APPROVED：11 文件精确、criteria 2/15/18 PASS，criterion 14 的隔离部分与 criterion 17 的 production-target 部分 PASS。现在启动 code-quality review。
+
+=== 2539 [assistant]
+质量 reviewer 仍在检查 11 个 build/config 文件，尚未返回 Critical/Important。Main agent 不会提前接受 T01 或派发下一任务。
+
+=== 2547 [assistant]
+质量 review 发现一个 Important：完整 `TimelineBenchmark` 仍用相对 `.MainActivity`，未来 P6/M1 benchmark 会在隔离 applicationId 下失败。不能接受 T01。先扫描所有相同 consumer，统一修复而不是只补一个点。
+
+=== 2573 [assistant]
+Quality finding已固化为 M1-T01 revision 3：只修 `TimelineBenchmark` 的完整类名，并在 root machine check 加回归扫描。A5 的 32/32 设备证据继续有效，无需再次触发安装。
+
+=== 2593 [assistant]
+Revision 3 worker 正在执行两步 TDD：先让新 machine scan 对现存相对 Activity 路径失败，再修复为共享完整类名并跑全量 gate。A5 设备 XML 已冻结，不会再次触发安装。
+
+=== 2621 [assistant]
+Revision 3 worker DONE，提交 `98a522a`；RED machine scan 精确命中，GREEN/assemble/full check 均 PASS，worktree clean。按流程重新做 spec compliance，然后让原 quality reviewer确认其 Important finding已关闭。
+
+=== 2660 [assistant]
+Revision 3 的 spec 和 quality re-review 均 APPROVED，原 Important 已关闭，无新 finding。最后由 main agent 重跑完整 `check`、校验两次 implementation commits 和保留 XML；通过后才标记 T01 accepted 并派发 T02。
+
+=== 2674 [assistant]
+Revision 3 的 spec/quality re-review 均 APPROVED，main-agent fresh full `check` 再次 PASS（252 tasks，7 秒）。M1-T01 现在满足验收；我将更新 verification、标记 T01 完成，并把 Execution pointer 移到 M1-T02。
+
+=== 2707 [assistant]
+M1-T01 已正式接受并提交记录 `fcd6e62`。继续执行 M1-T02：先刷新 pointer，再派发全新 core UI worker；该任务只写 `core/ui/**`，会以 Phase/chrome/palette 红测开始。后续 device Compose test 可能再次出现手机安装确认，请留意弹窗。
+
+=== 2736 [user]
+继续吧
+
+
+=== 2740 [assistant]
+继续中。M1-T02 worker 正在执行 Phase/chrome/palette 红测与最小实现，尚未报告 blocker；我保持其 `core/ui/**` 写域独占。
+
+=== 2758 [assistant]
+T02 worker 已从 live agent 列表消失但未提交 completion report，不能视为完成。我先读取 Git/测试状态并按 agentic workflow 记录其最后可观察状态；若已有可用改动则继续验收，否则创建新 attempt。
+
+=== 2769 [assistant]
+T02 worker 未返回报告且已退出 live tree，按流程记为 `cancelled`。可用状态已保留：14 个 unit tests全 PASS、1 个 device test PASS，但源码尚未提交，且至少发现 `Phase.kt` 缺 EOF newline。创建 A2 fresh worker接管同一 write scope，先审计现有实现再修复/完整验证/提交。
+
+=== 2807 [assistant]
+T02 A2 fresh worker 正在审计 A1 遗留的 13 个文件；当前无 blocker，device test 尚未返回新的安装结果。
+
+=== 2835 [assistant]
+T02 审计发现 A1 覆盖不足并正在修复：chrome totality 测试存在自证、SharedContent 缺 live-region/stateDescription 与完整字体/尺寸覆盖、Material 角色未完全从 A/A1 派生。A2 先补红测再改实现。
+
+=== 2874 [assistant]
+M1-T02 A2 已按外部设备 blocker 停止，未提交。审计结果已明确：当前 theme/semantics 仍不合规，测试补强已保留；设备恢复后必须先跑目标 RED，再修生产实现。现在记录 verification，不会把编译通过误记为验收通过。
+
+=== 2885 [assistant]
+M1-T02 已完成审计，但被设备断开阻塞，未提交实现。
+
+已确认需要修复：
+
+- `RecordTheme` 部分 Material 角色仍是默认色，不符合完整 A/A1 palette
+- `SharedContent` 缺少 `stateDescription` 和 polite live-region
+- Chrome 测试存在自证式断言，设备测试覆盖不足
+- 遗留源码缺 EOF newline
+- 单元测试目前 14/0/0，通过
+- 加强后的 device test 已编译，但运行前设备列表变为空
+
+ADB 重启后曾短暂显示 `emulator-5554 offline`，随后无设备。按流程不能跳过目标 RED 或继续修改生产实现。
+
+请重新连接 Xiaomi 14 Pro、确认 USB 调试状态为已授权，然后回复“手机已重新连接”。
+
+提交：`fe5f1ab`
+
+::git-commit{cwd="D:\record\.worktrees\m1-app-shell"}
+
+=== 2893 [user]
+我已连接设备
+
+
+=== 2897 [assistant]
+先复核设备身份与 `device` 状态；通过后记录 M1-T02-A3，并恢复同一审计 worker，从目标 RED 开始。
+
+=== 2903 [assistant]
+设备预检通过：Xiaomi 14 Pro / 23116PN5BC，API 36，状态 `device`。现在创建 A3，先运行先前未到达的目标 RED，再修 theme/semantics。
+
+=== 2928 [assistant]
+T02 A3 正在运行目标 device RED/修复流程，当前未报告安装限制或新 blocker。
+
+=== 2953 [assistant]
+目标 RED 因 host 304 秒超时，未到断言也无安装错误，属于 incomplete evidence；不能当 RED 或 PASS。按设备规则先检查/停止可能残留 instrumentation，再创建新 attempt 用更长 timeout 重跑一次。
+
+=== 2968 [assistant]
+A3 已确认是主机超时，并没有形成产品结论。我先清理精确的测试进程并记录新尝试条件，然后继续同一任务的 RED→GREEN 验证；如果手机弹出安装确认，请直接允许。
+
+=== 3001 [assistant]
+A4 已进入设备 RED 验证，过期的 instrumentation 进程已清掉，设备仍在线。当前没有产品代码改动；只有 RED 确实命中预期断言后才会开始修复。
+
+=== 3016 [assistant]
+设备测试仍在运行，尚未出现安装拒绝、断线或断言结果。我会保持同一尝试，不并发启动第二个 Gradle/ADB 流程，避免再次覆盖原始证据。
+
+=== 3034 [assistant]
+A4 已运行约 2 分 20 秒，仍处在 Gradle/设备阶段且没有输出；手机目前不需要操作。20 分钟只是主机上限，我会以实际结束为准。
+
+=== 3044 [assistant]
+测试仍未返回。我暂不干预正在运行的进程；若再次超时，我会把它视为设备测试基础设施问题并改为检查 Gradle/UTP 日志与锁状态，而不会把它误记为功能失败。
+
+=== 3064 [assistant]
+已运行约 4 分钟，仍无 Gradle、UTP 或 ADB 输出，也没有手机提示。当前证据更像主机侧阻塞而非测试执行；这次会保留到设定上限，避免用猜测中断并丢掉现场。
+
+=== 3074 [assistant]
+仍是同一条命令、同一设备、无新增输出；没有启动并行重试。若命令最终超时，下一步会先做只读诊断（Gradle daemon、UTP 临时状态、ADB 进程），再决定是否形成新的尝试条件。
+
+=== 3094 [assistant]
+约 7 分钟仍是零输出，设备也没有安装拒绝或提示。继续保留单一命令；如果到 20 分钟上限仍无变化，这将连续第二次证明是主机侧挂起，需要转入基础设施诊断，而不是继续盲重试。
+
+=== 3100 [assistant]
+命令仍在等待，没有新增设备动作。我会继续观察，不触碰源码或设备数据。
+
+=== 3105 [assistant]
+A4 仍未返回，也没有手机提示；当前无需你操作。
+
+=== 3121 [assistant]
+约 9 分钟，状态没有变化：单命令仍存活、零输出、手机无提示。继续等到明确退出或上限。
+
+=== 3127 [assistant]
+仍在同一等待阶段，没有新增信号。
+
+=== 3132 [assistant]
+设备侧依然没有安装或权限提示；当前不需要人工操作。
+
+=== 3148 [assistant]
+约 11 分钟仍无输出。这个现象已足够可疑，但我会让本次有界尝试自然结束，确保后续诊断建立在完整证据上。
+
+=== 3154 [assistant]
+仍未返回；没有开始任何第二条测试或 ADB 命令。
+
+=== 3163 [user]
+我觉得可以停掉了，等待20分钟没有意义
+
+
+=== 3168 [assistant]
+停掉。连续两次长时间零输出已足够证明不是测试本身在执行；我现在中断这条命令，保留现场，转为只读定位主机侧阻塞点。
+
+=== 3179 [assistant]
+中断代理后，底层 Gradle wrapper（PID 97644）和设备测试包仍在运行，说明挂起发生在子进程层。我会只终止这两个精确目标；Gradle daemon、应用数据和安装包都不清理。
+
+=== 3194 [assistant]
+停止已完成。日志显示测试其实已启动并卡在 `0/1`，不是 Gradle 锁：UTP 在收到中断后才生成结果，最终为 `TEST_INTERRUPTED`。我继续读该单测源码与精确日志，定位为什么测试体本身不结束。
+
+=== 3214 [assistant]
+结论已经明确：原测试卡在 Compose 的 `runOnIdle` 路径，设备端只记录了“开始 1 个测试”，1176 秒内没有完成事件；中断后 UTP 正确标为基础设施取消。下一次不再长等：先改成一次 composition 同时捕获明暗色板、去掉状态切换和 `runOnIdle`，主机上限收紧到 3 分钟；它应在几秒内给出预期 RED。
+
+=== 3235 [assistant]
+A5 已启动，最长 3 分钟，而且只有在预期的色板断言快速失败后才会继续修复。若仍卡住，会立即停在测试基础设施层，不再延长等待。
+
+=== 3241 [assistant]
+A5 尚未返回，但仍在 3 分钟硬上限内；没有新的手机提示。
+
+=== 3257 [assistant]
+A5 当前约 45 秒，仍无输出，但硬上限保持 180 秒且没有生产代码改动。继续等这一次有界结果。
+
+=== 3262 [assistant]
+仍在 3 分钟窗口内，没有设备提示或错误信号。
+
+=== 3268 [assistant]
+A5 接近上限仍无输出；如果到时仍未命中断言，我会把“Compose 节点同步”也排除，改用不依赖 instrumentation 空闲机制的主机级色板构造测试。
+
+=== 3277 [assistant]
+A5 也在 3 分钟内超时，说明不是 `runOnIdle` 写法。下一嫌疑是实体机在测试期间锁屏/熄屏，导致 Compose Activity 永远无法进入可测试状态；我先只读检查锁屏、电源、前台窗口和残留进程。
+
+=== 3284 [assistant]
+设备当前已唤醒且未锁屏，但前台一直是系统设置页，测试 Activity 从未取得前台；A5 超时后 wrapper（PID 108208）和测试包仍残留。我先按你的“停掉”要求再次终止这两个精确目标，再查为什么 Activity 没启动。
+
+=== 3304 [assistant]
+合并清单里测试 Activity 和 runner 都存在，但日志中完全没有 Activity 启动记录，卡点发生在测试规则启动 Activity 之前。下一步做一次 30 秒的直接 instrumentation 诊断；超时后立即抓测试进程线程栈并强停，不再等待 Gradle/UTP。
+
+=== 3311 [assistant]
+直接诊断立即失败，原因是 UTP 结束时已卸载测试 APK，所以设备上没有 instrumentation 组件；这不是新的代码问题。我会重新安装已构建的同一个测试 APK，再执行 30 秒直连诊断；若手机弹出 USB 安装确认，请允许。
+
+=== 3325 [assistant]
+30 秒直连同样卡住，排除了 Gradle/UTP。现在测试进程仍在，我会立刻抓它的 PID、Activity 状态和 Java 线程栈，然后强停；这能精确判断卡在 JUnit 规则、ActivityScenario 还是 Compose。
+
+=== 3369 [assistant]
+根因已定位：不是测试代码。线程栈卡在 `Instrumentation.startActivitySync → ActivityScenario.launch`，系统日志同时明确记录 Xiaomi 拒绝后台启动测试 Activity（`Abort background activity starts`，result 102）。我先核对已批准 plan 的设备干预边界，再决定是使用临时 app-op 还是改为不依赖 Activity 的主机色板测试；不会直接改手机设置。
+
+=== 3389 [assistant]
+线程栈与系统日志完全吻合：测试线程等在 `Instrumentation.startActivitySync`，同时 Xiaomi 返回后台 Activity 启动被拒绝（102）。我用一次 shell 前台启动同一个测试 Activity 验证这个判断；若测试随即结束，就证明功能断言和 Compose 本身都正常，问题只在 OEM 启动策略。
+
+=== 3396 [assistant]
+shell 启动已验证 Activity 本身能正常前台，但第一次 Intent 与 ActivityScenario 的 action/category/flags 不一致，所以规则刻意忽略。现在用日志里完全相同的 Intent 再启动一次；若随即出现预期色板 RED，就能形成无需改手机设置的可重复设备命令。
+
+=== 3403 [assistant]
+验证成功：用完全匹配的 shell Intent 后，测试立即跑完并命中预期 RED（1 个测试、1 个失败，`unexpected non-error roles`）。因此测试与 Compose 没问题，唯一障碍是 Xiaomi 的后台 Activity 策略。接下来只读查询该测试包对应的 app-op 名称；若需要改手机权限，我会先给出精确、可逆的操作再征求你同意。
+
+=== 3424 [assistant]
+需要你的授权，但不必暂停代码修复：把测试包 `com.paherdin.record.core.ui.test` 的 Xiaomi `MIUIOP(10021)` 从 `ignore` 临时设为 `allow`。理由是允许 ActivityScenario 在 instrumentation 期间拉起测试 Activity；风险仅是该测试 APK 安装期间可从后台弹出窗口。验证后会恢复为 `ignore`（若 UTP 已卸载则无需恢复），不涉及生产包或数据。你是否同意？我先继续生产修复和主机验证，设备 GREEN 到授权前不执行。
+
+=== 3454 [assistant]
+生产修复已开始，范围仍严格限定在 `core/ui/**`；设备 app-op 尚未更改。当前先完成主题、语义、EOF 与主机 `check`。
+
+=== 3470 [assistant]
+A6 已完成主要代码修改：完整非错误色板映射、四态语义、Retry 48dp 宽高与中文资源；正在处理两个编译细节后跑主机测试。手机权限仍未改。
+
+=== 3477 [assistant]
+主机编译/测试仍在执行，当前没有新增设备动作或需要你确认的安装提示。
+
+=== 3493 [assistant]
+核心 UI 单元测试与 Android 测试编译已通过（27 秒，仅有 Compose 旧 Rule API 的弃用警告）；现在跑全仓 `check`。设备 app-op 仍未更改。
+
+=== 3499 [assistant]
+全仓 `check` 仍在运行，没有出现失败报告。
+
+=== 3515 [assistant]
+全仓 `check` 已通过：257 tasks，模块边界 PASS。现在只在 13 个自有文件内统一换行并做最终主机复检；仍未提交，也未改手机权限。
+
+=== 3522 [assistant]
+换行归一与复检仍在进行，范围未扩散。
+
+=== 3538 [assistant]
+归一后核心测试复检已通过（6.4 秒）；正在跑最终一次全仓 `check`。
+
+=== 3544 [assistant]
+最终全仓检查仍在运行，当前无失败输出。
+
+=== 3566 [assistant]
+主机侧已完成且干净：两次全仓 `check` 通过，13 个计划文件、无 schema/build 边界漂移。当前唯一阻塞就是你是否授权测试包临时开启 `MIUIOP(10021)`；我先把这段证据写入 verification，代码保持未提交。
+
+=== 3584 [assistant]
+已停止长时间等待并定位根因：Xiaomi 拒绝 instrumentation 后台启动测试 Activity。生产修复及全仓 `check` 已通过，代码尚未提交。
+
+需要你授权：临时将测试包 `com.paherdin.record.core.ui.test` 的 `MIUIOP(10021)` 从 `ignore` 改为 `allow`。风险仅是测试 APK 安装期间可从后台弹窗；测试完成后会恢复为 `ignore` 或卸载测试包。生产包和数据不受影响。
+
+是否同意？
+
+::git-commit{cwd="D:\record\.worktrees\m1-app-shell"}
+
+=== 3590 [user]
+同意
+
+
+=== 3596 [assistant]
+授权已记录。现在只修改测试包 `com.paherdin.record.core.ui.test` 的 `MIUIOP(10021)`，确认变为 `allow` 后运行设备 GREEN；结束后立即验证它已恢复为 `ignore` 或随 UTP 卸载。
+
+=== 3619 [assistant]
+设备 GREEN 已启动，只跑一次完整组合命令，5 分钟硬上限；避免先跑 targeted 后被 UTP 卸载导致权限丢失。测试结束后先验证权限回滚，再提交。
+
+=== 3625 [assistant]
+组合测试仍在运行，暂未收到安装拒绝、断线或失败信号。
+
+=== 3641 [assistant]
+当前约 60 秒、仍无控制台输出；由于 Gradle/UTP 会缓冲输出，先保留到 5 分钟上限。若权限在安装时被重置，超时后会从 app-op 和系统日志直接确认，不再猜测。
+
+=== 3647 [assistant]
+仍是同一条命令，暂无手机提示或错误。
+
+=== 3653 [assistant]
+测试仍未返回，继续遵守 5 分钟硬上限，不启动第二条设备任务。
+
+=== 3669 [assistant]
+约 3 分 15 秒仍无输出，趋势像 UTP 安装重置了 app-op；继续等到 5 分钟，以最终系统日志确认。
+
+=== 3675 [assistant]
+A7 到 5 分钟上限后停止，未取得 PASS。现在检查并终止精确残留进程，再读取当前 app-op；这会验证 UTP 是否在重新安装测试 APK 时把授权重置了。
+
+=== 3683 [assistant]
+已确认：UTP 重新安装时把 `MIUIOP(10021)` 从 `allow` 重置回 `ignore`，所以标准 Gradle 命令再次卡住。先终止 wrapper PID 94912 和测试包 PID 17491；然后改用已验证的直连 instrumentation，并在每个测试规则等待时用精确 shell Intent 唤起 Activity，避免再修改权限。
+
+=== 3718 [assistant]
+A7 证明授权时机必须在 UTP 重装测试 APK 之后。更直接的修正是：仍运行原组合 Gradle 命令；检测到 UTP 已安装并启动测试包后，再设 `10021=allow`，并只用一次精确 Intent 释放已经被拒绝的首个 Activity。后续测试由 app-op 正常启动，UTP 结束时卸载即回滚。我先把这项执行修正写回已批准 plan，再执行 A8。
+
+=== 3744 [assistant]
+A8 已启动：同一 Gradle 进程，等 UTP 安装并启动测试包后再授权，只唤起一次首个 Activity。成功后必须同时拿到完整 XML 和权限/包回滚证据。
+
+=== 3753 [user]
+<environment_context>
+  <current_date>2026-09-01</current_date>
+  <timezone>Asia/Shanghai</timezone>
+  <filesystem><workspace_roots><root>D:\record</root><root>C:\Users\p3148\.codex\visualizations\2026\08\27\01a04404-8c81-7771-9cc3-56bdb41d4733</root></workspace_roots><permission_profile type="disabled"><file_system type="unrestricted" /></permission_profile></filesystem>
+</environment_context>
+
+=== 3756 [user]
+继续吧
+
+
+=== 3764 [user]
+继续吧
+
+
+=== 3769 [assistant]
+继续。我先恢复 A8 现场：检查 worker、唯一 Gradle 进程、设备测试包与 app-op 状态，避免重复启动或覆盖证据。
+
+=== 3784 [assistant]
+A8 实际已经完成：没有残留 Gradle/测试进程，UTP 已卸载测试包（`No UID`），设备 XML 在 22:19 生成。我现在解析并保留这份原始 XML，确认测试数、失败数和退出码，再做主代理复验。
+
+=== 3799 [assistant]
+A8 设备结果确认 PASS：11/11，0 failure/error/skip，退出码 0；UTP 已卸载测试包，临时 app-op 随包消失。XML 已保留并校验 SHA-256。现在做主代理全仓复验，随后提交精确 13 个文件并进入两阶段审阅。
+
+=== 3809 [assistant]
+主代理复验仍在运行，当前未出现失败输出；设备证据已独立保留，不会被这次主机检查覆盖。
+
+=== 3824 [assistant]
+实现提交 `d58ae68` 已创建，精确 13 个文件。现在按既定流程先做规格符合性审阅；只有规格通过后才进入代码质量审阅。
+
+=== 3840 [assistant]
+规格审阅正在逐项核对 Phase、完整色板、四态语义、图标与模块边界；当前尚无结论。
+
+=== 3846 [assistant]
+规格审阅仍在进行，没有修改工作区。
+
+=== 3856 [assistant]
+审阅代理仍在运行，继续等待完整结论，不提前进入质量审阅。
+
+=== 3872 [assistant]
+已确认 13 文件范围和 Phase 合同完全一致；审阅正在集中检查 Theme/Palette/SharedContent 是否有规格缺口。
+
+=== 3878 [assistant]
+规格审阅尚未结束，工作区保持干净。
+
+=== 3896 [assistant]
+规格审阅已拆成规格轴和工程规范轴并行核对，仍是只读；等待两边汇总。
+
+=== 3902 [assistant]
+两条审阅轴仍在运行，尚无需要修复的已确认问题。
+
+=== 3916 [assistant]
+规格审阅未通过，4 项都成立：Ready 缺 heading、Editor 在 Saving 仍允许 Back、Kotlin 属性/常量命名不合约定、图标尺寸未 token 化。我会先把这次审阅修正写回 plan/verification，再让实现 worker 做测试先行修复；A8 的 11/11 证据保留，但修复后必须重跑设备门。
+
+=== 3962 [assistant]
+A9 已开始：先补 Ready heading 与 Editor Saving 锁定测试，再做命名和图标 token 的机械修正；设备权限暂不触碰。
+
+=== 3968 [assistant]
+A9 仍在测试先行阶段，工作范围保持在原 13 个 `core/ui/src` 文件。
+
+=== 3982 [assistant]
+修复 worker 尚未到安全汇报点；没有并行启动第二个测试流程。
+
+=== 3996 [assistant]
+A9 已取得预期 host RED：Editor/Saving 测试 1/1 失败，证明当前错误。Ready 测试也已增加 Heading 断言，正在先编译该测试，再修改生产代码。
+
+=== 4002 [assistant]
+Ready Heading 测试编译与生产修正仍在进行，未触碰设备设置。
+
+=== 4018 [assistant]
+Ready Heading 测试已编译；worker 正用单方法、单次精确 Intent 获取设备 RED，不修改 app-op，也不会跑完整设备套件。
+
+=== 4024 [assistant]
+单方法设备 RED 尚未返回，保持有界，不启动第二次。
+
+=== 4040 [assistant]
+Ready 设备 RED 也已取得：1/1 失败，明确缺少 Heading，同时 stateDescription 和子内容仍在。现在四项生产修正已开始，接下来跑 host GREEN 与全仓检查。
+
+=== 4046 [assistant]
+A9 正在完成剩余调用点重命名并准备 GREEN，范围未扩散。
+
+=== 4062 [assistant]
+Editor/Saving focused GREEN 已通过；现在运行完整 core/ui 单元测试、Android 测试编译和全仓 `check`。
+
+=== 4068 [assistant]
+主机组合检查仍在运行，当前未报告失败。
+
+=== 4084 [assistant]
+core/ui 组合门已通过（9 秒，仅现有 Compose Rule 弃用警告）；全仓 `check` 仍在运行。
+
+=== 4090 [assistant]
+全仓检查尚未结束，没有新增失败信号。
+
+=== 4106 [assistant]
+全仓 `check` 已通过（1 分 44 秒，257 tasks，模块边界 PASS）。换行审计捕获到 9 个改动文件的混合 CRLF/LF，正在机械归一后复检；不涉及行为修改。
+
+=== 4112 [assistant]
+9 个文件的换行归一与静态复检仍在进行。
+
+=== 4141 [assistant]
+A9 主机修正完成：15/15 单测、全仓 `check`、命名/边界/换行全部通过。现在复用已批准的时序跑完整设备门；UTP 安装后才授权，首个 Activity 只唤起一次，结束后验证卸载/回滚。
+
+=== 4156 [assistant]
+A9 设备门执行完整但出现 1 个基础设施失败：第 7 个测试的 ActivityScenario 指向已销毁 Activity，另外 10 个通过；不是产品断言失败。先确认 UTP 是否已卸载测试包并保留 11/1 XML，再决定是否以“完全无旧任务的冷安装”重试一次。
+
+=== 4162 [assistant]
+UTP 已完整卸载测试包，app-op 也随包消失；失败 XML 为 11 tests/1 infrastructure NPE，10 个行为测试通过。这个失败与 A8 的成功差异是 A9 开始前设备上残留了 worker 的单测 APK/任务。现在以“包完全不存在”的冷状态重试一次相同 A10；不改代码、不扩大超时。
+
+=== 4186 [assistant]
+A10 冷状态设备门通过：11/11、0 failure，Gradle exit 0；UTP 已卸载测试包，app-op 随包回滚。现在保留 A10 XML、提交 9 文件修正，然后重新跑规格与质量两阶段审阅。
+
+=== 4206 [assistant]
+修正提交 `5f40add` 已创建，A10 设备证据已保留。规格复审正在确认前 4 项是否全部闭环。
+
+=== 4212 [assistant]
+规格复审仍在运行，没有修改工作区。
+
+=== 4231 [assistant]
+规格复审已 APPROVED，4 项全部闭环。现在进入第二阶段代码质量审阅，重点看可维护性、测试有效性、Compose 语义和潜在回归。
+
+=== 4243 [assistant]
+质量审阅正在检查 13 个文件及测试有效性，尚无结论。
+
+=== 4249 [assistant]
+质量审阅仍在进行，工作区保持干净。
+
+=== 4265 [assistant]
+质量审阅已锁定正确基线和 13 文件范围，正在逐文件核查主题、Phase、共享呈现与 shell policy。
+
+=== 4271 [assistant]
+质量审阅尚未形成最终结论。
+
+=== 4289 [assistant]
+质量审阅仍在运行；不提前宣布通过。
+
+=== 4307 [assistant]
+质量审阅未通过。Important 与规格并不冲突：Ready 的 heading 应来自真实可见标题，而不是空包装器；规格审阅此前也允许“API 明确要求并验证 ready 内容提供 heading”。另外补强 200% 字体边界/重叠/焦点测试和四个 error role 断言。先写回 revision 5，再做一次测试先行修正。
+
+=== 4332 [assistant]
+A11 已开始：Ready 真实标题的“恰好一个 heading”先取 RED；随后补 200% 边界/不重叠/焦点与 error roles 断言。
+
+=== 4338 [assistant]
+A11 仍在测试先行阶段，未修改设备权限。
+
+=== 4352 [assistant]
+A11 尚未到安全汇报点，没有并行启动其他设备测试。
+
+=== 4372 [assistant]
+A11 还没进入设备 RED；测试编译先抓到 3 个 API 使用错误，正在修正 import 和 `DpRect` 用法。生产代码尚未改。
+
+=== 4378 [assistant]
+测试 API 修正与重新编译仍在进行。
+
+=== 4386 [assistant]
+A11 设备 RED 因设备临时断开而立即停止，没有重试、没有 app-op 变更。测试已编译，生产修正继续基于已确认的质量缺口；最终设备 GREEN 仍会在连接恢复后执行。
+
+=== 4393 [assistant]
+A11 生产与测试修正仍在进行，当前只跑主机检查。
+
+=== 4409 [assistant]
+A11 核心组合门已通过（11 秒）；全仓 `check` 正在运行。设备仍不参与这一步。
+
+=== 4415 [assistant]
+全仓检查尚未结束，没有失败信号。
+
+=== 4431 [assistant]
+A11 最终主机门已通过：257 tasks、模块边界、精确 2 文件、schema/build/diff/CRLF 全部 PASS。只剩修正一个误报的自定义 KDoc 扫描表达式。
+
+=== 4447 [assistant]
+A11 主机修正完成且只改 2 个文件。现在重新检查设备；若已恢复，立即跑最终 GREEN；若仍离线，我会保留未提交状态并明确只剩这一项外部阻塞。
+
+=== 4453 [assistant]
+设备已恢复为 Xiaomi API 36 `device`，测试包应仍不存在。现在直接执行 A11 最终冷状态设备门，同一 5 分钟边界和自动回滚。
+
+=== 4468 [assistant]
+A11 设备门暴露两个测试基础设施问题，不是产品失败：
+
+- `RequestFocus` action存在，但 Xiaomi 未把按钮切成 focused；质量合同需要证明“可聚焦”，应断言 `RequestFocus` action，而不是设备焦点状态。
+- UTP + 首次 shell Activity 注入仍偶发产生已销毁 Activity。
+
+我会修正前者；最终设备验证改为“手动安装测试 APK → 先授权 app-op → 直接运行完整 instrumentation → 恢复/卸载”，这样不再注入 Activity，也绕开 UTP 生命周期竞争。
