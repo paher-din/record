@@ -5,6 +5,7 @@ Read [AGENTS.md](../AGENTS.md) and [docs/index.md](index.md) for every task.
 | Task | Required documents |
 |---|---|
 | Any task | AGENTS.md, docs/index.md |
+| Record 2.0 V1 architecture and future implementation Spec/Plan | [Unified architecture baseline](architecture/record2-v1-unified-architecture.md) — owner-confirmed R1, authoritative design input for all future Record 2.0 V1 implementation Spec/Plan; architecture approval does not authorize implementation. Formal V1 implementation Spec/Plan have not been created or approved; this entry does not activate a Spec. |
 | Agentic execution (splitting, dispatch, acceptance) | engineering/agentic-workflow.md, active spec if one exists |
 | Product scope | product/vision.md, product/mvp-requirements.md, active spec if one exists |
 | Navigation or interaction | experience/information-architecture.md, experience/interaction-rules.md, active spec if one exists |
