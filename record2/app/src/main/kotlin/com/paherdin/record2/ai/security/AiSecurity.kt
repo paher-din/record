@@ -133,6 +133,7 @@ internal enum class AiSecurityError {
     CredentialUnavailable,
     RunInvalidated,
     ConcurrentUpdate,
+    NotInitialized,
     RecoveryRequired,
     RecoverableIO,
     StorageFull,

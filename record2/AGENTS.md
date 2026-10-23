@@ -6,4 +6,4 @@ Use this root's wrapper with explicit `-p`; only `:app` belongs to this build. R
 
 For B1 finance services, seed initialization, native drafts and their fault/process tests, read Plan §21. Keep the existing Schema v1; UI and Tools use the records service contract, while Room implementation and transaction ownership stay in storage.
 
-For E0 authorization, provider credentials and the send gate, read Plan §23. The Room `ai_control` row and Keystore vault are not a settings UI; callers must obtain a permit and revalidate it before every provider egress and late-result write. The implemented receiver catalog and credential code do not authorize a real key or network call.
+For E0 authorization, provider credentials and the request-start permit seam, read Plan §23. The Room `ai_control` row and Keystore vault are not a settings UI; callers must obtain a permit and revalidate at the actual request-start boundary, while E2 owns revocation ordering/cancellation and late-result handling. The implemented receiver catalog and credential code do not authorize a real key or network call, and a permit is not bound to `dataGeneration`.

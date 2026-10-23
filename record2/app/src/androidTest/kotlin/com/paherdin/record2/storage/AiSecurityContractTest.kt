@@ -9,6 +9,7 @@ import com.paherdin.record2.ai.security.AiSecurityException
 import com.paherdin.record2.ai.security.AiSecurityState
 import com.paherdin.record2.ai.security.AiSendEligibility
 import com.paherdin.record2.ai.security.CredentialStatus
+import com.paherdin.record2.ai.security.CredentialVault
 import com.paherdin.record2.ai.security.KeystoreCredentialVault
 import com.paherdin.record2.ai.security.ProviderReceiver
 import com.paherdin.record2.ai.security.ProviderReceiverCatalog
@@ -19,7 +20,13 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -50,6 +57,7 @@ class AiSecurityContractTest {
         check(!directory.exists())
         database = Room.databaseBuilder(context, RecordDatabase::class.java, name).build()
         database.openHelper.writableDatabase
+        runBlocking { RoomFinanceService(database, clock).initialize() }
         vault = KeystoreCredentialVault(directory, alias, "credential.bin")
         service = RoomAiSecurityService(database, vault, catalog, clock)
     }
@@ -245,6 +253,66 @@ class AiSecurityContractTest {
         assertFalse(service.stillValid(permit))
     }
 
+    @Test fun credentialRotationBlocksPermitIssuanceUntilReplacementCompletes() = runBlocking {
+        storeCredential("r2-e0-synthetic-old-3a7c")
+        service.setMode(AiMode.FULL)
+        service.selectReceiver(receiver)
+        service.grant(receiver)
+        val oldPermit = service.requirePermit(receiver)
+
+        val blocking = BlockingVault(vault)
+        val rotating = RoomAiSecurityService(database, blocking, catalog, clock)
+        val replacement = "r2-e0-synthetic-rotated-7a1b"
+        val secret = replacement.toCharArray()
+        val rotation = async(Dispatchers.IO) {
+            try {
+                rotating.replaceCredential(secret)
+            } finally {
+                secret.fill('\u0000')
+            }
+        }
+        assertTrue(blocking.started.await(5, TimeUnit.SECONDS))
+        val permitStarted = CountDownLatch(1)
+        val permit = async(Dispatchers.IO) {
+            permitStarted.countDown()
+            rotating.requirePermit(receiver)
+        }
+        assertTrue(permitStarted.await(5, TimeUnit.SECONDS))
+        try {
+            assertNull(withTimeoutOrNull(300) { permit.await() })
+        } finally {
+            blocking.allowStore.countDown()
+        }
+        val rotated = withTimeout(10_000) { rotation.await() }
+        val issued = withTimeout(10_000) { permit.await() }
+        assertEquals(rotated.authEpoch, issued.authEpoch)
+        assertFalse(rotating.stillValid(oldPermit))
+        assertTrue(rotating.stillValid(issued))
+        assertEquals(replacement, vault.use { String(it) })
+    }
+
+    @Test fun failedCredentialReplacementRetainsOldCredentialAndBumpsEpoch() = runBlocking {
+        storeCredential("r2-e0-synthetic-old-3a7c")
+        service.setMode(AiMode.FULL)
+        service.selectReceiver(receiver)
+        service.grant(receiver)
+        val before = service.state()
+
+        val failingService = RoomAiSecurityService(database, FailingVault(vault), catalog, clock)
+        val replacement = "r2-e0-synthetic-failed-9c2d".toCharArray()
+        try {
+            expectError(AiSecurityError.RecoverableIO) { failingService.replaceCredential(replacement) }
+        } finally {
+            replacement.fill('\u0000')
+        }
+        val after = service.state()
+        assertEquals(before.authEpoch + 1, after.authEpoch)
+        assertEquals(CredentialStatus.AVAILABLE, after.credentialStatus)
+        assertEquals("r2-e0-synthetic-old-3a7c", vault.use { String(it) })
+        val permit = failingService.requirePermit(receiver)
+        assertEquals(after.authEpoch, permit.authEpoch)
+    }
+
     @Test fun credentialSentinelIsAbsentFromRoomFilesAndApplicationStorage() = runBlocking {
         storeCredential()
         service.setMode(AiMode.FULL)
@@ -295,6 +363,33 @@ class AiSecurityContractTest {
             calls += 1
             if (fail) throw IOException("Synthetic provider failure")
         }
+    }
+
+    private class BlockingVault(private val delegate: CredentialVault) : CredentialVault {
+        val started = CountDownLatch(1)
+        val allowStore = CountDownLatch(1)
+
+        override fun status(): CredentialStatus = delegate.status()
+
+        override fun store(secret: CharArray) {
+            started.countDown()
+            check(allowStore.await(10, TimeUnit.SECONDS)) {
+                "Timed out waiting for the test to release the credential store"
+            }
+            delegate.store(secret)
+        }
+
+        override fun clear() = delegate.clear()
+        override fun <T> use(block: (CharArray) -> T): T = delegate.use(block)
+    }
+
+    private class FailingVault(private val delegate: CredentialVault) : CredentialVault {
+        override fun status(): CredentialStatus = delegate.status()
+        override fun store(secret: CharArray) {
+            throw IOException("Synthetic credential write failure")
+        }
+        override fun clear() = delegate.clear()
+        override fun <T> use(block: (CharArray) -> T): T = delegate.use(block)
     }
 
     private fun ByteArray.containsAscii(needle: ByteArray): Boolean {

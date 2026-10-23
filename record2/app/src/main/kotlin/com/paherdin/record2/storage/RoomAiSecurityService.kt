@@ -21,6 +21,8 @@ import java.io.IOException
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 internal class RoomAiSecurityService(
@@ -30,6 +32,7 @@ internal class RoomAiSecurityService(
     private val clock: Clock = Clock.systemUTC(),
 ) : AiSecurityService {
     private val dao = database.aiControl()
+    private val records = database.records()
 
     override suspend fun state(): AiSecurityState = io {
         snapshot(database.withTransaction { ensureControl() })
@@ -37,7 +40,7 @@ internal class RoomAiSecurityService(
 
     override suspend fun setMode(mode: AiMode): AiSecurityState = io {
         val control = database.withTransaction {
-            val current = ensureControl()
+            val current = requireWritableControl()
             if (current.mode == mode.name) return@withTransaction current
             val epoch = nextEpoch(current)
             if (dao.updateMode(mode.name, epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
@@ -49,7 +52,7 @@ internal class RoomAiSecurityService(
     override suspend fun selectReceiver(receiver: ProviderReceiver): AiSecurityState = io {
         val configured = configured(receiver)
         val control = database.withTransaction {
-            val current = ensureControl()
+            val current = requireWritableControl()
             if (current.selectedReceiverIdentity == configured.identity) return@withTransaction current
             val epoch = nextEpoch(current)
             if (dao.selectReceiver(configured.identity, epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
@@ -61,7 +64,7 @@ internal class RoomAiSecurityService(
     override suspend fun grant(receiver: ProviderReceiver): AiSecurityState = io {
         val configured = configured(receiver)
         val control = database.withTransaction {
-            val current = ensureControl()
+            val current = requireWritableControl()
             val epoch = nextEpoch(current)
             if (dao.grant(
                     configured.identity, configured.scopeVersion, configured.disclosureVersion,
@@ -77,7 +80,7 @@ internal class RoomAiSecurityService(
 
     override suspend fun revoke(): AiSecurityState = io {
         val control = database.withTransaction {
-            val current = ensureControl()
+            val current = requireWritableControl()
             val epoch = nextEpoch(current)
             if (dao.revoke(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
             readControl()
@@ -87,41 +90,45 @@ internal class RoomAiSecurityService(
 
     override suspend fun replaceCredential(secret: CharArray): AiSecurityState = io {
         if (secret.none { !it.isWhitespace() }) fail(AiSecurityError.Validation)
-        val control = database.withTransaction {
-            val current = ensureControl()
-            val epoch = nextEpoch(current)
-            if (dao.bumpAuthEpoch(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
-            readControl()
+        credentialMutation.withLock {
+            val control = database.withTransaction {
+                val current = requireWritableControl()
+                val epoch = nextEpoch(current)
+                if (dao.bumpAuthEpoch(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
+                readControl()
+            }
+            try {
+                vault.store(secret)
+            } catch (error: IllegalArgumentException) {
+                throw AiSecurityException(AiSecurityError.Validation, error)
+            } catch (error: CredentialUnavailableException) {
+                throw AiSecurityException(AiSecurityError.CredentialUnavailable, error)
+            } catch (error: IOException) {
+                throw AiSecurityException(AiSecurityError.RecoverableIO, error)
+            } catch (error: SecurityException) {
+                throw AiSecurityException(AiSecurityError.CredentialUnavailable, error)
+            }
+            snapshot(control)
         }
-        try {
-            vault.store(secret)
-        } catch (error: IllegalArgumentException) {
-            throw AiSecurityException(AiSecurityError.Validation, error)
-        } catch (error: CredentialUnavailableException) {
-            throw AiSecurityException(AiSecurityError.CredentialUnavailable, error)
-        } catch (error: IOException) {
-            throw AiSecurityException(AiSecurityError.RecoverableIO, error)
-        } catch (error: SecurityException) {
-            throw AiSecurityException(AiSecurityError.CredentialUnavailable, error)
-        }
-        snapshot(control)
     }
 
     override suspend fun clearCredential(): AiSecurityState = io {
-        val control = database.withTransaction {
-            val current = ensureControl()
-            val epoch = nextEpoch(current)
-            if (dao.bumpAuthEpoch(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
-            readControl()
+        credentialMutation.withLock {
+            val control = database.withTransaction {
+                val current = requireWritableControl()
+                val epoch = nextEpoch(current)
+                if (dao.bumpAuthEpoch(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
+                readControl()
+            }
+            try {
+                vault.clear()
+            } catch (error: IOException) {
+                throw AiSecurityException(AiSecurityError.RecoverableIO, error)
+            } catch (error: SecurityException) {
+                throw AiSecurityException(AiSecurityError.CredentialUnavailable, error)
+            }
+            snapshot(control)
         }
-        try {
-            vault.clear()
-        } catch (error: IOException) {
-            throw AiSecurityException(AiSecurityError.RecoverableIO, error)
-        } catch (error: SecurityException) {
-            throw AiSecurityException(AiSecurityError.CredentialUnavailable, error)
-        }
-        snapshot(control)
     }
 
     override suspend fun eligibility(receiver: ProviderReceiver): AiSendEligibility = io {
@@ -130,10 +137,12 @@ internal class RoomAiSecurityService(
     }
 
     override suspend fun requirePermit(receiver: ProviderReceiver): AiSendPermit = io {
-        val state = snapshot(database.withTransaction { ensureControl() })
-        when (val result = AiSecurityPolicy.eligibility(state, receiver, catalog)) {
-            AiSendEligibility.Ready -> AiSendPermit(receiver, state.authEpoch)
-            is AiSendEligibility.Denied -> throw AiSecurityException(errorFor(result.reason))
+        credentialMutation.withLock {
+            val state = snapshot(database.withTransaction { ensureControl() })
+            when (val result = AiSecurityPolicy.eligibility(state, receiver, catalog)) {
+                AiSendEligibility.Ready -> AiSendPermit(receiver, state.authEpoch)
+                is AiSendEligibility.Denied -> throw AiSecurityException(errorFor(result.reason))
+            }
         }
     }
 
@@ -154,9 +163,18 @@ internal class RoomAiSecurityService(
 
     private fun ensureControl(): AiControlEntity {
         dao.control()?.let { return it }
-        dao.insertControlIfAbsent(AiControlEntity(1, AiMode.OFF.name, null, null, null, null, null, 0))
+        if (records.dataState() == null) return virtualControl()
+        dao.insertControlIfAbsent(virtualControl())
         return readControl()
     }
+
+    private fun requireWritableControl(): AiControlEntity {
+        if (records.dataState() == null) fail(AiSecurityError.NotInitialized)
+        return ensureControl()
+    }
+
+    private fun virtualControl(): AiControlEntity =
+        AiControlEntity(1, AiMode.OFF.name, null, null, null, null, null, 0)
 
     private fun readControl(): AiControlEntity = dao.control() ?: fail(AiSecurityError.RecoveryRequired)
 
@@ -220,5 +238,11 @@ internal class RoomAiSecurityService(
         } catch (error: SQLiteException) {
             throw AiSecurityException(AiSecurityError.RecoverableIO, error)
         }
+    }
+
+    private companion object {
+        // Serializes credential mutation with permit issuance in this process. The E0 contract is
+        // single-process; E2 still owns Run invalidation and network cancellation.
+        private val credentialMutation = Mutex()
     }
 }

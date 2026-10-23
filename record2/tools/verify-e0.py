@@ -252,14 +252,16 @@ def instrument(path, count):
     return {"tests": count, "failures": 0, "path": path.relative_to(ROOT).as_posix()}
 
 
-e0_instrumentation = instrument(OUT / "instrumentation-final2.txt", 12)
-regression = instrument(OUT / "instrumentation-regression2.txt", 24)
-assert "AiSecurityContractTest" in (OUT / "instrumentation-final2.txt").read_text()
-assert "KeystoreCredentialVaultTest" in (OUT / "instrumentation-final2.txt").read_text()
+e0_instrumentation = instrument(OUT / "instrumentation-final3.txt", 16)
+regression = instrument(OUT / "instrumentation-regression3.txt", 24)
+e0_text = (OUT / "instrumentation-final3.txt").read_text(encoding="utf-8")
+assert "AiSecurityContractTest" in e0_text
+assert "AiSecurityInitializationContractTest" in e0_text
+assert "KeystoreCredentialVaultTest" in e0_text
 
 for log in [
-    OUT / "logcat-final2.txt",
-    OUT / "logcat-regression2.txt",
+    OUT / "logcat-final3.txt",
+    OUT / "logcat-regression3.txt",
 ]:
     text = log.read_text(encoding="utf-8", errors="ignore")
     assert SENTINEL_TEXT not in text, log
@@ -311,7 +313,7 @@ report = {
     "task": "E0 provider authorization and BYOK/Keystore",
     "result": "PASS",
     "scope": (
-        "Non-visual authorization/credential gate with a synthetic credential; "
+        "Non-visual authorization and credential-access seam with a synthetic credential; "
         "no real Provider, real Key, user data, UI or manual ZIP."
     ),
     "schema_v1_lf_sha256": schema_sha,
@@ -339,12 +341,13 @@ report = {
     "device": device,
     "limits": [
         "No real DeepSeek request, real API key, UI, session history or manual ZIP was exercised.",
-        "D0/D1/F2 must call this gate at every egress and result-write boundary; E0 proves the gate and state matrix, not the future call sites.",
+        "D0/D1 must revalidate at the actual request-start boundary and E2 must order revocation/cancellation; E0 proves the permit/credential seam and state matrix, not a race-free production network gate.",
+        "E2/G0 must bind a permit to the request's dataGeneration or reject it after restore; E0's permit binds receiver, authEpoch and credential status only.",
         "Keystore key invalidation is simulated by deleting the test key; no user-authentication-bound key was used.",
     ],
 }
 (OUT / "verification.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 print(
     "PASS: E0 authorization/credential state, Keystore, schema, APK/backup rules, "
-    "secret sentinels and 36 device tests verified"
+    "secret sentinels and 40 device tests verified"
 )
