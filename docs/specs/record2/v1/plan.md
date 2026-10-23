@@ -751,10 +751,10 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 
 正式测试位于[DeepSeekProtocolContractTest.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekProtocolContractTest.kt#L30)、[DeepSeekProtocolFailureTest.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekProtocolFailureTest.kt#L32)，共享夹具见[DeepSeekTestSupport.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekTestSupport.kt#L1)。
 
-- **最终真实设备套件：** 8个真实DeepSeek测试方法（最终批次均为attempt 1；测试框架保留最多3次受控重试，D0过程中曾观察到一次仅完成第一步的情况），覆盖普通/Thinking的Flash与Pro、一次和连续两次Tool Call/Result、跨Run ChatMemory、tool pairing与reasoning_content保留。最终命令`am instrument -w -r -e class '...DeepSeekProtocolContractTest,...DeepSeekProtocolFailureTest' ...`返回`OK (22 tests)`、16.381秒、无失败/skip。真实测试只发合成提示；每Run预算记录8条，最终均`WITHIN`。
+- **最终真实设备套件：** 8个真实DeepSeek测试方法（最终批次均为attempt 1；测试框架保留最多3次受控重试，D0过程中曾观察到一次仅完成第一步的情况），覆盖普通/Thinking的Flash与Pro、一次和连续两次Tool Call/Result、跨Run ChatMemory、tool pairing与reasoning_content保留。最终命令`am instrument -w -r -e class '...DeepSeekProtocolContractTest,...DeepSeekProtocolFailureTest' ...`返回`OK (22 tests)`、17.503秒、无失败/skip。真实测试只发合成提示；每Run预算记录8条，最终均`WITHIN`。
 - **最终故障/协议套件：** 14项PASS：429、503、超时、空choices、畸形JSON、未知工具、畸形工具参数、tool-level异常、预算耗尽、取消、no-progress watchdog、reasoning_content重放、缺usage、active token预算守卫。取消与失败为确定性本地脚本，不冒充真实Provider故障；no-progress watchdog按批准值在第3次相同调用后取消，并验证取消后无新增请求。
-- **构建：** `check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`最终PASS；debug/test/release APK SHA-256分别为`94391db95b6a1267e86870f52bc51f895ff65b8f73dca504daeb6ee70a009e3c`、`3a9023566868062f5f0054de882b9dd204434f0c87e64cacc3ced137fbd58359`、`d331c6894ded41c84002841e1369b80e18ad69bf0370b13b0e6458660f2aadd4`；设备安装的debug/test APK摘要与构建产物逐项一致。最终APK权限集合与A1一致（INTERNET及AndroidX动态接收器自动权限），`usesCleartextTraffic=false`、`allowBackup=false`，无新增权限/组件。
-- **实际费用/延迟：** 最终套件真实用量input=3107、output=449、total=3556 tokens；批内估算约$0.00203，远低于批准的Flash $0.10/Pro $0.25每Run上限及批次$1上限（精确账单以Provider为准）。单次真实调用延迟约0.4–2.9秒，最终套件16.4秒。active token守卫测试在64,002 tokens处正确停止。
+- **构建：** `check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`最终PASS；debug/test/release APK SHA-256分别为`94391db95b6a1267e86870f52bc51f895ff65b8f73dca504daeb6ee70a009e3c`、`f718530b00a25ea669e84303b38597b1bbd042069580eae29e20c76677d8e149`、`d331c6894ded41c84002841e1369b80e18ad69bf0370b13b0e6458660f2aadd4`；设备安装的debug/test APK摘要与构建产物逐项一致。最终APK权限集合与A1一致（INTERNET及AndroidX动态接收器自动权限），`usesCleartextTraffic=false`、`allowBackup=false`，无新增权限/组件。
+- **实际费用/延迟：** 最终套件真实用量input=3134、output=493、total=3627 tokens；批内估算约$0.00185，远低于批准的Flash $0.10/Pro $0.25每Run上限及批次$1上限（精确账单以Provider为准）。单次真实调用延迟约0.4–2.9秒，最终套件17.5秒。active token守卫测试在64,002 tokens处正确停止。
 - **证据：** 本机[record2/build/d0/](../../../../record2/build/d0/)保留`instrumentation-final.txt`、`real.json`、`failures.json`、`protocol-probe.txt`、`dependencies-debug.txt`、`apk-hashes.txt`、`logcat.txt`及构建日志；被Git忽略，不承诺跨机器存在。脱敏可复核摘要、APK摘要和原始证据SHA-256见[2026-10-24-d0.md](../../../engineering/evidence/2026-10-24-d0.md)。密钥扫描覆盖966份源码/文档、3个APK、证据与logcat，命中0；设备app私有Key文件已确认删除。
 
 ### 22.4 D0实际发现（D1/E1输入）
@@ -779,9 +779,9 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 | 单请求超时 | request/socket 300秒，connect 30秒 | 实测最大单次约2.6秒；为Thinking/网络留余量 |
 | Agent最大步数 | `maxAgentIterations=50` | D0连续两次工具/3次请求约10步；50为测试上界 |
 | 单Run墙钟 | 900秒 | 实测最终套件16.4秒；防止模型/工具停滞 |
-| 累计Token | 64,000/Run | 实测单Run最大1,461（早期1,557） |
-| Flash费用上限 | $0.10/Run | 最终批内真实用量约$0.00203；远低于上限 |
-| Pro费用上限 | $0.25/Run | Pro单次测试约$0.00066；远低于上限 |
+| 累计Token | 64,000/Run | 实测单Run最大1,519（早期1,557） |
+| Flash费用上限 | $0.10/Run | 最终批内真实用量约$0.00185；远低于上限 |
+| Pro费用上限 | $0.25/Run | Pro单次测试约$0.0004–0.0007；远低于上限 |
 | 连续无进展 | 3次相同工具调用即停 | watchdog在3次后取消通过；工具级异常无效 |
 | 执行批次累计 | $1（沿用原授权） | 不开放无界调用；精确账单以Provider为准 |
 

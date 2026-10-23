@@ -642,6 +642,12 @@ class DeepSeekProtocolContractTest {
         }
         val unmatched = calls.filter { call -> results.none { it.id == call.id } }
         assertTrue("unanswered tool calls: ${unmatched.map { it.id }}", unmatched.isEmpty())
+        val resultsInCallOrder = calls.map { call -> results.single { it.id == call.id } }
+        assertEquals(
+            "tool results must preserve call order",
+            resultsInCallOrder.sortedBy { it.messageIndex },
+            resultsInCallOrder,
+        )
         return ToolPairingSummary(calls.size, results.size)
     }
 
