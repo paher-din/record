@@ -25,6 +25,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.AfterClass
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -507,6 +508,84 @@ class DeepSeekProtocolFailureTest {
                 },
             )
         }
+    }
+
+    @Test
+    fun maxStepCapExhaustionIsBudgetInconclusiveNotProtocolFailure() {
+        val fake = ScriptedHttpClient { _, _ ->
+            chatResponse(toolCalls = listOf(FixtureToolCall("call-cap", "record2_echo", """{"word":"cap"}""")))
+        }
+        val echo = EchoTool()
+        newClient(fake).use { client ->
+            val agent = DeepSeekProtocol.agent(
+                executor = executor(client),
+                model = DeepSeekProtocol.Flash,
+                toolRegistry = toolRegistry(echo),
+                thinking = false,
+                maxIterations = D0TestLimits.MAX_AGENT_STEPS,
+            )
+            val failure = runCatching { runBlocking { agent.run("Synthetic D0 step-cap probe.") } }.exceptionOrNull()
+            assertTrue(
+                "expected step-cap termination, got $failure",
+                failure is AIAgentMaxNumberOfIterationsReachedException,
+            )
+            val reason = runLimitFailureReason(failure)
+            assertTrue("step-cap exhaustion must classify as a run limit, not a protocol failure", reason != null)
+            assertTrue(reason.orEmpty().contains("max iterations"))
+            assertTrue(fake.requests.size >= 2)
+            evidence.add(
+                buildJsonObject {
+                    put("test", "maxStepCapExhaustionIsBudgetInconclusiveNotProtocolFailure")
+                    put("configuredSteps", D0TestLimits.MAX_AGENT_STEPS)
+                    put("requestCount", fake.requests.size)
+                    put("failure", failure!!.javaClass.simpleName)
+                    put("classification", "INCONCLUSIVE/BudgetExceeded")
+                    put("result", "PASS")
+                },
+            )
+        }
+    }
+
+    @Test
+    fun missingUsageMarksRunBudgetUnmetered() {
+        val budget = D0RunBudget()
+        budget.recordFrom("""{"model":"deepseek-flash","messages":[]}""", noUsageResponse())
+        assertEquals(1, budget.unmeteredResponses)
+        assertEquals(0, budget.inputTokens)
+        assertEquals(0, budget.outputTokens)
+        assertFalse(budget.exceeded)
+        evidence.add(
+            buildJsonObject {
+                put("test", "missingUsageMarksRunBudgetUnmetered")
+                put("unmeteredResponses", budget.unmeteredResponses)
+                put("budgetOutcome", "UNMETERED/INCONCLUSIVE")
+                put("result", "PASS")
+            },
+        )
+    }
+
+    @Test
+    fun batchBudgetGuardReservesBeforeRequests() {
+        val guard = D0BatchBudgetGuard(capUsd = 0.20)
+        val body = """{"model":"deepseek-flash","messages":[]}"""
+        guard.reserveForRequest(body)
+        guard.record(body, chatResponse(text = "ok"))
+        guard.reserveForRequest(body)
+        guard.record(body, noUsageResponse())
+        val blocked = runCatching { guard.reserveForRequest(body) }.exceptionOrNull()
+        assertTrue("guard must block the next request before it is sent", blocked is BudgetExceededException)
+        assertEquals(1, guard.unmeteredResponses)
+        assertTrue(guard.spentUsd > 0.10)
+        evidence.add(
+            buildJsonObject {
+                put("test", "batchBudgetGuardReservesBeforeRequests")
+                put("capUsd", 0.20)
+                put("meteredSpentUsd", guard.spentUsd)
+                put("unmeteredResponses", guard.unmeteredResponses)
+                put("blockedBeforeRequest", true)
+                put("result", "PASS")
+            },
+        )
     }
 
     companion object {

@@ -2,6 +2,7 @@ package com.paherdin.record2.ai
 
 import android.content.Context
 import android.os.Build
+import ai.koog.agents.core.agent.exception.AIAgentMaxNumberOfIterationsReachedException
 import ai.koog.agents.core.tools.SimpleTool
 import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolRegistry
@@ -61,12 +62,26 @@ internal class BudgetExceededException(
     val reasons: List<String>,
 ) : RuntimeException(reasons.joinToString("; "))
 
+/**
+ * A functional run terminated by a D0 limit (budget, wall clock or the configured agent step cap)
+ * is INCONCLUSIVE, never a protocol failure. Koog surfaces step-cap exhaustion as
+ * [AIAgentMaxNumberOfIterationsReachedException] from `AIAgent.run`.
+ */
+internal fun runLimitFailureReason(runFailure: Throwable?): String? = when (runFailure) {
+    is BudgetExceededException -> runFailure.reasons.joinToString("; ").ifEmpty { "run budget exceeded" }
+    is AIAgentMaxNumberOfIterationsReachedException ->
+        "agent reached the configured max iterations (${D0TestLimits.MAX_AGENT_STEPS}) without finishing"
+    else -> null
+}
+
 internal class D0RunBudget {
     var inputTokens: Int = 0
         private set
     var outputTokens: Int = 0
         private set
     var estimatedCostUsd: Double = 0.0
+        private set
+    var unmeteredResponses: Int = 0
         private set
     var exceeded: Boolean = false
         private set
@@ -76,6 +91,7 @@ internal class D0RunBudget {
         inputTokens = 0
         outputTokens = 0
         estimatedCostUsd = 0.0
+        unmeteredResponses = 0
         exceeded = false
         reasons.clear()
     }
@@ -86,7 +102,13 @@ internal class D0RunBudget {
         }.getOrNull() ?: "deepseek-flash"
         val usage = runCatching {
             Json.parseToJsonElement(responseBody).jsonObject["usage"]?.jsonObject
-        }.getOrNull() ?: return
+        }.getOrNull()
+        if (usage == null) {
+            // Consumption without a usage block cannot be verified; the run is reported as
+            // unmetered instead of silently counting it as zero.
+            unmeteredResponses += 1
+            return
+        }
         inputTokens += usage.intField("prompt_tokens") ?: 0
         outputTokens += usage.intField("completion_tokens") ?: 0
         estimatedCostUsd = D0TestLimits.costUsd(model, inputTokens, outputTokens)
@@ -104,6 +126,67 @@ internal class D0RunBudget {
         }
     }
 }
+
+/**
+ * Batch-wide guard for real API calls. Each real request must reserve the model's full run cap
+ * before it is sent, so the batch cannot exceed [capUsd] after the fact; responses without usage
+ * are charged the run cap because their consumption is unknown.
+ */
+internal class D0BatchBudgetGuard(private val capUsd: Double = D0TestLimits.BATCH_USD) {
+    private val lock = Any()
+    private var spent = 0.0
+    private var unmetered = 0
+
+    val spentUsd: Double get() = synchronized(lock) { spent }
+    val unmeteredResponses: Int get() = synchronized(lock) { unmetered }
+
+    fun reset() {
+        synchronized(lock) {
+            spent = 0.0
+            unmetered = 0
+        }
+    }
+
+    fun reserveForRequest(requestBody: String) {
+        val reserve = D0TestLimits.costCapUsd(modelOf(requestBody))
+        synchronized(lock) {
+            if (spent + reserve > capUsd) {
+                throw BudgetExceededException(
+                    listOf(
+                        "batch budget: spent ${"%.4f".format(spent)} + next-request reserve " +
+                            "${"%.4f".format(reserve)} exceeds cap $capUsd",
+                    ),
+                )
+            }
+        }
+    }
+
+    fun record(requestBody: String, responseBody: String) {
+        val model = modelOf(requestBody)
+        val usage = runCatching {
+            Json.parseToJsonElement(responseBody).jsonObject["usage"]?.jsonObject
+        }.getOrNull()
+        synchronized(lock) {
+            if (usage == null) {
+                unmetered += 1
+                spent += D0TestLimits.costCapUsd(model)
+            } else {
+                spent += D0TestLimits.costUsd(
+                    model,
+                    usage.intField("prompt_tokens") ?: 0,
+                    usage.intField("completion_tokens") ?: 0,
+                )
+            }
+        }
+    }
+
+    private fun modelOf(requestBody: String): String =
+        runCatching {
+            Json.parseToJsonElement(requestBody).jsonObject.stringField("model")
+        }.getOrNull() ?: "deepseek-flash"
+}
+
+internal val D0BatchBudget = D0BatchBudgetGuard()
 
 internal suspend fun <T> withD0RunLimit(block: suspend () -> T): T =
     try {
@@ -140,6 +223,7 @@ internal object D0Key {
 internal class RecordingHttpClient(
     private val delegate: KoogHttpClient,
     private val budget: D0RunBudget? = null,
+    private val batchBudget: D0BatchBudgetGuard? = null,
 ) : KoogHttpClient by delegate {
     val requests = CopyOnWriteArrayList<String>()
     val responses = CopyOnWriteArrayList<String>()
@@ -152,11 +236,17 @@ internal class RecordingHttpClient(
         parameters: Map<String, String>,
         headers: Map<String, String>,
     ): R {
-        if (requestBody is String) requests += requestBody
+        if (requestBody is String) {
+            requests += requestBody
+            batchBudget?.reserveForRequest(requestBody)
+        }
         val response = delegate.post(path, requestBody, requestBodyType, responseType, parameters, headers)
         if (response is String) {
             responses += response
-            if (requestBody is String) budget?.recordFrom(requestBody, response)
+            if (requestBody is String) {
+                batchBudget?.record(requestBody, response)
+                budget?.recordFrom(requestBody, response)
+            }
         }
         return response
     }
@@ -175,6 +265,7 @@ internal class RecordingHttpClient(
 
 internal class RecordingFactory(
     private val delegate: KoogHttpClient.Factory,
+    private val batchBudget: D0BatchBudgetGuard = D0BatchBudget,
 ) : KoogHttpClient.Factory {
     val clients = CopyOnWriteArrayList<RecordingHttpClient>()
     val budget = D0RunBudget()
@@ -200,6 +291,7 @@ internal class RecordingFactory(
             json = json,
         ),
         budget = budget,
+        batchBudget = batchBudget,
     ).also { clients += it }
 
     val requests: List<String> get() = clients.flatMap { it.requests }
@@ -405,6 +497,11 @@ internal fun chatResponse(
 
 internal fun emptyChoicesResponse(): String =
     """{"id":"d0-empty","object":"chat.completion","created":0,"model":"deepseek-flash","system_fingerprint":"d0","choices":[]}"""
+
+internal fun noUsageResponse(): String =
+    """{"id":"d0-no-usage","object":"chat.completion","created":0,"model":"deepseek-flash",
+    "system_fingerprint":"d0","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},
+    "finish_reason":"stop"}]}""".trimIndent()
 
 internal fun parseMessages(requestBody: String): List<JsonObject> =
     Json.parseToJsonElement(requestBody).jsonObject["messages"]?.jsonObjectList().orEmpty()

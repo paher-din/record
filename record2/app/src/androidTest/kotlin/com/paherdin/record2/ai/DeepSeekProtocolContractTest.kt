@@ -412,6 +412,7 @@ class DeepSeekProtocolContractTest {
                 val fullSequenceObserved = calls.take(2) == listOf("first", "second")
                 val modelCompliant = fullSequenceObserved && output?.contains("DONE-ORANGE-731") == true
                 val budgetExceeded = recorder.budget.exceeded
+                val runLimitReason = runLimitFailureReason(outcome.exceptionOrNull())
                 val ok = modelCompliant && pairingOk && reasoningOk
                 evidence.add(
                     buildJsonObject {
@@ -433,10 +434,14 @@ class DeepSeekProtocolContractTest {
                         put("outputTokens", usage.outputTokens)
                         put("totalTokens", usage.totalTokens)
                         put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-flash", usage))
-                        put("budgetOutcome", if (budgetExceeded) "INCONCLUSIVE/BudgetExceeded" else "WITHIN")
+                        put(
+                            "budgetOutcome",
+                            if (budgetExceeded || runLimitReason != null) "INCONCLUSIVE/BudgetExceeded" else "WITHIN",
+                        )
                         put("configuredSteps", D0TestLimits.MAX_AGENT_STEPS)
+                        put("runLimitReason", runLimitReason.orEmpty())
                         put("result", when {
-                            budgetExceeded -> "INCONCLUSIVE"
+                            budgetExceeded || runLimitReason != null -> "INCONCLUSIVE"
                             ok -> "PASS"
                             else -> "RETRY"
                         })
@@ -454,7 +459,7 @@ class DeepSeekProtocolContractTest {
                 lastObservation =
                     "attempt=$attempt calls=$calls requests=${recorder.requests.size} " +
                         "output=${output?.replace('\n', ' ')?.take(160) ?: "exception"}"
-                if (ok && !budgetExceeded) {
+                if (ok && !budgetExceeded && runLimitReason == null) {
                     passed = true
                     return@use
                 }
@@ -488,29 +493,46 @@ class DeepSeekProtocolContractTest {
                 }
             }
             val started = SystemClock.elapsedRealtime()
-            val outcome = runCatching {
-                val first = withD0RunLimit {
+            val firstOutcome = runCatching {
+                withD0RunLimit {
                     agent.run("Synthetic probe: remember code ORANGE-731. Reply OK.")
                 }
-                val second = withD0RunLimit {
+            }
+            val firstElapsed = SystemClock.elapsedRealtime() - started
+            checkFunctionalBudget(
+                "crossRunChatMemoryRecallsSyntheticFact-run1",
+                recorder,
+                "deepseek-flash",
+                usageTotals(recorder.responses),
+                firstElapsed,
+                configuredSteps = D0TestLimits.MAX_AGENT_STEPS,
+                runFailure = firstOutcome.exceptionOrNull(),
+            )
+            // The 64k-token single-run cap applies per agent run; the batch guard keeps the cross-run total.
+            val responsesAfterFirstRun = recorder.responses.size
+            recorder.budget.reset()
+            val secondStarted = SystemClock.elapsedRealtime()
+            val secondOutcome = runCatching {
+                withD0RunLimit {
                     agent.run(
                         "Synthetic probe: which code did I ask you to remember? Reply with the code only.",
                     )
                 }
-                first to second
             }
-            val elapsed = SystemClock.elapsedRealtime() - started
-            val usage = usageTotals(recorder.responses)
+            val secondElapsed = SystemClock.elapsedRealtime() - secondStarted
             checkFunctionalBudget(
-                "crossRunChatMemoryRecallsSyntheticFact",
+                "crossRunChatMemoryRecallsSyntheticFact-run2",
                 recorder,
                 "deepseek-flash",
-                usage,
-                elapsed,
+                usageTotals(recorder.responses.drop(responsesAfterFirstRun)),
+                secondElapsed,
                 configuredSteps = D0TestLimits.MAX_AGENT_STEPS,
-                runFailure = outcome.exceptionOrNull(),
+                runFailure = secondOutcome.exceptionOrNull(),
             )
-            val (first, second) = outcome.getOrThrow()
+            val first = firstOutcome.getOrThrow()
+            val second = secondOutcome.getOrThrow()
+            val elapsed = SystemClock.elapsedRealtime() - started
+            val usage = usageTotals(recorder.responses)
 
             assertTrue(first.isNotBlank())
             assertTrue(second.contains("ORANGE-731"))
@@ -550,8 +572,9 @@ class DeepSeekProtocolContractTest {
         runFailure: Throwable? = null,
     ) {
         val reasons = mutableListOf<String>()
-        if (runFailure is BudgetExceededException) {
-            reasons += runFailure.reasons.ifEmpty { listOf("run budget exceeded") }
+        runLimitFailureReason(runFailure)?.let { reasons += it }
+        if (recorder.budget.unmeteredResponses > 0) {
+            reasons += "${recorder.budget.unmeteredResponses} response(s) without usage: run consumption unmetered"
         }
         if (configuredSteps > D0TestLimits.MAX_AGENT_STEPS) {
             reasons += "agent steps $configuredSteps > ${D0TestLimits.MAX_AGENT_STEPS}"
@@ -567,6 +590,7 @@ class DeepSeekProtocolContractTest {
             reasons += "cost $cost > ${D0TestLimits.costCapUsd(model)}"
         }
         if (recorder.budget.exceeded) reasons += recorder.budget.reasons
+        val unmetered = recorder.budget.unmeteredResponses > 0
         evidence.add(
             buildJsonObject {
                 put("test", "$testName-budget")
@@ -576,7 +600,17 @@ class DeepSeekProtocolContractTest {
                 put("runWallMs", elapsedMs)
                 put("totalTokens", usage.totalTokens)
                 put("estimatedCostUsd", cost)
-                put("budgetOutcome", if (reasons.isEmpty()) "WITHIN" else "INCONCLUSIVE/BudgetExceeded")
+                put("unmeteredResponses", recorder.budget.unmeteredResponses)
+                put("batchSpentUsd", D0BatchBudget.spentUsd)
+                put("batchUnmeteredResponses", D0BatchBudget.unmeteredResponses)
+                put(
+                    "budgetOutcome",
+                    when {
+                        reasons.isEmpty() -> "WITHIN"
+                        unmetered -> "UNMETERED/INCONCLUSIVE"
+                        else -> "INCONCLUSIVE/BudgetExceeded"
+                    },
+                )
                 put("budgetReasons", reasons.joinToString("; "))
                 put("result", if (reasons.isEmpty()) "PASS" else "INCONCLUSIVE")
             },
@@ -690,6 +724,8 @@ class DeepSeekProtocolContractTest {
         @JvmStatic
         @BeforeClass
         fun loadKey() {
+            // One class execution = one batch; the real-call reserve gate starts from a clean slate.
+            D0BatchBudget.reset()
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             apiKey = D0Key.load(context)
             evidence.keyFingerprint = D0Key.fingerprint(apiKey!!)

@@ -913,3 +913,15 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执行的测试预算 + 可复核证据”，不是D1真实Record Tools、E0 BYOK/Keystore、E1 Room权威历史、E2进程恢复、F2 AI UI或M2/V1完成。真实cancel、流式、物理真机、API36、备份/恢复、发布均NOT RUN。脱敏摘要及原始证据SHA-256见[2026-10-24-d0.md](../../../engineering/evidence/2026-10-24-d0.md)。负责人已批准将本轮源码与Plan改动提交并推送工作树分支`codex/d0-koog-deepseek`；不合并main、不发布，实际提交/远端身份由Git日志和推送回执证明。
 
 并行集成边界：E0 PR #21与B2已先于D0合并进main；D0作为后合并方已于2026-10-24同步main基线，本章由§22重编号为§24，B2 §22、E0 §23与本章的授权、状态和证据完整保留。`DeepSeekProtocol.client(apiKey)`只是D0协议接缝，不是凭据/授权入口；D1业务集成必须通过E0的Provider授权/Keystore接缝，不能借该函数绕过E0。
+
+### 24.7 2026-10-24第二轮复审修复与main集成
+
+负责人第二轮复审PR #22（`545acd72`）确认上一轮7项缺陷已修复，剩余1项P1与3项P2，裁定“有条件通过、Request Changes”，随后指示“修复吧”。本修复只改D0三个测试源文件（含`DeepSeekTestSupport`测试预算设施）与本Plan/证据记录，不改生产协议接缝、Schema、设备范围或E0授权路径。
+
+- **P1步数上限误判：** 新增`runLimitFailureReason`把`BudgetExceededException`与Koog 1.3.0的`AIAgentMaxNumberOfIterationsReachedException`（已在本地agents-core AAR中核实类名与抛出路径）统一归类为运行上限终止；`checkFunctionalBudget`据此记录`INCONCLUSIVE/BudgetExceeded`并经`Assume`中止，功能测试触及50步不再被误判为协议FAIL。连续两次工具调用测试在步数/预算终止时立即停止重试并记`INCONCLUSIVE`，不再放大真实调用。
+- **P2无usage静默计零：** `D0RunBudget.recordFrom`对缺失usage的响应递增`unmeteredResponses`并返回，功能预算记录标`UNMETERED/INCONCLUSIVE`；批次侧按模型单Run费用上限保守计费，未知消耗不再计为零。
+- **P2批次上限事后检查：** 新增`D0BatchBudgetGuard`：`RecordingFactory`的真实POST在发送前按模型Run上限预留批次额度，不足即抛`BudgetExceededException`；每类执行在`@BeforeClass`重置，`D0Evidence`写盘复核保留为兜底。脚本路径不接入批次闸门。
+- **P2跨Run预算作用域：** crossRun测试改为每Run单独计量（每Run usage快照+`budget.reset()`+单独墙钟/预算检查），64,000 tokens与单Run费用上限不再按两次Run累计；跨Run总费用由批次闸门汇总。
+- **新增确定性测试：** 50步上限耗尽被归类为INCONCLUSIVE而非协议失败、缺usage标记UNMETERED、批次闸门请求前阻断，共3项，全部本地脚本、无真实费用。
+
+集成与回归：先以普通merge同步main（E0 PR #21与B2，仅本Plan冲突；本章由§22重编号为§24，B2 §22/E0 §23完整保留，章节序号后续由负责人统稿），再在集成版本回归：host单元测试Debug+Release共46项fail/error/skip=0；D0确定性设备套件17项（14项既有+3项新增）在同AVD `record2-schema-api34`全部PASS（本轮冷启动serial=`emulator-5554`，AVD中途掉线后重启，未清数据）。真实API套件本轮未重跑：设备`files/d0/deepseek.key`已被授权运行消耗，§24.3真实结果仍有效，最终真实回归待负责人重新注入Key后在集成版本执行。负责人确认并行项目章节序号由其统一处理，本节不追改编号。
