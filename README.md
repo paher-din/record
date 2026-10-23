@@ -1,3 +1,15 @@
+# Record 2.0
+
+Android本地优先生活记录应用，采用已冻结的Kotlin/Compose/Room与Koog Basic Agent方向。完整V1包括原生记录、完整Agent和安全备份；下方Record1.0的完成记录不代表R2已经实现。
+
+- 当前工程规则与适用范围：[AGENTS.md](AGENTS.md)、[文档路由](docs/index.md)。
+- 产品权威：[统一架构R1](docs/architecture/record2-v1-unified-architecture.md)、[V1 Spec](docs/specs/record2/v1/spec.md)、[实施Plan](docs/specs/record2/v1/plan.md)；产品批准事实见Plan §13，执行未因本轮文档准备而启动。
+- 最小来源资料：[已确认决定/验收与C1身份](docs/product/record2-v1-decision-baseline.md)。文档提交可重建性与C1外部源码可重取性分别验证，后者尚未核实。
+- 治理统一切换条件见Engineering Policy §7；治理生效不启动A0/B0/F0或产品开发，G3机器约束隔离仍待单独执行。
+- R2工程组织尚待A0审核，不默认复用旧七模块或从旧根wrapper构建新产品。
+
+## Record 1.0历史README（原文保留，不是R2发布门禁）
+
 # Android 生活记录 App
 
 A private Android timeline connecting money with life context.

@@ -1,68 +1,22 @@
-# Project operating contract
+# Record workspace operating contract
 
-## Product boundary
+Record 2.0 follows [docs/index.md](docs/index.md), its [Engineering Policy](docs/engineering/record2-engineering-contract.md), the frozen product contracts and the explicitly authorized task. Read only the sources relevant to that work.
 
-- Native Android, minSdk 34, local-first.
-- Current scope is Tech PoC, followed by MVP.
-- V1/V2 ideas do not authorize code, schema, interfaces, or empty modules.
+Record 1.0 rules in [AGENTS.record1.md](AGENTS.record1.md) apply only to explicitly scoped legacy work. Its code, data and history remain protected; no old module/Schema/navigation/Vault/check is inherited by default.
 
-## Required reading
+## Shared boundaries
 
-1. Read this file.
-2. Read docs/index.md.
-3. If an active spec exists, read the unique `in-progress` spec and only the core documents it references. For lifecycle work, read the target draft or approved spec instead.
-4. Read the research report only for evidence or license review.
+- 默认中文沟通；代码、命令和标识符用英文。
+- Preserve user modifications, untracked files, data and Git history; scope changes to the authorized task.
+- Explain reason/risk and obtain consent before deleting files/directories/history; changing environment files, secrets/tokens or CI; changing schemas or migrating data; or publishing/deploying publicly.
+- Secrets/private user data stay out of source, logs, fixtures and commits.
+- UI/visual/icons/layout/AI-role/animation and unconfirmed interaction decisions belong to the owner; implementation waits for the relevant design approval.
+- Use apply_patch for text edits; verify proportionally and report actual results. Agent claims, compilation or screenshots do not prove data integrity.
 
-## Sources of truth
+## Task execution
 
-- Product: docs/product/*
-- Architecture and data: docs/architecture/* and accepted ADRs
-- User experience: docs/experience/*
-- Engineering quality: docs/engineering/*
-- Stage order: [docs/roadmap.md](docs/roadmap.md)
-- Current active spec: none — [MVP M2 — finance core](docs/specs/mvp/m2-finance-core/spec.md) is `approved` (2026-09-04) after delegated independent review; owning core documents are synchronized and [ADR 0017](docs/architecture/decisions/0017-m2-finance-schema-normalization-and-backup-v2.md) is accepted. M2 remains inactive until its plan is explicitly approved and schema/migration execution consent is recorded. [MVP M1 — app shell](docs/specs/mvp/m1-app-shell/spec.md) is `completed` (2026-09-04) with all 19 acceptance criteria PASS. Tech PoC P0–P6 are `completed`.
-- Current change when active: the unique `in-progress` spec under docs/specs/*
+The main Agent may deliver end-to-end; delegate only when useful and allowed. Coordinate owners for conflicting writes; use risk-based validation and review.
 
-## Non-negotiable data rules
+Use Simple/Feature/Major rules in the Policy. Major implementation needs the applicable approved Spec/Plan, design and execution permission; Simple/Feature do not automatically create new lifecycle documents. Active is a state of each authorized Major, not a whole-repository mutex. Shared contracts/resources still require conflict control.
 
-- Money uses integer minor units; Float and Double are forbidden for amounts.
-- Account balance must be reproducible from AccountEntry.
-- Financial aggregate writes are atomic.
-- Production destructive migration is forbidden.
-- A backup feature is incomplete until automated round-trip restore passes.
-- Timeline and SearchDocument are projections, never facts.
-
-## Change protocol
-
-- Update the owning core document before changing a stable decision.
-- Add an ADR when the decision affects architecture, persistence, compatibility, or recovery.
-- Resolve document conflicts explicitly before implementation.
-- `active` means the unique `in-progress` spec; an `approved` spec is not active, and zero active specs is valid.
-- A roadmap candidate authorizes only creation of a draft `spec.md`, not a plan or implementation work.
-- Do not implement until the user has explicitly approved both the spec and the plan and the approval date/context is recorded in plan metadata or the spec status record.
-- If a PoC technical assumption or selection conclusion fails, keep that slice `in-progress`, update the owning architecture facts, create the required evidence-bearing ADR, revise the same spec and plan, and obtain explicit user reapproval before retrying. A test-infrastructure failure is recorded and repaired without being treated as a PoC conclusion.
-
-## Engineering discipline
-
-- Feature modules do not depend on one another.
-- UI does not access DAO, Room Entity, or physical attachment paths.
-- Add Use Cases only for cross-aggregate atomicity, shared behavior, or central invariants.
-- Preserve user changes and unrelated worktree state.
-- Use apply_patch for text edits and run proportional verification after every change.
-- Agentic work splits, dispatches, and verifies per the [agentic execution workflow](docs/engineering/agentic-workflow.md); the main agent accepts only against raw evidence, and a subagent reports blockers without hiding or relabeling them.
-
-## User approval boundaries
-
-- Ask before deleting files, directories, or Git history.
-- Ask before modifying environment files, secrets, tokens, or CI/CD configuration.
-- Ask before database schema changes or data migrations.
-- Ask before publishing or deploying publicly.
-
-## Definition of done
-
-- Implementation work with an active spec must pass that unique `in-progress` spec's acceptance criteria.
-- Lifecycle or documentation work, and other authorized work performed while no spec is active, must pass its approved plan or documented acceptance criteria.
-- `none` active never authorizes functional implementation or bypasses the specification lifecycle; work that requires a spec cannot start or be declared done without the required active `in-progress` spec.
-- Required automated checks pass.
-- A verification record contains actual commands and results.
-- Affected core documents and ADRs are synchronized.
+Engineering reform does not authorize product work, schema/device/API/credential/data/release operations or change frozen acceptance. Record task/approval facts once at their owner, keep history separate, and finish the authorized work without manufactured checkpoints.

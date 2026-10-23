@@ -1,32 +1,27 @@
 # Documentation router
 
-Read [AGENTS.md](../AGENTS.md) and [docs/index.md](index.md) for every task.
+## Record 2.0
 
-| Task | Required documents |
+Read [root rules](../AGENTS.md), then the [single R2 Engineering Policy](engineering/record2-engineering-contract.md) and the sources relevant to the task.
+
+| Work | Source |
 |---|---|
-| Any task | AGENTS.md, docs/index.md |
-| Record 2.0 V1 architecture and future implementation Spec/Plan | [Unified architecture baseline](architecture/record2-v1-unified-architecture.md) — owner-confirmed R1, authoritative design input for all future Record 2.0 V1 implementation Spec/Plan; architecture approval does not authorize implementation. Formal V1 implementation Spec/Plan have not been created or approved; this entry does not activate a Spec. |
-| Agentic execution (splitting, dispatch, acceptance) | engineering/agentic-workflow.md, active spec if one exists |
-| Product scope | product/vision.md, product/mvp-requirements.md, active spec if one exists |
-| Navigation or interaction | experience/information-architecture.md, experience/interaction-rules.md, active spec if one exists |
-| Domain or finance | architecture/domain-model.md, engineering/testing-strategy.md, active spec if one exists |
-| Room, files, search, backup, migration | architecture/data-and-storage.md, relevant ADR, engineering/testing-strategy.md, active spec if one exists |
-| Module or dependency change | architecture/overview.md, relevant ADR, engineering/conventions.md, active spec if one exists |
-| Security or diagnostics | engineering/security-and-privacy.md, active spec if one exists |
-| Open-source reuse or license review | core conclusion, then research report evidence |
+| Product/architecture | [Frozen unified R1](architecture/record2-v1-unified-architecture.md), [V1 Spec](specs/record2/v1/spec.md) |
+| Dependencies/authorization/actual execution state | [V1 Plan](specs/record2/v1/plan.md), including product approval §13 and governance flow §14 |
+| Product and acceptance provenance/C1 identity | [Self-contained decision baseline](product/record2-v1-decision-baseline.md) |
+| UI | Spec §5.4 / Plan F0–F2, the owner's relevant design approval |
+| Collaboration, task/risk levels, permissions, verification | Engineering Policy; per-task commands/results in the relevant Plan/Verification |
 
-## Reading rules
+Approval belongs to Spec metadata/Plan approval record, not a duplicated router table. No product task or Spec is activated by adopting governance. Multiple independent Majors are coordinated by write/contract/resource ownership; the router's current focus is not a global lock.
 
-- Active means exactly the unique `in-progress` spec under `docs/specs/*`. An `approved` spec is not active, and the project may have no active spec.
-- Current active spec: none — [MVP M2 — finance core](specs/mvp/m2-finance-core/spec.md) is `approved` (2026-09-04) after delegated independent review; owning core documents are synchronized and [ADR 0017](architecture/decisions/0017-m2-finance-schema-normalization-and-backup-v2.md) is accepted. M2 remains inactive until its plan is explicitly approved and schema/migration execution consent is recorded. [MVP M1 — app shell](specs/mvp/m1-app-shell/spec.md) is `completed` (2026-09-04) with all 19 acceptance criteria PASS. Tech PoC P0–P6 are `completed`.
-- A candidate sits outside the formal lifecycle. It may create only a draft `spec.md`; it cannot create a plan or authorize code, schema, interface, migration, route, dependency, or module work.
-- A Codex-generated or reviewed plan is not approved. The user must explicitly approve it, and the approval date/context must be recorded in plan metadata or the spec status record before the spec can become `in-progress`.
-- Read links relatively. During lifecycle work, read the target draft or approved spec even though it is not active.
+R2 V1 is an approved Major; current task execution status remains in the Spec/Plan and is not changed by this router. Design/documentation needs its task permission, not functional activation. Source baseline admission and external C1 reproducibility limits must be read before asset reuse; historical local paths/shared links are not implementation prerequisites.
 
-## Fact ownership
+## Record 1.0 and history
 
-Each decision belongs to the core document for its owning domain. Downstream documents should reference that source instead of duplicating or silently contradicting its facts.
+For explicitly scoped legacy work, read [preserved R1.0 contract](../AGENTS.record1.md), then the legacy owner: [product](product/mvp-requirements.md), [experience](experience/interaction-rules.md), [architecture](architecture/overview.md), [data](architecture/data-and-storage.md), [engineering](engineering/conventions.md), [testing](engineering/testing-strategy.md), [security](engineering/security-and-privacy.md), [workflow](engineering/agentic-workflow.md), [roadmap](roadmap.md).
 
-## Conflict resolution
+Those sources, completed Spec/Plan/ADR/Verification and old checks preserve history; they do not automatically govern R2. Phase1B/1C-A/AI source decisions required by current V1 are carried by the admitted decision baseline, with original source identities and limitations. Do not change historical PASS/FAIL, approval or data to fit new policy.
 
-Resolve conflicts in this order: identify the owning domain, update the owning source, add or supersede an ADR if needed, update specs/plans, then code/tests. A failed PoC technical assumption or selection conclusion always requires a new ADR recording the failure evidence, rejected option, alternative decision, and impact before the same active slice can retry; a pure test-infrastructure failure is recorded and repaired without being treated as a PoC conclusion.
+## Source ownership
+
+Spec owns behavior/AC, Plan owns task dependencies/scope, Verification owns actual results, Policy owns R2 execution methods. Stable changes update the correct owner and need relevant review; a skill/generated plan cannot supply approval. Major decisions use ADR where long-term architecture/compatibility/recovery/security requires it, not for every patch/failure.
