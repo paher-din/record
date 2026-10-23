@@ -252,16 +252,16 @@ def instrument(path, count):
     return {"tests": count, "failures": 0, "path": path.relative_to(ROOT).as_posix()}
 
 
-e0_instrumentation = instrument(OUT / "instrumentation-final3.txt", 16)
-regression = instrument(OUT / "instrumentation-regression3.txt", 24)
-e0_text = (OUT / "instrumentation-final3.txt").read_text(encoding="utf-8")
+e0_instrumentation = instrument(OUT / "instrumentation-final4.txt", 17)
+regression = instrument(OUT / "instrumentation-regression4.txt", 24)
+e0_text = (OUT / "instrumentation-final4.txt").read_text(encoding="utf-8")
 assert "AiSecurityContractTest" in e0_text
 assert "AiSecurityInitializationContractTest" in e0_text
 assert "KeystoreCredentialVaultTest" in e0_text
 
 for log in [
-    OUT / "logcat-final3.txt",
-    OUT / "logcat-regression3.txt",
+    OUT / "logcat-final4.txt",
+    OUT / "logcat-regression4.txt",
 ]:
     text = log.read_text(encoding="utf-8", errors="ignore")
     assert SENTINEL_TEXT not in text, log
@@ -349,5 +349,5 @@ report = {
 (OUT / "verification.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 print(
     "PASS: E0 authorization/credential state, Keystore, schema, APK/backup rules, "
-    "secret sentinels and 40 device tests verified"
+    "secret sentinels and 41 device tests verified"
 )

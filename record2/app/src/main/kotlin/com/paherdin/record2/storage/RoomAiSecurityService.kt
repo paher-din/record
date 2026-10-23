@@ -162,15 +162,19 @@ internal class RoomAiSecurityService(
     }
 
     private fun ensureControl(): AiControlEntity {
+        if (records.dataState() == null) {
+            if (records.hasDataWithoutGeneration()) fail(AiSecurityError.RecoveryRequired)
+            return virtualControl()
+        }
         dao.control()?.let { return it }
-        if (records.dataState() == null) return virtualControl()
         dao.insertControlIfAbsent(virtualControl())
         return readControl()
     }
 
     private fun requireWritableControl(): AiControlEntity {
+        val control = ensureControl()
         if (records.dataState() == null) fail(AiSecurityError.NotInitialized)
-        return ensureControl()
+        return control
     }
 
     private fun virtualControl(): AiControlEntity =

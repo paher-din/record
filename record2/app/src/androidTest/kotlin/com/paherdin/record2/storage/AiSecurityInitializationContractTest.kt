@@ -96,6 +96,36 @@ class AiSecurityInitializationContractTest {
         assertFalse(vault.storageFile.exists())
     }
 
+    @Test fun orphanControlWithoutGenerationIsRecoveryRequiredAndUnchanged() = runBlocking {
+        val control = AiControlEntity(
+            1, AiMode.FULL.name, receiver.identity, receiver.identity,
+            receiver.scopeVersion, receiver.disclosureVersion, clock.millis(), 7,
+        )
+        database.aiControl().insertControl(control)
+        val secret = sentinel.toCharArray()
+        try {
+            vault.store(secret)
+        } finally {
+            secret.fill('\u0000')
+        }
+        val before = SchemaDiskObserver.snapshot(dbPath)
+
+        expectError(AiSecurityError.RecoveryRequired) { service.state() }
+        expectError(AiSecurityError.RecoveryRequired) { service.eligibility(receiver) }
+        var egress = 0
+        try {
+            val permit = service.requirePermit(receiver)
+            service.useCredential(permit) { egress += 1 }
+            fail("Orphan control must not issue a permit")
+        } catch (error: AiSecurityException) {
+            assertEquals(AiSecurityError.RecoveryRequired, error.code)
+        }
+        assertEquals(0, egress)
+        assertEquals(control, database.aiControl().control())
+        assertEquals(before, SchemaDiskObserver.snapshot(dbPath))
+        assertEquals(sentinel, vault.use { String(it) })
+    }
+
     private fun controlRow(): List<List<Any?>> =
         SchemaDiskObserver.snapshot(dbPath).getValue("ai_control")
 
