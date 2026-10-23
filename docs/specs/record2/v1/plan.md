@@ -1,9 +1,9 @@
 # Record 2.0 V1 Implementation Plan — R1
 
-- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核及真实故障结果见§21；其余产品任务未启动。
-- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1沿用Schema v1；迁移/恢复未授权；**Active spec:** R2 V1，B1业务内核已交付，非完整M1/V1。
+- **Status:** `in-progress`；revision `R1`；2026-10-24（Asia/Shanghai）。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核及真实故障结果见§21，E0非视觉授权/凭据接缝见§23；本批未启动其他产品任务。
+- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1沿用Schema v1；迁移/恢复未授权；**Active spec:** R2 V1，B1业务内核及E0非视觉授权/凭据接缝已交付，非完整M1/V1。
 - **行为与验收来源：** [spec.md](spec.md)与[自包含来源基线](../../../product/record2-v1-decision-baseline.md)；Spec E01～E12保留调查历史和外部C1核实边界。本文只拥有任务、依赖、范围、测试接缝和门禁，不形成另一份行为Spec。
-- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
+- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21，E0非视觉授权/Keystore及专用AVD合成测试见§23；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
 - **设计权限：** `DESIGN-OWNER：待负责人指导与确认`。负责人提供方向 → 候选方案 → 负责人审查调整 → 明确批准 → Codex 实现；未经批准不冻结视觉/交互，不以默认 Material 页面通过最终验收。
 
 ## 1. 工程判断与实施入口
@@ -731,3 +731,49 @@ Fixture使用固定UTC Clock=`2026-10-23T12:00:00Z`，发生时间`2026-10-23T12
 ### 21.3 B1提交与远程推送授权
 
 负责人明确要求“推送到远程仓库吧”，覆盖本轮B1共17个文件的必要Git提交及当前main→origin/main推送；本机环境/构建证据/AVD/测试库继续忽略，不扩大产品执行范围。推送前fetch确认本地与远端同步，精确清单、常见凭据模式、11份受改源码/runner摘要及已通过验证回执复核通过，Schema/R1和暂存区保护通过。仅追加本授权记录，沿用未变化源码的12项host、24项Room及7场景强停结果，不重复构建；实际提交及远端身份由Git日志和交付回执证明。
+
+## 23. E0 授权、凭据与发送接缝
+
+2026-10-24负责人要求“完成issue e0”。本批按§6 E0及G-CODE执行非视觉授权/认证/私有凭据接缝、必要安全状态接口、系统备份policy与安全测试；沿用A1/Schema v1/B0，不新增ADR、Schema、UI或真实Provider调用。实际对象仅`record2`源码/测试、专用`record2-schema-api34`/API34 AVD及合成凭据；未使用真实Key、DeepSeek、用户数据、网络请求或发布；Git提交/PR按§23.4记录。本批在独立工作树`codex/e0-provider-authorization`执行，主工作树既有未提交`plan.md`修改保持原样，未由本批暂存或提交。
+
+2026-10-24负责人对PR #21的静态审阅确认两项P1：E0初始化可能使B1拒绝数据库，以及凭据轮换期间仍可签发permit。第二轮静态审阅进一步指出：缺失`record_data_state`但已有孤立`ai_control`授权行时，仍可能签发permit。本批在同一PR窄范围修复并增加真实Room联合/同步屏障/孤儿行测试，未重开架构或Schema。
+
+### 23.1 授权、接收方与安全语义
+
+- **接收方身份：** 受控目录采用`deepseek.api.deepseek.com`，`scopeVersion=1`、`disclosureVersion=1`。它是接收方技术身份而非模型可填参数；模型、工具结果或Note正文不能修改。D0实际端点/模型变化、以及F0 D-SAFE/F2告知文案与展示，必须与版本对应；不匹配时旧grant失效并要求重新授权，不能沿用旧接收方资格。B0 §3.5的字段语义不变；实际接收方值/版本由本节拥有，D0模型预算与F2告知文案仍未决。
+- **状态独立：** AI模式（OFF/FULL）、接收方选择、持续授权（receiver/scope/disclosure/grantedAt）和Keystore凭据分别判断。初始OFF、无grant、无凭据；模式关闭不删除grant/凭据；撤销不清除已配置凭据；凭据缺失/不可读不删除历史或已确认业务。
+- **初始化所有权：** `record_data_state`/业务代理由B1初始化拥有。E0在代际不存在时先查`hasDataWithoutGeneration`：完全空库只返回虚拟OFF/无grant/无凭据，不插入`ai_control`；已有任何持久数据（包括孤立`ai_control`）时返回`RecoveryRequired`，不得签发permit；模式/授权/凭据写入要求代际已建立，否则空库返回`NotInitialized`且零写入。代际建立后E0才可幂等创建OFF控制行。E0不通过放宽B1的`hasDataWithoutGeneration`检查解决问题。
+- **epoch失效：** 每次模式、选择、授予、撤销、凭据替换/清除都递增`authEpoch`；授权发送permit捕获epoch，发送前及迟到结果写回前必须复验。撤销/关闭/换接收方先失效权限代次，再取消网络；取消网络不替代持久资格检查。E0负责持久epoch与发送前检查接缝，当前Run终态、网络取消及迟到结果写回由E2/D1/F2在调用点接入并验证。
+- **发送前检查接缝：** `eligibility`区分AI_DISABLED、未选择、未授权、版本不匹配、缺凭据、凭据不可读、非法字段组合（STATE_INVALID）；`requirePermit`只对READY发permit；`useCredential`在复验后短暂解密并回调，明文在`finally`清零。mode字符串不可解析等持久损坏按RecoveryRequired安全拒绝，不伪装成可发送状态。未授权/无AI时调用方必须在任何网络调用前停止，不能以空结果或假成功继续；调用方应只把明文用于构造认证头，调用返回后不保留到请求日志、缓存或模型上下文。这是授权检查与凭据访问接缝，不是完整网络发送门禁；D0/D1必须在实际请求启动边界做最终复验。
+- **凭据：** Android Keystore alias `record2.ai.credential.v1`，AES-256-GCM、认证加密、每次加密由Keystore生成唯一12字节IV；密文+IV写入`Context.noBackupFilesDir/ai_provider_credential.bin`，不进入Room、日志、Prompt、APK、手动ZIP或系统备份。明文只在受控回调中短暂存在并清零；临时网络/服务/额度失败不删Key；不可读/密钥丢失要求重新配置，不删除历史。
+- **凭据轮换排序：** 替换/清除先在Room事务递增epoch并提交，再原子写/删Keystore信封；`requirePermit`与轮换共享进程内互斥，轮换期间不能签发新permit。写入失败/取消/进程在两步之间终止时，epoch已递增、旧凭据保留或新凭据已完整替换，不产生半文件；服务不报成功，重试再递增epoch。
+- **接收方/授权文案边界：** E0冻结技术接收方与版本号，不写设置/告知页面或最终文案；D-SAFE/F2负责人设计决定展示和措辞。“撤销不收回已发送内容”的准确说明归F2，E0只保证后续请求/迟到结果被阻止。
+
+### 23.2 实现交付
+
+- [AiSecurity.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/security/AiSecurity.kt)：`AiMode`、受控`ProviderReceiver`目录、授权状态/拒绝原因/permit、纯策略和`AiSecurityService`/`CredentialVault`合同。业务/UI/Tools不直接读取`ai_control`。
+- [KeystoreCredentialVault.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/security/KeystoreCredentialVault.kt)：认证加密信封、Keystore密钥、唯一IV、原子替换、损坏/密钥丢失识别、回调后清零。
+- [RoomAiSecurityService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomAiSecurityService.kt)及[AiControlDao.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/AiControlDao.kt)：真实Room`ai_control`单例行、条件更新/epoch递增、模式/选择/授予/撤销/凭据替换/清除、状态矩阵、permit和凭据使用。DAO保留原`insertControl`的ABORT语义，新增仅初始化用的`insertControlIfAbsent`。服务先查`record_data_state`；缺代际且`hasDataWithoutGeneration`为真时按RecoveryRequired拒绝，只有完全空库使用虚拟OFF。凭据轮换与permit签发共享进程内`credentialMutation`互斥。
+- 无Schema变更：仍为Schema v1 14表；新DAO查询不改变物理字段/索引/外键。无新增权限/组件/UI/日志/网络/Gateway。凭据目录使用`noBackupFilesDir`，系统备份三层（`allowBackup=false`、full backup rules、API34 data-extraction rules）继续排除全部用户域。
+- 测试：[策略host测试](../../../../record2/app/src/test/kotlin/com/paherdin/record2/ai/security/AiSecurityPolicyTest.kt)、[信封host测试](../../../../record2/app/src/test/kotlin/com/paherdin/record2/ai/security/CredentialEnvelopeTest.kt)、[Keystore设备测试](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/security/KeystoreCredentialVaultTest.kt)、[Room/接缝设备测试](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/AiSecurityContractTest.kt)、[初始化联合设备测试](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/AiSecurityInitializationContractTest.kt)、[E0验证runner](../../../../record2/tools/verify-e0.py)。
+- 发送前检查接缝目前由未来D0/D1/F2调用；本批用受控假transport证明未授权零调用、撤销后旧permit失效，并用同步屏障证明轮换期间不签发permit；没有把假transport或状态测试冒充真实Provider全链路或生产网络门禁。
+
+### 23.3 实际验证与证据
+
+- **构建/host PASS：** 沿用JDK17.0.20+8、Gradle8.13、AGP8.12.3、Kotlin2.3.10、Room2.8.4、KSP2.3.10。修复后以自身wrapper和显式`-p <E0工作树>/record2`运行`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`成功（3分21秒，129项actionable中31执行/98 up-to-date）；`verifyBuildIsolation`及金额/既有host回归通过。本批工作树为`D:/record/.worktrees/e0-provider-authorization`（临时路径，不作为跨机复现契约）。新增8项E0 host测试/变体；Debug、Release各14项、fail/error/skip均0。lint 0错误、6项警告（既有target/version/Composable命名/icon类别），未关闭检查；Gradle9弃用提示保留。
+- **真实设备 PASS：** 仅专用`record2-schema-api34`，serial`emulator-5580`，API34，fingerprint`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`；安装`com.paherdin.record2.debug`及`.debug.test`。E0设备类17项全PASS：Keystore 6项（往返/唯一IV/损坏密文/密钥删除后不可读/重配/清除/空白拒绝）；Room/接缝8项（状态矩阵/未授权零外发/撤销/接收方变更/凭据替换/损坏不改变控制行/秘密哨兵/轮换同步屏障/写入失败保留）；初始化联合3项（E0先读不写控制行且B1仍可初始化、代际建立前所有控制写入返回NotInitialized且零写入、缺代际的孤立授权行被RecoveryRequired拒绝且原行/凭据不变）。同AVD以RecordSchemaContractTest 10项+FinanceServiceContractTest 14项做共用DAO/Schema回归，24项全PASS；合计41项，失败/skip 0。
+- **测试命令：** `adb -s emulator-5580 shell am instrument -w -r -e class com.paherdin.record2.storage.AiSecurityContractTest,com.paherdin.record2.storage.AiSecurityInitializationContractTest,com.paherdin.record2.ai.security.KeystoreCredentialVaultTest com.paherdin.record2.debug.test/androidx.test.runner.AndroidJUnitRunner`；回归同类命令使用`RecordSchemaContractTest,FinanceServiceContractTest`。最终回执见[E0证据](../../../../record2/build/e0/)的`instrumentation-final4.txt`、`instrumentation-regression4.txt`；修复前的并发测试夹具失败回执`instrumentation-fix-initial.txt`保留。未以adb退出码代替runner结果。
+- **制品/备份/秘密 PASS：** 修复后最终Debug/Release/AndroidTest APK SHA-256分别为`865bad027f05ef2453abac29800ae67067716858925c821634937553e5b61dc4`、`a9457153f1de3740fd849ae0eca1d942b7c59ef76250315011b1a9a1a175a2e4`、`78de404149a83580a66c6358cafd45e44c51385bfa3cc8f3ce08bfe4a41c8884`；三包身份/权限/组件、`allowBackup=false`、manifest/APK两层full-backup及API34 data-extraction各9域排除通过。E0类已进入生产dex；合成哨兵`r2-e0-synthetic-9f4c7a2e6b1d4c8f`仅存在于test APK、androidTest源码、E0验证runner及本机证据，在Debug/Release APK、最终logcat、Room/应用数据中均未发现；该哨兵是明确的合成标记，不是真实秘密。Schema v1 JSON的LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`；物理14表/117字段/20索引/13外键未改。runner输出[verification.json](../../../../record2/build/e0/verification.json)。
+- **失败与修订保留：** 首轮host 14项中3项因测试fixture缺少完整grant字段/截断样本不足而失败，修正测试后14/14；首轮设备12项中2项因把`noBackupFilesDir`与测试子目录混同而失败，修正断言后12/12；共用DAO回归首轮24项中1项失败，根因是`insertControl`被改为IGNORE破坏了单例主键重复拒绝。恢复ABORT语义、另加`insertControlIfAbsent`后，E0 12/12与回归24/24重跑通过。负责人静态审阅P1后，本轮新增初始化联合/轮换屏障/失败保留测试；并发测试首版在`runBlocking`单线程等待子协程启动而失败，改为`Dispatchers.IO`后16/16通过；该测试夹具失败回执`instrumentation-fix-initial.txt`保留。第二轮静态审阅指出缺代际时已有孤立`ai_control`行仍可签发permit；改为先查`record_data_state`，缺失且`hasDataWithoutGeneration`为真返回RecoveryRequired，仅完全空库返回虚拟OFF。新增真实Room孤儿行+合成凭据测试（state/eligibility/requirePermit均拒绝、零外发、控制行/全表快照/凭据不变）；重跑E0 17/17与回归24/24。原始`instrumentation-initial.txt`、`instrumentation-regression.txt`亦保留，未用旧APK结果覆盖新APK。
+- **证据范围：** [本机E0证据](../../../../record2/build/e0/)含修复前后构建、设备/日志回执、APK摘要、验证JSON；该目录被忽略，不承诺跨机器存在。正式源码/tests/runner可按上述命令重建。自查完成，无独立Agent审查；本轮未要求负责人代跑自动化。
+- **备份与ZIP边界：** 系统备份三层排除证据已通过；手动ZIP尚未实现，E0不声称ZIP排除PASS。G0/G1仍须在真实导出/SAF/恢复/设备迁移中验证Key/密文/IV/Keystore材料完全排除；E0的`noBackupFilesDir`不抵扣该下游证据。
+
+### 23.4 未执行边界与下游责任
+
+- 未使用真实DeepSeek/API Key/网络请求，未实现D0 Provider协议、D1工具/Agent、E1 ChatMemory/Session、E2取消/迟到写回、F2设置/告知/聊天UI或任何F0视觉设计；这些任务未因E0启动。
+- CTX-01/04/07/10及SES-05/06/07的完整产品验收仍需D1/E2/F2/G1/G2把本接缝接到每个外发、工具结果和迟到落盘边界，并在真实Provider/设备/备份中联合证明；E0只完成授权/凭据接缝合同、状态矩阵、Keystore/备份排除和合成发送零调用证据。
+- **下游发送/撤销/代际排序：** `useCredential`只提供授权检查和凭据访问，不是完整网络发送门禁。D0/D1须在实际请求启动边界做最终eligibility/permit复验；E2须先失效Run/授权代次再取消网络并处理迟到结果；E2/G0须把permit绑定到请求的`dataGeneration`或在恢复/结果边界复验，防止恢复后旧epoch permit被接受。
+- 未执行真实系统云备份/设备迁移/手动ZIP/恢复、用户数据、真实凭据配置、Provider失败/费用/取消、签名/发布/CI/环境修改；迁移/恢复仍按Plan §20边界未授权。
+- “撤销准确说明已发送内容不能收回”、授权告知文案、设置/历史/删除UI及任何未确认交互仍属F0/F2；E0不写页面或产品文案。
+- **推送授权与PR：** 2026-10-24负责人明确要求“推送pr”，覆盖本E0分支的必要Git提交、分支推送及创建PR；实际实现提交为`b464ca2671914b1b3dc8d1e5c215c502a7f79544`，PR [#21](https://github.com/paher-din/record/pull/21)基于main `1cd1d2804a006e97c79e3b32b4b466712d405315`，未合并/未关闭issue。审查修复（初始化所有权、轮换排序、孤儿控制行兜底、联合/并发/孤儿测试）及本记录修订随同一PR提交，提交身份由Git/PR日志证明。主工作树既有未提交修改保持原样；本PR不包含B1 §21.4，该段仍在工作树未提交。
+- 并行B2任务已在主工作树使用Plan §22；E0使用§23以避免编号冲突。本批未合并/重跑B2，也未读取或修改其未提交源码；集成时由负责人按任务owner协调共享文档与同一AVD的串行，不把E0证据挪给B2或反之。

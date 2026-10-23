@@ -7,6 +7,7 @@ Android本地优先生活记录应用，采用已冻结的Kotlin/Compose/Room与
 - 最小来源资料：[已确认决定/验收与C1身份](docs/product/record2-v1-decision-baseline.md)。文档提交可重建性与C1外部源码可重取性分别验证，后者尚未核实。
 - 单仓库、双独立构建：[record1/](record1/)保留旧工程，[record2/](record2/)为R2单`:app`最小基线。R1搬迁/原门禁、A1及G3在本次交付范围的结果见Plan §17；这些结果不代表完整V1已实现。
 - 收支业务内核及原生草稿服务已交付，种子裁决/真实Room与强停证据见[Plan §21](docs/specs/record2/v1/plan.md#21-b1种子基线与收支草稿服务实施)；最终页面仍待F0/F1。
+- E0 非视觉授权/凭据接缝已交付：AI 模式/接收方授权/epoch 失效/Keystore AEAD/系统备份排除；真实 Provider、UI、ZIP、会话与 D0/D1/F2 联合验收未执行，证据与边界见[Plan §23](docs/specs/record2/v1/plan.md#23-e0-授权凭据与发送接缝)。
 - 两工程均用JDK17验证；在构建进程的`JAVA_HOME`或各自IDE工程中选择兼容JDK。使用选中工程自己的wrapper及显式`-p`，如`record1/gradlew.bat -p record1 check`、`record2/gradlew.bat -p record2 check`（从仓库根调用）。仓库根没有Gradle工程，docs/保留原位，shared/未创建。
 
 ## Record 1.0历史README（原文保留，不是R2发布门禁）
