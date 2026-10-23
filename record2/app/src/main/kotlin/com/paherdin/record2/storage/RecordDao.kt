@@ -23,6 +23,80 @@ internal interface RecordDao {
     @Query("SELECT * FROM native_finance_draft WHERE slot = 1")
     fun draft(): NativeFinanceDraftEntity?
 
+    @Query("SELECT * FROM record_data_state WHERE id = 1")
+    fun dataState(): RecordDataStateEntity?
+
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM account UNION ALL SELECT 1 FROM category
+            UNION ALL SELECT 1 FROM record_transaction UNION ALL SELECT 1 FROM note
+            UNION ALL SELECT 1 FROM transaction_note_link UNION ALL SELECT 1 FROM native_finance_draft
+            UNION ALL SELECT 1 FROM change_proposal UNION ALL SELECT 1 FROM commit_operation
+            UNION ALL SELECT 1 FROM agent_session UNION ALL SELECT 1 FROM agent_run
+            UNION ALL SELECT 1 FROM agent_message UNION ALL SELECT 1 FROM agent_message_reference
+            UNION ALL SELECT 1 FROM ai_control LIMIT 1
+        )
+    """)
+    fun hasDataWithoutGeneration(): Boolean
+
+    @Query("SELECT * FROM account WHERE id = :id")
+    fun account(id: String): AccountEntity?
+
+    @Query("SELECT * FROM category WHERE id = :id")
+    fun category(id: String): CategoryEntity?
+
+    @Query("SELECT * FROM category ORDER BY id")
+    fun categories(): List<CategoryEntity>
+
+    @Query("UPDATE record_data_state SET businessRevision = businessRevision + 1 WHERE id = 1 AND businessRevision = :expected AND businessRevision < 9223372036854775807")
+    fun advanceBusinessRevision(expected: Long): Int
+
+    @Query("UPDATE account SET name = :name, version = version + 1, updatedAt = :updatedAt WHERE id = :id AND version = :expectedVersion AND version < 9223372036854775807")
+    fun renameAccount(id: String, expectedVersion: Long, name: String, updatedAt: Long): Int
+
+    @Query("""
+        UPDATE record_transaction SET direction = :direction, amountMinor = :amountMinor,
+        accountId = :accountId, categoryId = :categoryId, memo = :memo, occurredAt = :occurredAt,
+        version = version + 1, updatedAt = :updatedAt
+        WHERE id = :id AND version = :expectedVersion AND version < 9223372036854775807
+    """)
+    fun editTransaction(
+        id: String, expectedVersion: Long, direction: String, amountMinor: Long,
+        accountId: String, categoryId: String?, memo: String, occurredAt: Long, updatedAt: Long,
+    ): Int
+
+    @Query("""
+        UPDATE native_finance_draft SET draftId = :draftId, draftRevision = draftRevision + 1,
+        state = 'EDITING', mode = :mode, recordId = :recordId, baseVersion = :baseVersion,
+        inputJson = :inputJson, updatedAt = :updatedAt, saveReceiptJson = NULL
+        WHERE slot = 1 AND draftId = :expectedId AND draftRevision = :expectedRevision
+        AND state IN ('SAVED', 'DISCARDED') AND draftRevision < 9223372036854775807
+    """)
+    fun replaceDraft(
+        expectedId: String, expectedRevision: Long, draftId: String, mode: String,
+        recordId: String, baseVersion: Long?, inputJson: String, updatedAt: Long,
+    ): Int
+
+    @Query("""
+        UPDATE native_finance_draft SET inputJson = :inputJson,
+        draftRevision = draftRevision + 1, updatedAt = :updatedAt
+        WHERE slot = 1 AND draftId = :id AND draftRevision = :expectedRevision
+        AND state = 'EDITING' AND draftRevision < 9223372036854775807
+    """)
+    fun reviseDraft(id: String, expectedRevision: Long, inputJson: String, updatedAt: Long): Int
+
+    @Query("""
+        UPDATE native_finance_draft SET state = :state, inputJson = :inputJson,
+        saveReceiptJson = :receiptJson, draftRevision = draftRevision + 1, updatedAt = :updatedAt
+        WHERE slot = 1 AND draftId = :id AND draftRevision = :expectedRevision
+        AND state = 'EDITING' AND draftRevision < 9223372036854775807
+        AND :state IN ('SAVED', 'DISCARDED')
+    """)
+    fun finishDraft(
+        id: String, expectedRevision: Long, state: String,
+        inputJson: String, receiptJson: String?, updatedAt: Long,
+    ): Int
+
     @Query("""
         UPDATE note SET body = :body, version = version + 1, updatedAt = :updatedAt
         WHERE id = :id AND version = :expectedVersion AND deletedAt IS NULL

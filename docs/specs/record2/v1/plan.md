@@ -1,9 +1,9 @@
 # Record 2.0 V1 Implementation Plan — R1
 
-- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 目录重构及A1已完成，G3在A1交付范围的真实隔离通过，结果见§17；B0审查见§19，Schema v1实施及实际结果见§20，其余产品任务未启动。
-- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema及专用合成磁盘库验证获批，迁移/恢复未授权；**Active spec:** R2 V1，当前Schema v1批次。
+- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核及真实故障结果见§21；其余产品任务未启动。
+- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1沿用Schema v1；迁移/恢复未授权；**Active spec:** R2 V1，B1业务内核已交付，非完整M1/V1。
 - **行为与验收来源：** [spec.md](spec.md)与[自包含来源基线](../../../product/record2-v1-decision-baseline.md)；Spec E01～E12保留调查历史和外部C1核实边界。本文只拥有任务、依赖、范围、测试接缝和门禁，不形成另一份行为Spec。
-- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema/构建/专用设备合成库见§20；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
+- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
 - **设计权限：** `DESIGN-OWNER：待负责人指导与确认`。负责人提供方向 → 候选方案 → 负责人审查调整 → 明确批准 → Codex 实现；未经批准不冻结视觉/交互，不以默认 Material 页面通过最终验收。
 
 ## 1. 工程判断与实施入口
@@ -684,3 +684,50 @@ Draft R1完成后停止，等待负责人重新审查；不自动进入正式开
 负责人明确要求“提交并推送吧”，授权本轮B0设计/ADR、Schema v1源码/生成JSON、测试和必要构建/文档入口共23个文件提交，并推送当前main到origin/main；取代本批实施授权中“不Commit/Push”的历史限制。不包含忽略的本机环境、构建证据、AVD/测试库或其他产品任务。
 
 提交前fetch确认main与origin/main无分叉且同步；精确候选清单、敏感路径/常见凭据模式检查及Schema摘要复核通过，构建/磁盘验证回执均PASS。仅追加本授权记录，不重跑未变化的源码构建；实际提交身份与推送结果由Git日志、远端引用和交付回执证明，不预填或自引用提交SHA。
+
+### 20.4 远程交付接受
+
+负责人明确“接受本次 B0 与 Schema v1 的远程交付，没有发现需要立即返工的阻塞缺陷”。对应提交为`ada84bcc7ce249797b82c689c10867f793d0232b`，已推送origin/main；本轮开始时工作区干净且本地跟踪引用同步。B0设计及Schema v1批次收口；此接受不抵扣未实施的业务服务、并发/恢复或完整V1验收。
+
+## 21. B1：种子基线与收支/草稿服务实施
+
+负责人明确“同意，正式采用这份种子清单，作为 Record 2.0 V1 的 B1 初始化基线”，并要求“按照 V1 Plan 的 B1 范围，实现正式收支 Application Services”，以真实Room数据和故障验证收口；本批进入实施。沿用既有工程/Schema v1，不新增ADR、不重审B0。种子批准及本次执行事实由本节唯一拥有。
+
+| 种类 | 推荐清单 | 状态 |
+|---|---|---|
+| 默认账户 | 日常账户；CNY、可见、可改名，仅一个来源，不显示真实余额 | 名称/行为已冻结，直接沿用 |
+| 支出分类 | 餐饮、出行、购物、居家、学习、其他支出 | 已批准，固定EXPENSE |
+| 收入分类 | 生活费、工资、其他收入 | 已批准，固定INCOME |
+| 未分类 | 默认不选分类，持久化categoryId=null，不创建“未分类”种子行 | 沿用已审数据语义 |
+
+这份清单覆盖一般日用及学生学习/生活费来源；更细的归类先用其他项或不选分类，不引入分类管理产品。账户/各分类保留UUID由正式FinanceSeeds代码明确声明，不从显示名称生成身份；初始化在单个事务内缺失才补齐，重复/并发启动不得新增第二套或覆盖账户改名。
+
+B1按§4原任务完成统一收支Application Services、金额/时间/账户分类校验、同身份编辑/version CAS、独立NEW/EDIT草稿持久化/恢复/显式放弃及保存/草稿消费/收据原子事务。源码限定record2的records业务接口/值/非视觉状态、storage实现/必要RecordDao方法，配套host/Android测试与任务证据；沿用依赖、Schema v1和全部旧保护。普通App开库/最终UI、B2/C0及其他产品任务不在本批，Schema/迁移/环境/凭据/清理/发布/Git提交未扩权。
+
+本次“真实Room数据和故障验证”按B1必要最小对象执行：复用本轮专用`record2-schema-api34`（核名后固定serial，既有D盘AVD目录），仅安装/更新com.paherdin.record2.debug及.debug.test；新建其私有`b1-contract-<UUID>.db`及必要Schema回归的新`schema-contract-<UUID>.db`与SQLite关联文件，合成种子/固定时钟/新代际，不读改20份旧Schema测试库或普通record2.db。允许本批代码正常构建/缓存、该专用包故障测试/force-stop→PID消失→正式Activity启动→新PID→同库验证；不wipe/uninstall/清包或删除库，不操作其他设备/包。此前§20许可不泛化；以上对象是当前B1要求下必要验证的落实，遇范围外对象停止对应操作。
+
+运行前的selector/fixture/故障对象由§21.1登记；实际结果由§21.2拥有。异常/取消/持续失败/并发与提交前后强停均对比独立磁盘事实、草稿revision及收据；不把DAO或编译PASS当完整服务完成。**当前B1业务服务及非视觉编辑状态交付完成**，最终原生页面/跨页行为仍归F0/F1，未启动B2或Agent。
+
+### 21.1 B1运行合同
+
+实现后的selector为`com.paherdin.record2.storage.FinanceServiceContractTest`（14项服务/编辑状态测试），Schema回归沿用RecordSchemaContractTest（10项）；host为MoneyTest/FinanceTimeTest。进程故障使用`FinanceProcessContractTest#prepare`与`#verifyAfterHostRestart`，由本批`record2/tools/verify-b1-process.py`驱动，逐次独立新库。场景INIT、DRAFT_BEFORE、DRAFT_AFTER、SAVE_WRITE、SAVE_CONSUME、SAVE_AFTER、EDIT_WRITE：分别在种子首写、草稿事务内/提交后、业务写后/草稿消费后/提交后回执前、编辑写后门控；host收到含独立物理基线的ready后对专用目标包force-stop、确认旧PID消失，启动正式MainActivity确认新PID/前台，再执行无补种verify。失败回滚比较全部14表；提交后比较事实/草稿/收据并验证同身份重试不重复。
+
+Fixture使用固定UTC Clock=`2026-10-23T12:00:00Z`，发生时间`2026-10-23T12:30:00 Asia/Shanghai`，新库生成独立dataGeneration/草稿/记录UUID，合成58.00→60.50和收入100.00；stdout/本机回执只包含合成数据与必要身份，不记录真实私有正文。构建命令为自身wrapper显式`-p D:/record/record2 check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`。运行前核AVD/API34/qemu/boot与最终APK摘要，明确serial=emulator-5580后只向该目标安装/测试；本机证据归`record2/build/b1/`，不清旧库/文件、不使用裸connected任务。
+
+### 21.2 B1实际交付与验证
+
+- **服务与种子：** [FinanceService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/FinanceService.kt)为UI/未来Tools共用的收支/草稿业务合同，[RoomFinanceService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomFinanceService.kt)在storage内拥有实际事务，RecordDao只增必要查询/条件写。固定1账户/9分类在[FinanceSeeds](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/FinanceSeeds.kt)声明，事务内缺失才插入，重复/并发初始化不覆盖账户改名/version。已有逻辑数据却缺代际身份时拒绝初始化为RecoveryRequired，不伪造新代际修复。
+- **正式保存：** 原生新建先持久化草稿和稳定recordId，编辑保存沿用身份、createdAt及基线version；Amount复用精确Money，时间由FinanceTime解析/拒绝未来与DST gap、overlap取较早offset，保存重验真实账户/分类/版本/方向。未分类保持null，账户改名参与version；正式写、businessRevision、草稿SAVED/revision及不可变保存收据同一Room事务。重复相同草稿/revision返回原收据；旧slot/版本/代际拒绝，提交后回执故障报OutcomeUnknown并以原身份核查。无变化编辑只消费草稿，不假增业务version；Long版本/金额边界不回绕或转浮点。
+- **非视觉状态：** [FinanceDraftEditor](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/FinanceDraftEditor.kt)支持约500ms草稿写入、离开/保存前flush最新输入、保存中拒绝重复/离开/更改输入、失败保留输入和最后确认草稿。定时器可取消，但不因新按键取消进行中的数据库写。NEW/EDIT单slot和AI Proposal保持独立；未知草稿状态/损坏JSON或不匹配收据报恢复错误，不能显示为无草稿/保存成功。UI样式/页面/导航未新增。
+- **构建/host PASS：** 沿用JDK17.0.20+8/Gradle8.13/AGP8.12.3/Kotlin2.3.10/Room2.8.4/KSP2.3.10及已有依赖，无新增/升级依赖或构建配置变更。完整任务组实际通过；最终`build-categories.log`为27秒、129项任务中8项执行/121项up-to-date，受改test APK重编译/打包/lint执行。MoneyTest与FinanceTimeTest在Debug/Release各6项，共12项，fail/error/skip均0；覆盖金额oracle、固定种子、时间非法/未来/gap/overlap及23h/25h日界。lint 0错误/7项原基线警告，未降低门禁；Gradle9弃用提示保留。
+- **真实Room T2/T3 PASS，14项B1+10项回归：** 最终APK以明确serial安装后运行§21.1两类，`OK (24 tests)`且24个完成状态0、无失败/skip。B1直接调用正式服务，独立SQLite连接比较全14表：十个种子写点逐个两次失败零部分初始化；重开保账户改名；5800→6050同ID/version、收入10000、两方向合法分类与未分类、非法/溢出金额和Long.MAX_VALUE全链路；错误账户/分类/旧版本/未来时间等零事实变化并保草稿；双连接并发初始化/双保存只产生一套种子/一笔事实；业务写后/草稿消费后StorageFull持续失败回滚及重开重试；真实协程取消与独立观察验证无部分可见；回执未知同身份核查；500ms/leave flush、输入保留及保存中锁定。测试代码见[FinanceServiceContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/FinanceServiceContractTest.kt)、[fixture](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/FinanceContractFixture.kt)，独立观察器复用既有SchemaDiskObserver而不调用生产规范化器构造预期。
+- **真实进程终止 PASS，7场景：** [正式host runner](../../../../record2/tools/verify-b1-process.py)通过`python record2/tools/verify-b1-process.py --adb C:/Users/p3148/AppData/Local/Android/Sdk/platform-tools/adb.exe --serial emulator-5580`驱动[FinanceProcessContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/FinanceProcessContractTest.kt)。INIT/DRAFT_BEFORE/DRAFT_AFTER/SAVE_WRITE/SAVE_CONSUME/SAVE_AFTER/EDIT_WRITE均收到事务内/外ready后真正force-stop，确认旧PID消失，正式MainActivity启动为新PID且前台，再无补种重读同库verify。提交前全14表等于独立基线；草稿提交后只恢复已落盘revision；业务提交后逐字段/完整收据/业务revision一致且同身份重试无变化，旧编辑失败保持5800。不是Activity重建或仅close/reopen。
+- **最终环境/制品：** 仅`record2-schema-api34`/emulator-5580/API34 x86_64，fingerprint保持`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`。最终APK安装摘要分别为debug `828c3b041f2889a229d10da4f319257a5c4aae40023048d69ac07f084d4f69e5`、test `3bf3b49c3b3cb53bbf10796bf0a6562544e8f671745cee2f6e58e67ff78eed3a`，与最终24项/7场景回执及设备安装文件一致；三APK身份/权限/组件/备份排除与隔离复核PASS。普通MainActivity未接开库、普通record2.db不存在；旧库文件名集合仍保留，所有本机测试库保留、仅本批AVD已停止。不清包/wipe/uninstall、不操作其他设备。
+- **Schema/范围：** Schema v1生成JSON的SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`，14表117字段/20索引/13外键未改；新增服务/DAO不构成Schema变更。构建脚本、版本目录、Manifest、普通Host、R1和冻结架构均无本轮修改，未进行迁移/恢复、凭据/环境/CI变更或发布/Git提交。
+- **证据及修订边界：** [本机B1证据](../../../../record2/build/b1/)保留各次真实构建/设备测试回执，`instrumentation-accepted.txt`及summary为最终24项；最终7场景在`process-80335f74ee0548cbacdb5b1735dc5c30/`，含prepare/verify原文、独立基线和PID。`source-host-verification.json`、`apk-verification.json`、`final-verification.json`核来源/host/制品/代际/保留边界。初版及硬化中间版均真实通过，因新增坏状态/收据交叉/缺代际拒绝、Long及正向分类断言后重跑受影响构建/设备矩阵；不把旧APK结果挪给新APK。证据目录被忽略，正式Kotlin测试和Python runner可纳管重建，不承诺本机证据跨机器存在。
+
+**验收边界：** B1本批收支服务、初始化、原生草稿持久/非视觉保存状态及必要磁盘/故障证明已完成；不宣称最终原生页面、旋转/IME/跨页展示或M1/V1完成，这些仍属F0/F1及63条AC/六联合旅程。未启动Note/关联服务、AI/Operation A/B/会话授权、ZIP等后续任务。自查完成，无独立Agent审查；本批无需用户代跑自动测试。最终T0 PASS：7份已有文件修改/10份新增限本批；124个相对链接/13个锚点、UTF-8/围栏/空白与常见凭据模式检查通过；冻结Spec §4–7/架构、R1、Schema/构建/普通Host及Git index未变，11份受改源码/runner摘要与最终已测制品来源一致，本机证据仍被忽略。回执为final-t0.json；`git diff --check`通过，仅既有CRLF提示。改动未Commit/Push。
+
+### 21.3 B1提交与远程推送授权
+
+负责人明确要求“推送到远程仓库吧”，覆盖本轮B1共17个文件的必要Git提交及当前main→origin/main推送；本机环境/构建证据/AVD/测试库继续忽略，不扩大产品执行范围。推送前fetch确认本地与远端同步，精确清单、常见凭据模式、11份受改源码/runner摘要及已通过验证回执复核通过，Schema/R1和暂存区保护通过。仅追加本授权记录，沿用未变化源码的12项host、24项Room及7场景强停结果，不重复构建；实际提交及远端身份由Git日志和交付回执证明。
