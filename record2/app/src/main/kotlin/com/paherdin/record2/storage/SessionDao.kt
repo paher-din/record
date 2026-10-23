@@ -11,6 +11,9 @@ internal interface SessionDao {
     @Insert fun insertMessage(row: AgentMessageEntity)
     @Insert fun insertReference(row: AgentMessageReferenceEntity)
 
+    @Query("SELECT * FROM agent_session WHERE id = :id")
+    fun session(id: String): AgentSessionEntity?
+
     @Query("SELECT * FROM agent_run WHERE id = :id")
     fun run(id: String): AgentRunEntity?
 
