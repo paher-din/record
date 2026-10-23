@@ -1,7 +1,7 @@
 # Record 2.0 V1 Implementation Plan — R1
 
-- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核及真实故障结果见§21；其余产品任务未启动。
-- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1沿用Schema v1；迁移/恢复未授权；**Active spec:** R2 V1，B1业务内核已交付，非完整M1/V1。
+- **Status:** `in-progress`；revision `R1`；2026-10-24（Asia/Shanghai）。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核/接受见§21；B2实施与验证见§22，其余产品任务未启动。
+- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1/B2沿用Schema v1；迁移/ZIP恢复未授权；**Active spec:** R2 V1，B1已收口，B2本地实现/验证已交付，非完整M1/V1。
 - **行为与验收来源：** [spec.md](spec.md)与[自包含来源基线](../../../product/record2-v1-decision-baseline.md)；Spec E01～E12保留调查历史和外部C1核实边界。本文只拥有任务、依赖、范围、测试接缝和门禁，不形成另一份行为Spec。
 - **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
 - **设计权限：** `DESIGN-OWNER：待负责人指导与确认`。负责人提供方向 → 候选方案 → 负责人审查调整 → 明确批准 → Codex 实现；未经批准不冻结视觉/交互，不以默认 Material 页面通过最终验收。
@@ -731,3 +731,68 @@ Fixture使用固定UTC Clock=`2026-10-23T12:00:00Z`，发生时间`2026-10-23T12
 ### 21.3 B1提交与远程推送授权
 
 负责人明确要求“推送到远程仓库吧”，覆盖本轮B1共17个文件的必要Git提交及当前main→origin/main推送；本机环境/构建证据/AVD/测试库继续忽略，不扩大产品执行范围。推送前fetch确认本地与远端同步，精确清单、常见凭据模式、11份受改源码/runner摘要及已通过验证回执复核通过，Schema/R1和暂存区保护通过。仅追加本授权记录，沿用未变化源码的12项host、24项Room及7场景强停结果，不重复构建；实际提交及远端身份由Git日志和交付回执证明。
+
+### 21.4 B1最终接受与收口
+
+负责人最终决定：“B1 可以收口，不需要重新执行已经通过且源码未变化的整套测试。”接受的远程交付为`1cd1d2804a006e97c79e3b32b4b466712d405315`；B1业务内核任务标记完成，沿用§21.2的实际验证证据。本轮仅记录接受并检查文档差异，不修改源码、不重跑构建或设备测试，不自动启动后续任务。完整M1/V1与F0/F1等剩余验收边界不变。
+
+## 22. B2：Note自动保存、CAS与软删除（issue #5）
+
+负责人要求“你来完成issue b2吧”，对应[GitHub #5](https://github.com/paher-din/record/issues/5)，已读取issue全文且与§4 B2合同一致。B1已获最终接受，本批实施Note业务服务、非视觉编辑状态及必要真实磁盘/故障验证；不新建Spec/ADR或重开工程/Schema设计。开始时仅有§21.4收口记录未提交，原样保留。
+
+源码限定record2的records Note合同/编辑状态、storage Note实现/必要RecordDao方法、对应host/Android测试和host进程runner。沿用Schema v1及现有依赖，不实现F0/F1最终页面、B3关联变更/Agent/备份。软删除仅针对本批合成Note事实，不物理删除文件、正文或关系，不操作用户数据/迁移/凭据/CI或发布。提交/推送及远端issue状态按实际授权与可交付事实另记，不提前关闭未交付的远端任务。
+
+初始设备范围为专用`record2-schema-api34`（emulator-5580）；因共用冲突已改为负责人随后批准的独立D盘B2 AVD，准确对象与来源见§22.1协调记录。仅安装/更新R2 .debug/.debug.test、创建新的私有`b2-contract-<UUID>.db`；必要Schema回归使用新的schema-contract UUID库，旧B1/Schema库和普通record2.db不读改。允许本批必要构建/缓存、合成数据真实Room异常/取消/并发及对专用包force-stop→PID消失→正式Host新PID/前台→同库验证；不清包/wipe/uninstall或删除库，不操作其他设备。保持原任务边界，最终视觉/未确认交互仍DESIGN-OWNER待确认。
+
+本批服务保存只接受稳定Note ID、原发生时刻和expectedVersion；新建空白不写，既有空白拒绝。删除/恢复是目标状态CAS，同状态幂等，不toggle；迟到保存不复活。编辑状态使用独立inputRevision与业务version，约500ms保存/离开flush，旧回执不覆盖新输入；版本冲突/不可见/未知结果阻断自动重试并保留文本，只有显式丢弃重载才采用新版本。运行前登记实际selector/故障点与合成fixture，结果待真实执行，不挪用B1 PASS。
+
+### 22.1 B2运行合同（2026-10-24）
+
+- host：`NoteEditorTest` 9项，受控回执/故障/重载时序与500ms停输；既有MoneyTest/FinanceTimeTest随必要check执行，不重跑已接受且未变化的B1强停矩阵。
+- 真实磁盘：`com.paherdin.record2.storage.NoteServiceContractTest` 12项；`RecordSchemaContractTest` 10项必要共享DAO/Schema回归，新建UUID库，不打开原B1库。运行命令使用明确serial的`am instrument -w -r -e class <两类逗号连接> com.paherdin.record2.debug.test/androidx.test.runner.AndroidJUnitRunner`，不使用裸connected任务。
+- 进程：`NoteProcessContractTest#prepare` / `#verifyAfterHostRestart`，由`record2/tools/verify-b2-process.py --adb <已核SDK adb> --serial <获批目标serial>`驱动，当前目标emulator-5584/record2-b2-api34。CREATE/EDIT/DELETE/RESTORE × BEFORE/AFTER共8个场景，在实际Note/生命周期写后事务提交前或提交后回执前门控，发送独立全14表基线；host强停目标、确认PID消失、正式MainActivity新PID且前台，再同库只读verify并重复第二次真实重启。已提交创建/生命周期重复处理幂等，旧编辑重复CAS拒绝，无补种修复。
+- fixture：固定Clock=`2026-10-24T12:00:00Z`，原发生时刻=`1792729800000`，中文/换行/Markdown符号与末尾空格原样；新代际、Note/交易UUID，本批私有b2-contract库。关系只是合成既有事实，B2保存/删除/恢复不增减关系或修改交易。异常/取消分别在创建、正文更新、删除、恢复已写后验证全部回滚；持续故障/重开/幂等、两个Room连接CAS、隐藏列表与删除列表分离、版本/业务revision溢出均检查真实磁盘。
+- 构建：自身wrapper显式`-p D:/record/record2 check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`，既有JDK17，证据归`record2/build/b2/`。设备写前核AVD/API/qemu/boot/包身份和最终APK摘要；最初共享AVD已在运行，未擅自停止，后续只对获批新B2 AVD写入。其他设备/库/用户内容不操作。
+
+共享设备协调：初次强停矩阵在CREATE两场景已通过、EDIT_BEFORE第一次verify通过后，被另一组安装操作终止Host；ActivityManager明确记录installPackageLI，安装的app/test SHA均与本批不符，没有目标崩溃栈，不能视为B2数据缺陷或完整PASS。已停止设备写入并询问隔离方案；负责人选择“我先暂停另一任务，再复用原模拟器”，维持原AVD对象，不创建/停止AVD。恢复前核无目标安装/instrument客户端及活动instrumentation，重新安装本批已测SHA的制品；runner在每轮/每次强停前后验证包摘要，若漂移立即失败而不继续干扰其他任务。首次中断日志/独立基线保留。
+
+恢复后的第二次尝试仍在CREATE_AFTER重启时遇外部installPackageLI，app/test摘要再次改变且无目标崩溃栈；记录于process-run-resumed.log与resumed-process-diagnostic.log。停止重复换包，等待负责人完成设备独占协调或明确授权独立AVD；已经通过的host/Room证据不重跑，完整强停矩阵暂不标PASS。
+
+负责人随后明确“改为允许新建 record2-b2-api34”，并补充“不要放到C盘”。后续B2设备执行对象改为独立`record2-b2-api34`，D盘`record2/build/b2/avds/`保存AVD登记ini与设备目录（userdata/快照等），进程级ANDROID_AVD_HOME/ANDROID_USER_HOME/TEMP也限定本任务D盘目录，不修改全局环境文件。使用已装的API34 google_apis x86_64镜像，只读现有SDK；选择空闲5584端口并核名/API/包归属后仅对emulator-5584安装及新b2-contract库验证。停止操作原emulator-5580，不停止其进程/清理原库；新B2 AVD可在测试后关闭并保留文件。生成源码/Schema和已通过host/Room证据不变，不因换设备重跑B1。
+
+### 22.2 实现与验证进展（2026-10-24）
+
+- 已实现records的NoteService/NoteEditor及storage的RoomNoteService，RecordDao仅新增必要生命周期/删除分页查询和条件写；Schema/实体/依赖/构建/普通MainActivity均未修改。正文原样存、发生时间不随保存/删除/恢复改变；正常/已删除读取分离，删除列表按deletedAt倒序/id稳定分页。保存/生命周期version与businessRevision在同一真实Room事务推进，异常/取消回滚；同状态目标幂等且不修改正文/关联。新建空白不写，旧正文清空拒绝，迟到/旧版本保存不复活或覆盖。
+- 非视觉编辑状态使用独立inputRevision，保存串行、约500ms停输/离开flush；旧回执只更新对应persisted状态，不改新输入，只有当前输入版本确已落盘才isSaved。冲突/不可见/未知结果/代际错误保留本地文本且阻断自动重试，显式丢弃重载才采用新业务版本；重载期间拒绝新输入/flush/leave，避免丢输入或等待环。AI预览不接入此owner，最终页面仍归F0/F1。
+- host与完整构建PASS：build-fixed.log为1分13秒，129项任务中29执行/100 up-to-date；Debug/Release各15项host（NoteEditorTest各9项及既有Money/FinanceTime各3项），共30项，fail/error/skip均0。lint原7项警告保留，隔离检查通过。初次host因重载已持锁而flush排队、测试等待flush后才释放重载而停滞；线程栈确认对应B2测试，停止仅该worker并保留原日志，修正重载忙碌时flush在入锁前返回false，9项原测试通过，补JUnit有界超时防止测试无限等待。未删除测试或加绕过标记。
+- 真实磁盘22/22 PASS：NoteServiceContractTest 12项及Schema回归10项，instrumentation-initial.txt明确OK (22 tests)、22个完成状态0、无失败/skip，7.579秒。覆盖原文/空白/同ID重开、合法删除/撤销/恢复与隐藏关系、目标幂等、两个连接CAS、迟到保存/恢复后旧version冲突、创建/编辑/删除/恢复写后StorageFull持续失败及重开、真实协程取消零部分事实、回执未知按身份核查、Long/version/businessRevision溢出和非视觉编辑器实际Room联调。source-host-verification.json记录9份Kotlin/runner来源摘要及30项host回执。
+- 最终APK/Schema静态复核已PASS，apk-verification.json独立核三APK身份/权限/备份规则等；Schema SHA-256仍为94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75。源码未因设备冲突改写，只有host进程runner增加逐轮安装身份防护。该阶段完整8场景强停矩阵尚未通过，独立D盘设备上的最终结果见§22.3，不用局部执行代替完整结果。
+
+### 22.3 B2本地完成与最终证据（2026-10-24）
+
+- **实现交付：** [NoteService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/NoteService.kt)、[RoomNoteService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomNoteService.kt)、[NoteEditor](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/NoteEditor.kt)及必要RecordDao方法实现独立纯文本新建/自动保存、单业务version CAS、软删除/同ID撤销恢复、正常与删除列表分离和有界稳定分页。删除/恢复保留正文/原发生时刻/全部关系，交易不变；迟到保存不能复活或覆盖新正文。错误/冲突保留输入，不盲目更新expectedVersion；未知提交先按同ID核查，首次创建同内容重试不产生第二条。
+- **验证汇总 PASS：** 30项host（新增NoteEditorTest在Debug/Release各9项，共18项；其余为金额/日期基线）及22项真实Room（B2 12项+Schema回归10项）均fail/error/skip=0。保持§22.2的实际回执，不因只修改host runner/设备对象重新执行未变化的生产Kotlin测试；Kotlin摘要逐项与已测试制品来源一致。[NoteEditorTest](../../../../record2/app/src/test/kotlin/com/paherdin/record2/records/NoteEditorTest.kt)验证迟到回执/输入revision/500ms/重载/离开等待，[NoteServiceContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/NoteServiceContractTest.kt)和[fixture](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/NoteContractFixture.kt)穿过正式Room服务，独立只读SQLite比较全14表。
+- **8场景/16重启核验 PASS：** 最终运行[host runner](../../../../record2/tools/verify-b2-process.py)命令为`python record2/tools/verify-b2-process.py --adb C:/Users/p3148/AppData/Local/Android/Sdk/platform-tools/adb.exe --serial emulator-5584`，驱动[NoteProcessContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/NoteProcessContractTest.kt)。CREATE/EDIT/DELETE/RESTORE各提交前/后全部通过，每场景重复两次真实force-stop→旧PID消失→正式MainActivity新PID且前台→同库verify。每次verify明确OK (1 test)，保留原PID/两个Host PID、启动原文/前台证据/独立全表基线；提交前完全等于原状态，提交后只出现预期Note/version/deletedAt/businessRevision变化。已有交易和关系逐字段保持；创建/生命周期重复处理幂等，旧编辑CAS拒绝。verify不补种或重建缺失库，不以Activity重建代替进程终止。
+- **最终runner修正与失败事实：** 第一次独立设备执行前7场景已通过，最后RESTORE_AFTER的`am start -W`先返回等待超时，ActivityTaskManager随后显示正式Host约14秒正常显示，无目标崩溃。保留process-run-isolated及对应活动/崩溃诊断，runner改为保存启动原文、拒绝明确启动错误，再于30秒上限内验证新PID/实际前台状态，仍保留安装SHA防护；每场景完成即保存progress，支持只选择具体失败场景重试。修正后重新取得一份完整8场景/16核验的可复查记录；不关闭数据库断言或放宽Note安全规则，没有改变Kotlin/Schema。
+- **新AVD全部在D盘：** record2-b2-api34 / emulator-5584 / Pixel6 profile / 已安装API34 google_apis x86_64镜像，fingerprint=`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`。登记ini与设备目录为`record2/build/b2/avds/record2-b2-api34.ini`及同名`.avd/`，userdata/快照均在D盘；进程级ANDROID_AVD_HOME/ANDROID_USER_HOME/TEMP/TMP指向本任务D盘目录（[官方环境变量说明](https://developer.android.com/tools/variables)）。C盘不存在该AVD登记或目录；既有SDK仅只读复用，无全局环境文件变更/工具安装。测试后仅关闭本次新AVD并保留16份新b2-contract合成库、APK与设备文件，不删文件/清包或操作原emulator-5580。
+- **制品/范围保护 PASS：** 最终安装及所有完整场景摘要对应同一debug SHA-256=`5b3b0b527851f77162fec2fd850536ee7ef8e5e461462c6085b3757f9a6f4a7e`、test=`65f61f20d7a08b47748a90eb4e35ef4c2823b337e61b049b87cad9a5b27fff31`，设备安装文件、原22项磁盘回执、最终进程summary与本机APK复核一致。Schema v1/实体/构建/依赖/Manifest/普通Host/R1/B1业务源码未改，无普通record2.db、真实用户数据/Key/网络调用或迁移/ZIP恢复。未重跑已接受的B1设备/强停矩阵，未创建UI/AI或B3关联写服务。
+- **证据：** [本机B2目录](../../../../record2/build/b2/)中build-fixed.log、host-fixed.log及原hang线程栈保留；instrumentation-initial/summary为22项磁盘；最终进程目录为`process-d5d421f5f2f84f71aef5087ae4bebe0f/`（summary/progress、8份prepare、16份verify及PID/启动记录）。device-install-isolated、source-host-verification-final、apk-verification及final-verification.json覆盖制品/来源/路径/边界，正式测试源码和runner可纳管复做；大型AVD/本机原始证据被忽略，不声称跨机器归档。所有真实失败和中断目录保留，不挪旧PASS冒充本次运行。
+
+设备共享规则按负责人最新解释执行：AVD可由其他不相互干扰的进程共用；需要串行协调的是同一包的install/instrument/force-stop及共写资源，不把整台AVD设为默认独占锁。本次额外AVD是负责人明确同意后的故障验证隔离，不是后续任务的强制前置。
+
+**完成边界：** B2业务服务与非视觉编辑状态、必要磁盘/异常/取消/并发/强停证明本地完成，自查，无独立Agent审查。最终页面/IME/旋转展示/删除入口与文案仍归F0/F1；BK/完整Agent及M1/V1联合验收未完成。B1未提交的最终接受记录保留。当前尚未Commit/Push或修改远端issue #5状态；不提前宣称远端已交付。最终T0 PASS：6份已有修改/8份新增限本批及原B1收口记录；125个相对链接、9个锚点、UTF-8/围栏/空白和常见凭据模式检查通过；9份源码/runner摘要与实际回执一致，冻结Spec §4–7/架构、R1/B1业务源码、Schema/构建/普通Host及Git index未变；D盘AVD及证据继续被忽略。final-t0.json可复核，git diff --check通过（仅既有CRLF提示）；未为最后文档收口重跑已经通过且源码未变化的测试。
+
+### 22.4 推送前审查、修正与交付授权
+
+负责人以“可以”同意将本批14个文件提交并推送到origin/main、核实远端后关闭issue #5，随后要求“你先自查一下，没问题再推送”。沿用原B2范围完成审查和必要修正；AVD、测试库及本机构建证据继续留在D盘并被Git忽略。
+
+在HEAD `1cd1d2804a006e97c79e3b32b4b466712d405315`与当前工作区之间审查全部14个文件，主Agent复核原始测试记录和来源摘要，并按code-review技能分别进行独立Standards/Spec审查。两轴各发现一项P2，均纳入本批修正：
+
+- Standards：进程runner等待prepare gate超时的异常分支，在force-stop前补齐安装APK身份核查；共享设备期间发生换包时保留日志并退出。真实runner的本机subprocess替身回归先复现“换包仍强停”，修正后“换包不强停/同包正常处理超时”两项PASS，回执为review-runner-guard-result.json；这些替身结果只证明runner命令边界，不替代磁盘证明。
+- Spec：删除列表cursor按B0 §4.2绑定dataGeneration和businessRevision，每页在同一Room读取事务内核查，跨代际/业务变化返回CursorExpired。新增真实双Room连接测试，覆盖第一页后另一连接恢复再删除导致排序前移、旧游标拒绝、跨代际游标拒绝及刷新后完整分页。两轴独立复核均确认对应发现关闭，未发现补丁引入的新问题。
+
+§22.3保留为修正前历史证据，不将旧APK摘要挪给新制品。新修正仅涉及分页读取/DTO、回归测试和runner异常退出分支；保存/删除/恢复事务、NoteEditor、DAO、Schema及原8场景正常强停路径未改，原强停结果仍证明这些未变路径，不因此重跑B1或全部强停矩阵。
+
+修正后同一完整构建任务组PASS（build-review-fixes.log，3分7秒，129项任务中33执行/96 up-to-date）；30项host测试全部通过。复用原D盘record2-b2-api34/emulator-5584，安装前核原包身份和无活动instrumentation，最终新APK上的B2 13项+Schema 10项真实Room测试全部通过（instrumentation-review.txt，8.603秒，23个完成状态0，无失败/skip）。新增23份合成测试库，旧库文件全保留、普通record2.db仍不存在；测试后只关闭本轮启动的AVD，文件继续留D盘。Schema摘要不变，未动原emulator-5580。
+
+新debug APK SHA-256=`1a5d783b7e135393e97c4d1add87fe62d0e6b6d1f7c04f082839934c69232c6c`，test=`1e66cc9ee80a29e887f404ec92cd7ef94f2322083a870fe427da68c1b0cb8923`；安装前后摘要一致，review-verification.json保留当前9份来源摘要、30项host/23项Room及两项runner回归，并明确原8场景/16重启的制品和沿用理由。当前自查及独立复核通过，Git提交/推送和issue关闭按上述授权执行，实际远端身份由Git日志及issue状态核查，不预填提交SHA。最终页面、B3/AI/备份和完整V1联合验收边界不变。

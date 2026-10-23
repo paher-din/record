@@ -20,6 +20,30 @@ internal interface RecordDao {
     @Query("SELECT * FROM note WHERE id = :id AND deletedAt IS NULL")
     fun visibleNote(id: String): NoteEntity?
 
+    @Query("SELECT * FROM note WHERE id = :id")
+    fun noteForLifecycle(id: String): NoteEntity?
+
+    @Query("""
+        SELECT * FROM note WHERE deletedAt IS NOT NULL
+        AND (:afterTime IS NULL OR deletedAt < :afterTime OR (deletedAt = :afterTime AND id > :afterId))
+        ORDER BY deletedAt DESC, id ASC LIMIT :limit
+    """)
+    fun deletedNotes(limit: Int, afterTime: Long?, afterId: String?): List<NoteEntity>
+
+    @Query("""
+        UPDATE note SET deletedAt = :deletedAt, version = version + 1, updatedAt = :updatedAt
+        WHERE id = :id AND version = :expectedVersion AND deletedAt IS NULL
+        AND version < 9223372036854775807
+    """)
+    fun softDeleteNote(id: String, expectedVersion: Long, deletedAt: Long, updatedAt: Long): Int
+
+    @Query("""
+        UPDATE note SET deletedAt = NULL, version = version + 1, updatedAt = :updatedAt
+        WHERE id = :id AND version = :expectedVersion AND deletedAt IS NOT NULL
+        AND version < 9223372036854775807
+    """)
+    fun restoreNote(id: String, expectedVersion: Long, updatedAt: Long): Int
+
     @Query("SELECT * FROM native_finance_draft WHERE slot = 1")
     fun draft(): NativeFinanceDraftEntity?
 
