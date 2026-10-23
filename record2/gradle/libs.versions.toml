@@ -7,6 +7,8 @@ navigation = "2.9.8"
 room = "2.8.4"
 ksp = "2.3.10"
 koog = "1.3.0"
+koogDeepseek = "1.3.0-beta"
+ktor = "3.3.3"
 junit = "4.13.2"
 androidxTestRunner = "1.6.2"
 
@@ -19,6 +21,9 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 koog-core = { module = "ai.koog:agents-core", version.ref = "koog" }
 koog-memory = { module = "ai.koog:agents-features-memory", version.ref = "koog" }
+koog-deepseek = { module = "ai.koog:prompt-executor-deepseek-client", version.ref = "koogDeepseek" }
+koog-http-ktor = { module = "ai.koog:http-client-ktor", version.ref = "koog" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
 

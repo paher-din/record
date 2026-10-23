@@ -1,9 +1,9 @@
 # Record 2.0 V1 Implementation Plan — R1
 
-- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核及真实故障结果见§21；其余产品任务未启动。
-- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1沿用Schema v1；迁移/恢复未授权；**Active spec:** R2 V1，B1业务内核已交付，非完整M1/V1。
+- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）；D0执行记录于2026-10-24。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核及真实故障结果见§21，D0 Koog/DeepSeek协议接缝见§22；其余产品任务未启动。
+- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1沿用Schema v1；迁移/恢复未授权；**Active spec:** R2 V1，B1业务内核及D0协议接缝已交付，非完整M1/V1。
 - **行为与验收来源：** [spec.md](spec.md)与[自包含来源基线](../../../product/record2-v1-decision-baseline.md)；Spec E01～E12保留调查历史和外部C1核实边界。本文只拥有任务、依赖、范围、测试接缝和门禁，不形成另一份行为Spec。
-- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
+- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21，D0合成协议验证见§22；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
 - **设计权限：** `DESIGN-OWNER：待负责人指导与确认`。负责人提供方向 → 候选方案 → 负责人审查调整 → 明确批准 → Codex 实现；未经批准不冻结视觉/交互，不以默认 Material 页面通过最终验收。
 
 ## 1. 工程判断与实施入口
@@ -731,3 +731,63 @@ Fixture使用固定UTC Clock=`2026-10-23T12:00:00Z`，发生时间`2026-10-23T12
 ### 21.3 B1提交与远程推送授权
 
 负责人明确要求“推送到远程仓库吧”，覆盖本轮B1共17个文件的必要Git提交及当前main→origin/main推送；本机环境/构建证据/AVD/测试库继续忽略，不扩大产品执行范围。推送前fetch确认本地与远端同步，精确清单、常见凭据模式、11份受改源码/runner摘要及已通过验证回执复核通过，Schema/R1和暂存区保护通过。仅追加本授权记录，沿用未变化源码的12项host、24项Room及7场景强停结果，不重复构建；实际提交及远端身份由Git日志和交付回执证明。
+
+## 22. D0：Koog/DeepSeek 协议验证授权与执行
+
+### 22.1 授权与实际对象
+
+负责人于2026-10-24通过本轮交互明确选择“授权，≤$1（推荐）”与“授权复用该 AVD（推荐）”：D0只使用当前环境中的独立测试Key和合成提示，真实Provider费用上限$1；只复用专用AVD `record2-schema-api34`（adb serial=`emulator-5580`，API34，fingerprint=`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`），只安装/更新`com.paherdin.record2.debug`与`.debug.test`，使用合成数据，不wipe/uninstall/清库、不改普通`record2.db`或旧测试库、不操作真机/API36/其他AVD。D0测试不启动正式Activity、不打开Room库；此前§20/§21许可不泛化。
+
+Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@BeforeClass`读取后立即删除；Key未进入命令行参数、源码、APK、Room、日志或证据。证据只保留SHA-256前12位`9612f585b3ef`。D0未修改Schema、Manifest权限、备份规则、普通Host数据、R1或环境/CI配置；仅新增测试依赖与应用内最小适配。
+
+### 22.2 实际制品与固定协议
+
+- **已批准固定坐标（2026-10-24）：** `ai.koog:prompt-executor-deepseek-client:1.3.0-beta`（依赖稳定的`agents-core`/`prompt-executor-openai-client-base:1.3.0`）、`ai.koog:http-client-ktor:1.3.0`、`io.ktor:ktor-client-okhttp:3.3.3`（实际解析OkHttp 5.2.1）；均为Apache-2.0。未见额外Provider/遥测依赖；`prompt-executor-openai-client:1.3.0`仍是既有`agents-core`传递依赖，不是D0新增Provider选择。
+- **模型/端点：** `https://api.deepseek.com`；`/models`实际返回`deepseek-flash`与`deepseek-v4-pro`。适配器以`deepseek-flash`为Flash、`deepseek-v4-pro`为Pro（[DeepSeekProtocol.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/DeepSeekProtocol.kt#L23)）。Beta客户端的内置Flash ID为`deepseek-v4-flash`，与本端点列表不一致；D0以端点ID为准并记录此差异，D1不得复用内置Flash别名。
+- **Thinking协议：** 缺省字段等同开启Thinking；正常路径必须显式`{"thinking":{"type":"disabled"}}`，Thinking路径显式`enabled`。参数与超时接缝见[DeepSeekProtocol.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/DeepSeekProtocol.kt#L42)。
+- **HTTP接缝：** `http-client-ktor` Android AAR未提供`HttpClientFactoryResolver`所需的`META-INF/services`，因此适配器显式构造`KtorKoogHttpClient.Factory()`，不能依赖ServiceLoader自动发现。
+
+### 22.3 测试与真实结果
+
+正式测试位于[DeepSeekProtocolContractTest.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekProtocolContractTest.kt#L30)、[DeepSeekProtocolFailureTest.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekProtocolFailureTest.kt#L32)，共享夹具见[DeepSeekTestSupport.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekTestSupport.kt#L1)。
+
+- **最终真实设备套件：** 7个真实DeepSeek测试方法（最终批次7条记录一次通过；测试框架保留最多3次受控重试，D0过程中曾观察到一次仅完成第一步的情况），覆盖普通/Thinking、Flash/Pro、一次和连续两次Tool Call/Result、跨Run ChatMemory、tool pairing与reasoning_content保留。最终命令`am instrument -w -r -e class '...DeepSeekProtocolContractTest,...DeepSeekProtocolFailureTest' ...`返回`OK (19 tests)`、16.369秒、无失败/skip。真实测试只发合成提示。
+- **最终故障/协议套件：** 12项PASS：429、超时、空choices、畸形JSON、未知工具、畸形工具参数、tool-level异常、预算耗尽、取消、no-progress watchdog、reasoning_content重放、缺usage。取消与失败为确定性本地脚本，不冒充真实Provider故障；no-progress watchdog按批准值在第3次相同调用后取消。
+- **构建：** `check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`最终PASS；debug/test/release APK SHA-256分别为`9ca4d403a485ba5c2a65546d6da17e34206479f12d4fca013c122de5b51818fd`、`d1b3f38704dd48e190f63f6aa2fdf146c8e97967aa3223a7ad14693ecc4d6751`、`718625b63be2bea7f20c44b5ef65eea7f08e56612378f2b9874ad64b003c6f72`；设备安装的debug/test APK摘要与构建产物逐项一致。最终APK权限集合与A1一致（INTERNET及AndroidX动态接收器自动权限），`usesCleartextTraffic=false`、`allowBackup=false`，无新增权限/组件。
+- **实际费用/延迟：** 最终套件真实用量input=2999、output=360、total=3359 tokens；按peak cache-miss单价估算约$0.00135，远低于批准的Flash $0.10/Pro $0.25每Run上限；含协议探测、早期运行和重试的D0累计保守估计低于$0.02，低于批次$1授权上限（精确账单以Provider为准）。单次真实调用延迟约0.4–2.9秒，最终套件16.4秒。
+- **证据：** 本机[record2/build/d0/](../../../../record2/build/d0/)保留`instrumentation-final.txt`、`real.json`、`failures.json`、`protocol-probe.txt`、`dependencies-debug.txt`、`apk-hashes.txt`、`logcat.txt`及构建日志；被Git忽略，不承诺跨机器存在。密钥扫描覆盖966份源码/文档、3个APK、证据与logcat，命中0；设备app私有Key文件已确认删除。
+
+### 22.4 D0实际发现（D1/E1输入）
+
+1. **Thinking缺省开启：** 省略字段会生成reasoning；正常路径必须显式disabled，否则成本和隐藏推理边界都会偏移。
+2. **模型ID差异：** 端点列出`deepseek-flash`/`deepseek-v4-pro`，而Koog beta内置Flash为`deepseek-v4-flash`；D0用端点ID通过真实调用。D1应集中定义允许的模型ID，不直接使用客户端内置别名。
+3. **强制tool_choice冲突：** Thinking模式对指定function的`tool_choice`返回HTTP 400“Thinking mode does not support this tool_choice”；测试改用auto。D1若需强制工具，必须另选非Thinking路径或由协调器保证。
+4. **reasoning_content是自适应而非每轮必有：** 工具调用轮可能reasoning_tokens=0，后续轮才出现；D0只在出现时要求完整重放，未出现时不伪造。确定性脚本测试证明reasoning_content与tool_call_id可成对重放；真实直连测试也观察到存在时保留。
+5. **maxIterations是图步数，不是模型轮数：** 预算测试maxAgentIterations=4在2次请求、1次工具后停止；连续两次工具调用使用3次请求/约10步。D1/E1必须同时设置模型请求数、总超时、Token、费用和无进展上限，不能把maxIterations直接当模型轮数。
+6. **工具异常被转换为工具结果：** 工具内no-progress异常没有终止Run，循环继续并重试（最终5次工具/6次请求直到步数预算）。无进展检测必须位于协调器/运行级watchdog；D0 watchdog在3次相同调用后取消Run，作为D1生产策略的接缝；不能依赖工具抛异常。
+7. **错误映射不完全：** 空`choices`抛出`IllegalArgumentException`而非`LLMClientException`；畸形工具参数为`JsonDecodingException`；429/超时被包装且未观察到重试。D1/E1需统一错误分类、用户可见状态和零部分提交边界。
+8. **模型不保证指令合规：** 连续两次工具调用的真实运行曾观察到一次只执行第一步；测试框架保留最多3次受控重试并记录attempt，最终批次一次通过。D1不能用“提示词要求”替代协调器状态机/提案确认，也不能把一次模型失败当协议通过。
+9. **取消/预算验证边界：** 取消、429、超时、no-progress为本地脚本在真实API34进程内执行，不等于真实Provider网络故障；真实cancel、流式、恢复后新Run仍属E1/E2/D1。
+
+### 22.5 D0测试阈值（2026-10-24批准；产品默认预算不冻结）
+
+负责人撤回了D0此前建议的六项阈值，并批准下列**测试**上限。它们是测试安全边界，不是对实际资源消耗的预测；本次只调整测试参数与验收口径，不扩大真实凭据使用或API费用授权（D0批次累计$1上限不变）。
+
+| 项目 | 批准值 | D0依据/说明 |
+|---|---|---|
+| 单请求超时 | request/socket 300秒，connect 30秒 | 实测最大单次约2.6秒；为Thinking/网络留余量 |
+| Agent最大步数 | `maxAgentIterations=50` | D0连续两次工具/3次请求约10步；50为测试上界 |
+| 单Run墙钟 | 900秒 | 实测最终套件16.4秒；防止模型/工具停滞 |
+| 累计Token | 64,000/Run | 实测单Run最大1,429（早期1,557） |
+| Flash费用上限 | $0.10/Run | 最终套件约$0.00135；远低于上限 |
+| Pro费用上限 | $0.25/Run | 单次Pro测试约$0.00003；远低于上限 |
+| 连续无进展 | 3次相同工具调用即停 | watchdog在3次后取消通过；工具级异常无效 |
+| 执行批次累计 | $1（沿用原授权） | 不开放无界调用；精确账单以Provider为准 |
+
+**测试策略：** 功能/协议测试使用上表的宽松上限，目标是不因过紧预算提前失败；预算/故障测试单独使用故意设置的低上限（D0现有`maxAgentIterations=2/4`、脚本429/超时/取消等），此时`BudgetExceeded`/迭代上限是预期结果，不是功能缺陷。功能测试若因资源预算耗尽而中止，必须记录为`INCONCLUSIVE / BudgetExceeded`，不得直接判为协议FAIL；应在授权批次累计上限内复测，若持续触及上限再分析是否存在异常循环。所有测试仍保留有限上限。
+
+正式产品的默认预算暂不冻结：待D0、D1取得真实调用次数、Token、耗时和费用分布后，再按典型/复杂任务制定。D1/E1继承“到达上限即停止、报告而不伪造完成”的行为，但不得把本表当作已冻结的产品参数。
+
+### 22.6 收口边界
+
+D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 实测测试阈值”，不是D1真实Record Tools、E0 BYOK/Keystore、E1 Room权威历史、E2进程恢复、F2 AI UI或M2/V1完成。真实cancel、流式、物理真机、API36、备份/恢复、发布均NOT RUN。负责人已批准将本轮源码与Plan改动提交并推送工作树分支`codex/d0-koog-deepseek`；不合并main、不发布，实际提交/远端身份由Git日志和推送回执证明。
