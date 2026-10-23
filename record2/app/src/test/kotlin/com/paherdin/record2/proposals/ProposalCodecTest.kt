@@ -150,6 +150,28 @@ class ProposalCodecTest {
     }
 
     @Test
+    fun mergedRelationBudgetIsRecheckedAfterIntentsCombine() {
+        val note = RecordRef.Note(storedNote)
+        fun pair(index: Int) = RecordPair(RecordRef.Transaction(uuid(index)), 1, note, 1)
+        val pairs = (1..ProposalBudget.MAX_LINK_PAIRS).map { pair(it) }
+        assertEquals(pairs, (normalize(
+            ProposalIntent.LinkRecords(pairs.take(16)),
+            ProposalIntent.LinkRecords(pairs.drop(16)),
+        ).single() as ProposalOperation.LinkRecords).pairs)
+        assertEquals(pairs, (normalize(
+            ProposalIntent.LinkRecords(pairs),
+            ProposalIntent.LinkRecords(pairs),
+        ).single() as ProposalOperation.LinkRecords).pairs)
+        // Each intent stays within the per-intent budget; only their merged union overflows it.
+        expect(ProposalError.BudgetExceeded) {
+            normalize(ProposalIntent.LinkRecords((1..16).map { pair(it) }), ProposalIntent.LinkRecords((17..33).map { pair(it) }))
+        }
+        expect(ProposalError.BudgetExceeded) {
+            normalize(ProposalIntent.UnlinkRecords((1..16).map { pair(it) }), ProposalIntent.UnlinkRecords((17..33).map { pair(it) }))
+        }
+    }
+
+    @Test
     fun textBudgetsAreEnforced() {
         val memo = normalize(createTransaction(memo = "记".repeat(ProposalBudget.MAX_MEMO_CHARS))).single() as ProposalOperation.CreateTransaction
         assertEquals(ProposalBudget.MAX_MEMO_CHARS, memo.memo.length)
@@ -289,6 +311,10 @@ class ProposalCodecTest {
             canonical.replace("\"CREATE_NOTE\"", "\"DELETE_RECORD\""),
             canonical.replace("\"body\":", "\"unexpected\":0,\"body\":"),
             canonical.replace("\"amountMinor\":5800", "\"amountMinor\":58.00"),
+            ProposalCodec.canonical(listOf(ProposalOperation.LinkRecords(
+                (1..ProposalBudget.MAX_LINK_PAIRS + 1).map { RecordPair(RecordRef.Transaction(uuid(it)), 1, RecordRef.Note(storedNote), 1) },
+            ))),
+            ProposalCodec.canonical(listOf(ProposalOperation.UnlinkRecords(emptyList()))),
             """{"formatVersion":1,"operations":[]}""",
             """{"formatVersion":1}""",
             "",

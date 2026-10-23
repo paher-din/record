@@ -75,6 +75,9 @@ internal object ProposalCodec {
         }
         val linked = relationSet(links, unlinks)
         val unlinked = relationSet(unlinks, links)
+        // Per-intent budgets can add up once the intents merge, so the merged set is rechecked.
+        if (linked.size > ProposalBudget.MAX_LINK_PAIRS) fail(ProposalError.BudgetExceeded)
+        if (unlinked.size > ProposalBudget.MAX_LINK_PAIRS) fail(ProposalError.BudgetExceeded)
         val operations = buildList {
             addAll(creates.values)
             addAll(updates.values)
@@ -132,9 +135,22 @@ internal object ProposalCodec {
         val document = json.decodeFromString<ProposalPayloadDocument>(canonicalJson)
         require(document.formatVersion == ProposalBudget.FORMAT_VERSION)
         require(document.operations.isNotEmpty() && document.operations.size <= ProposalBudget.MAX_OPERATIONS)
+        document.operations.forEach { operation ->
+            when (operation) {
+                is ProposalOperation.LinkRecords -> requirePairs(operation.pairs)
+                is ProposalOperation.UnlinkRecords -> requirePairs(operation.pairs)
+                else -> Unit
+            }
+        }
         document.operations
     } catch (error: RuntimeException) {
         throw ProposalException(ProposalError.RecoveryRequired, error)
+    }
+
+    // A persisted relation operation outside the closed pair budget can only be a foreign or
+    // corrupt row; canonical output never emits one.
+    private fun requirePairs(pairs: List<RecordPair>) {
+        require(pairs.isNotEmpty() && pairs.size <= ProposalBudget.MAX_LINK_PAIRS)
     }
 
     private fun checkedPairs(pairs: List<RecordPair>): List<RecordPair> {

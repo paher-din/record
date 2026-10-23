@@ -72,8 +72,10 @@ internal class RoomProposalService(
         database.withTransaction {
             currentGeneration(generation)
             val row = proposals.activeProposal(sessionId) ?: return@withTransaction null
+            // Integrity first: a corrupt row must not be reported as an ordinary generation change.
+            val view = row.view()
             if (row.dataGeneration != generation) fail(ProposalError.GenerationMismatch)
-            row.view()
+            view
         }
     }
 
@@ -169,6 +171,10 @@ internal class RoomProposalService(
         if (run.processOwnerId != context.processOwnerId) fail(ProposalError.RunInvalidated)
         if (run.receiverIdentity != context.receiverIdentity) fail(ProposalError.RunInvalidated)
         if (run.authEpoch < 1 || run.authEpoch != context.authEpoch) fail(ProposalError.RunInvalidated)
+        // The run row is a start-time snapshot. Ownership may have moved to another process while
+        // this row is still RUNNING, so the persisted owner is re-read inside the same transaction.
+        val state = records.dataState() ?: fail(ProposalError.RecoveryRequired)
+        if (state.processOwnerId != run.processOwnerId) fail(ProposalError.RunInvalidated)
         return run
     }
 

@@ -304,6 +304,25 @@ class ProposalServiceContractTest {
     }
 
     @Test
+    fun aRunWhoseProcessOwnerHasBeenReplacedLosesPrepareAndReviseImmediately() = runBlocking {
+        val first = service.prepare(context, listOf(fixture.createTransaction()))
+        // Ownership moves to a new process while the old run row is still RUNNING and holds the slot;
+        // its late prepare/revise must fail on the persisted owner, not on the run's own snapshot.
+        val successorOwner = UUID.randomUUID().toString()
+        sql("UPDATE record_data_state SET processOwnerId=?", successorOwner)
+        val interrupted = snapshot()
+        expectProposalError(ProposalError.RunInvalidated) { service.prepare(context, listOf(fixture.createTransaction(amount = "60.50"))) }
+        expectProposalError(ProposalError.RunInvalidated) { service.revise(context, first.id, 1, listOf(fixture.createTransaction(amount = "60.50"))) }
+        assertEquals(interrupted, snapshot())
+        sql("UPDATE agent_run SET state='INTERRUPTED', activeSlot=NULL, finishedAt=? WHERE id=?", fixture.time, fixture.run.id)
+        val successor = fixture.newRun(owner = successorOwner)
+        val revised = service.revise(fixture.context(successor), first.id, 1, listOf(fixture.createTransaction(amount = "60.50")))
+        assertEquals(first.id, revised.id)
+        assertEquals(2L, revised.revision)
+        assertEquals(successor.id, revised.lastWriterRunId)
+    }
+
+    @Test
     fun creationRequestIdentityComesOnlyFromThePersistedRunRow() = runBlocking {
         val first = service.prepare(context, listOf(fixture.createTransaction()))
         assertEquals(fixture.run.proposalCreationRequestId, first.creationRequestId)
@@ -386,6 +405,14 @@ class ProposalServiceContractTest {
             listOf(fixture.linkExisting(noteVersion = 8)) to ProposalError.VersionConflict,
             listOf(fixture.unlinkDeletedNote()) to ProposalError.NotVisible,
             listOf(ProposalIntent.LinkRecords(listOf(RecordPair(RecordRef.Transaction(UUID.randomUUID().toString()), 1, RecordRef.Note(fixture.note.id), 7)))) to ProposalError.NotFound,
+            listOf(
+                ProposalIntent.LinkRecords((1..16).map { RecordPair(RecordRef.Transaction(syntheticTransaction(it)), 1, RecordRef.Note(fixture.note.id), 1) }),
+                ProposalIntent.LinkRecords((17..33).map { RecordPair(RecordRef.Transaction(syntheticTransaction(it)), 1, RecordRef.Note(fixture.note.id), 1) }),
+            ) to ProposalError.BudgetExceeded,
+            listOf(
+                ProposalIntent.UnlinkRecords((1..16).map { RecordPair(RecordRef.Transaction(fixture.transaction.id), 3, RecordRef.Note(syntheticNote(it)), 1) }),
+                ProposalIntent.UnlinkRecords((17..33).map { RecordPair(RecordRef.Transaction(fixture.transaction.id), 3, RecordRef.Note(syntheticNote(it)), 1) }),
+            ) to ProposalError.BudgetExceeded,
             (1..ProposalBudget.MAX_OPERATIONS + 1).map { fixture.createNote("#n$it") } to ProposalError.BudgetExceeded,
             emptyList<ProposalIntent>() to ProposalError.Validation,
         )
@@ -525,6 +552,9 @@ class ProposalServiceContractTest {
         expectProposalError(ProposalError.GenerationMismatch) { service.revise(context, view.id, 1, goldenIntents) }
         expectProposalError(ProposalError.GenerationMismatch) { service.activeProposal(fixture.generation, fixture.session.id) }
         assertEquals(staleGeneration, snapshot())
+        // A row that is both corrupt and of a retired generation reports its corruption first.
+        sql("UPDATE change_proposal SET payloadDigest=?", "0".repeat(64))
+        expectProposalError(ProposalError.RecoveryRequired) { service.activeProposal(fixture.generation, fixture.session.id) }
         restore(original)
         reopen()
         assertEquals(view, service.proposal(view.id))
@@ -615,4 +645,8 @@ class ProposalServiceContractTest {
         state=?, activeSlot=?, createdAt=?, updatedAt=? WHERE 1""",
         *row.toTypedArray(),
     )
+
+    // Budget rejections fire in normalization, so these synthetic endpoints never need stored rows.
+    private fun syntheticTransaction(index: Int) = "%08x-1111-4111-8111-%012x".format(index, index)
+    private fun syntheticNote(index: Int) = "%08x-2222-4222-8222-%012x".format(index, index)
 }

@@ -1012,3 +1012,15 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 `origin/main`在本批执行期间由`9530833`（E0的PR #21）推进为`937552f`（集成B2与E0），故把唯一提交rebase到最终基线`937552f`。冲突仅`docs/specs/record2/v1/plan.md`一处，原因是多个批次在同一插入点各自追加章节；解决为`§21.4+§22`（B2）、`§23`（E0）、`§24`（C0）按序全保留，不改动B2/E0任何文字、不改变各自已记录的编号，Kotlin源码全部干净应用无冲突（本批未触碰`RecordDao.kt`，因此B2的Note方法不受影响）。因基线源码集合已变，rebase后重新构建、host与真实Room验证见§25.4，不沿用rebase前或中途目标的制品与结论。
 
 实际提交SHA、PR编号与远端状态由Git/PR日志证明，本节不预填或自引用。
+
+### 25.7 PR #23 审阅修复轮（2026-10-24）
+
+负责人交付 C0 PR #23 的静态审阅结论（1 项 P1、2 项 P2，暂不合并，修复+回归+基于最新 HEAD 重跑），本节按该授权执行，基线为审阅对象 `a48394d` 本身（其父即收口基线`937552f`，无新远端推进）。
+
+- **P1 Run 进程所有权校验不完整：** `validRun()` 原来只把 Run 行快照与调用上下文比对，未核对持久化进程所有权；所有者切换而旧 Run 行仍 RUNNING/占 slot 时，旧上下文的迟到 prepare/revise 仍可成功。修复：`validRun()` 内（create/revise/afterContention 三条路径均在同一 Room 事务中）重读 `record_data_state.processOwnerId`，与 Run 行 `processOwnerId` 不一致即 `RunInvalidated`；数据状态行缺失仍按 `RecoveryRequired` fail-closed。
+- **P2 合并配对绕过 32 对上限：** `checkedPairs()` 只约束单条意图，两条各 ≤32 对的 LINK/UNLINK 意图可合并出 33+ 对。修复：`normalize()` 在 `relationSet` 合并去重后重查 `MAX_LINK_PAIRS`；`decode()` 同步校验每个 LINK/UNLINK 操作的配对数在 1..32（空集或超限的持久 payload 属非规范输出，一律 `RecoveryRequired`）。
+- **P2 activeProposal 检查顺序：** 原实现先比代际后做持久完整性，损坏且属退役代际的行会误报 `GenerationMismatch` 而非 `RecoveryRequired`。修复：与 `repeated()`/`editable()` 一致，先 `row.view()` 完整性后代际比较。
+- **回归用例：** host `ProposalCodecTest` 新增 `mergedRelationBudgetIsRecheckedAfterIntentsCombine`（16+17 拆分合并、全量重复去重、LINK/UNLINK 越界各断言 `BudgetExceeded`），decode 拒绝清单补 33 对 LINK 规范串与空 UNLINK 规范串；设备 `ProposalServiceContractTest` 新增 `aRunWhoseProcessOwnerHasBeenReplacedLosesPrepareAndReviseImmediately`（所有者切换后旧上下文 prepare/revise 均 `RunInvalidated` 且全表快照零变化，随后绑定新所有者的新 Run 可继续修订同一提案），rejections 清单补 LINK 与 UNLINK 两条 16+17 合并预算用例（零写入断言沿用），`corruptPersistedProposal…` 补"损坏+退役代际并存报 `RecoveryRequired`"断言。
+- **重跑 PASS：** 同批 JDK17/Gradle8.13 环境，`:app:testDebugUnitTest :app:testReleaseUnitTest` 后各 43 项（ProposalCodecTest 19→20，其余 E0 8、B2 9、既有 6 不变），fail/error/skip 均 0；`check :app:assembleRelease` BUILD SUCCESSFUL，lint 0 错误/6 项既有警告。设备 `ProposalServiceContractTest` `OK (17 tests)`（16+1），新方法单选抽查 `OK (1 test)`，共用 Schema 回归 `RecordSchemaContractTest` `OK (10 tests)`。Schema v1 未变：工作树无 `1.json` 改动，本轮仅 4 个 Kotlin 文件（2 源码+2 测试）。
+- **设备事实差异与处置：** 本轮开始时专用 AVD 已被先前批次以无 `-port` 参数启动，实际 serial=emulator-5554；按 qemu 命令行 `-avd record2-schema-api34`、API34、fingerprint `google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys` 与 §25.4 记录逐项核实为同一专用 AVD，本机无其他在线设备。按 §9.1"禁止盲用历史 serial"，本轮全部命令显式 `-s emulator-5554`；曾按 §25.4 参数尝试在 5580 冷启动同 AVD 被多实例保护拒绝后未强启、未删锁、未干预运行中实例，未创建第二设备、未 wipe/uninstall/清包/删库。该实例数据分区内本轮前无任何本包数据库，轮末 run-as 计数 c0-contract 18 份（17+1）、schema-contract 10 份、`record2.db` 0 份。APK 摘要：debug `1ac8094acd99b22a292510003113c294e5776f764f98c9c7a4d5066897148e11`、test `58f63cecd849c6563357f87b21d1ceac5aed84880f7e9ea0e2b2f275639958fd`、release-unsigned `84888e193c0848873bd163c7a9e60846fdcce2a0f48216b18d45629fd5f9ff4d`，安装后拉回 base.apk 与构建产物逐项一致。
+- **审阅第三项集成风险（E0 撤销后的迟到写入顺序）不在本批修**：按审阅意见列为 E1/E2 集成验收项，未新增 Schema、未改冻结验收。
