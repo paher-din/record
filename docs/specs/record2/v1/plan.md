@@ -1,9 +1,9 @@
 # Record 2.0 V1 Implementation Plan — R1
 
-- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）；D0执行记录于2026-10-24。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核及真实故障结果见§21，D0 Koog/DeepSeek协议接缝及2026-10-24复审修复见§22；其余产品任务未启动。
-- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1沿用Schema v1；迁移/恢复未授权；**Active spec:** R2 V1，B1业务内核及D0协议接缝（含复审修复）已交付，非完整M1/V1。
+- **Status:** `in-progress`；revision `R1`；2026-10-24（Asia/Shanghai）。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核/接受见§21，B2实施与验证见§22，E0非视觉授权/凭据接缝见§23，D0 Koog/DeepSeek协议接缝及2026-10-24两轮复审修复见§24；本批未启动其他产品任务。
+- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1/B2/E0/D0沿用Schema v1；迁移/ZIP恢复未授权；**Active spec:** R2 V1，B1已收口，B2笔记内核、E0非视觉授权/凭据接缝及D0协议接缝（含复审修复）已完成实现与验证，非完整M1/V1。
 - **行为与验收来源：** [spec.md](spec.md)与[自包含来源基线](../../../product/record2-v1-decision-baseline.md)；Spec E01～E12保留调查历史和外部C1核实边界。本文只拥有任务、依赖、范围、测试接缝和门禁，不形成另一份行为Spec。
-- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21，D0合成协议验证见§22；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
+- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21，B2服务/合成库与设备故障测试见§22，E0非视觉授权/Keystore及专用AVD合成测试见§23，D0合成协议验证见§24；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
 - **设计权限：** `DESIGN-OWNER：待负责人指导与确认`。负责人提供方向 → 候选方案 → 负责人审查调整 → 明确批准 → Codex 实现；未经批准不冻结视觉/交互，不以默认 Material 页面通过最终验收。
 
 ## 1. 工程判断与实施入口
@@ -732,22 +732,139 @@ Fixture使用固定UTC Clock=`2026-10-23T12:00:00Z`，发生时间`2026-10-23T12
 
 负责人明确要求“推送到远程仓库吧”，覆盖本轮B1共17个文件的必要Git提交及当前main→origin/main推送；本机环境/构建证据/AVD/测试库继续忽略，不扩大产品执行范围。推送前fetch确认本地与远端同步，精确清单、常见凭据模式、11份受改源码/runner摘要及已通过验证回执复核通过，Schema/R1和暂存区保护通过。仅追加本授权记录，沿用未变化源码的12项host、24项Room及7场景强停结果，不重复构建；实际提交及远端身份由Git日志和交付回执证明。
 
-## 22. D0：Koog/DeepSeek 协议验证授权与执行
+### 21.4 B1最终接受与收口
 
-### 22.1 授权与实际对象
+负责人最终决定：“B1 可以收口，不需要重新执行已经通过且源码未变化的整套测试。”接受的远程交付为`1cd1d2804a006e97c79e3b32b4b466712d405315`；B1业务内核任务标记完成，沿用§21.2的实际验证证据。本轮仅记录接受并检查文档差异，不修改源码、不重跑构建或设备测试，不自动启动后续任务。完整M1/V1与F0/F1等剩余验收边界不变。
+
+## 22. B2：Note自动保存、CAS与软删除（issue #5）
+
+负责人要求“你来完成issue b2吧”，对应[GitHub #5](https://github.com/paher-din/record/issues/5)，已读取issue全文且与§4 B2合同一致。B1已获最终接受，本批实施Note业务服务、非视觉编辑状态及必要真实磁盘/故障验证；不新建Spec/ADR或重开工程/Schema设计。开始时仅有§21.4收口记录未提交，原样保留。
+
+源码限定record2的records Note合同/编辑状态、storage Note实现/必要RecordDao方法、对应host/Android测试和host进程runner。沿用Schema v1及现有依赖，不实现F0/F1最终页面、B3关联变更/Agent/备份。软删除仅针对本批合成Note事实，不物理删除文件、正文或关系，不操作用户数据/迁移/凭据/CI或发布。提交/推送及远端issue状态按实际授权与可交付事实另记，不提前关闭未交付的远端任务。
+
+初始设备范围为专用`record2-schema-api34`（emulator-5580）；因共用冲突已改为负责人随后批准的独立D盘B2 AVD，准确对象与来源见§22.1协调记录。仅安装/更新R2 .debug/.debug.test、创建新的私有`b2-contract-<UUID>.db`；必要Schema回归使用新的schema-contract UUID库，旧B1/Schema库和普通record2.db不读改。允许本批必要构建/缓存、合成数据真实Room异常/取消/并发及对专用包force-stop→PID消失→正式Host新PID/前台→同库验证；不清包/wipe/uninstall或删除库，不操作其他设备。保持原任务边界，最终视觉/未确认交互仍DESIGN-OWNER待确认。
+
+本批服务保存只接受稳定Note ID、原发生时刻和expectedVersion；新建空白不写，既有空白拒绝。删除/恢复是目标状态CAS，同状态幂等，不toggle；迟到保存不复活。编辑状态使用独立inputRevision与业务version，约500ms保存/离开flush，旧回执不覆盖新输入；版本冲突/不可见/未知结果阻断自动重试并保留文本，只有显式丢弃重载才采用新版本。运行前登记实际selector/故障点与合成fixture，结果待真实执行，不挪用B1 PASS。
+
+### 22.1 B2运行合同（2026-10-24）
+
+- host：`NoteEditorTest` 9项，受控回执/故障/重载时序与500ms停输；既有MoneyTest/FinanceTimeTest随必要check执行，不重跑已接受且未变化的B1强停矩阵。
+- 真实磁盘：`com.paherdin.record2.storage.NoteServiceContractTest` 12项；`RecordSchemaContractTest` 10项必要共享DAO/Schema回归，新建UUID库，不打开原B1库。运行命令使用明确serial的`am instrument -w -r -e class <两类逗号连接> com.paherdin.record2.debug.test/androidx.test.runner.AndroidJUnitRunner`，不使用裸connected任务。
+- 进程：`NoteProcessContractTest#prepare` / `#verifyAfterHostRestart`，由`record2/tools/verify-b2-process.py --adb <已核SDK adb> --serial <获批目标serial>`驱动，当前目标emulator-5584/record2-b2-api34。CREATE/EDIT/DELETE/RESTORE × BEFORE/AFTER共8个场景，在实际Note/生命周期写后事务提交前或提交后回执前门控，发送独立全14表基线；host强停目标、确认PID消失、正式MainActivity新PID且前台，再同库只读verify并重复第二次真实重启。已提交创建/生命周期重复处理幂等，旧编辑重复CAS拒绝，无补种修复。
+- fixture：固定Clock=`2026-10-24T12:00:00Z`，原发生时刻=`1792729800000`，中文/换行/Markdown符号与末尾空格原样；新代际、Note/交易UUID，本批私有b2-contract库。关系只是合成既有事实，B2保存/删除/恢复不增减关系或修改交易。异常/取消分别在创建、正文更新、删除、恢复已写后验证全部回滚；持续故障/重开/幂等、两个Room连接CAS、隐藏列表与删除列表分离、版本/业务revision溢出均检查真实磁盘。
+- 构建：自身wrapper显式`-p D:/record/record2 check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`，既有JDK17，证据归`record2/build/b2/`。设备写前核AVD/API/qemu/boot/包身份和最终APK摘要；最初共享AVD已在运行，未擅自停止，后续只对获批新B2 AVD写入。其他设备/库/用户内容不操作。
+
+共享设备协调：初次强停矩阵在CREATE两场景已通过、EDIT_BEFORE第一次verify通过后，被另一组安装操作终止Host；ActivityManager明确记录installPackageLI，安装的app/test SHA均与本批不符，没有目标崩溃栈，不能视为B2数据缺陷或完整PASS。已停止设备写入并询问隔离方案；负责人选择“我先暂停另一任务，再复用原模拟器”，维持原AVD对象，不创建/停止AVD。恢复前核无目标安装/instrument客户端及活动instrumentation，重新安装本批已测SHA的制品；runner在每轮/每次强停前后验证包摘要，若漂移立即失败而不继续干扰其他任务。首次中断日志/独立基线保留。
+
+恢复后的第二次尝试仍在CREATE_AFTER重启时遇外部installPackageLI，app/test摘要再次改变且无目标崩溃栈；记录于process-run-resumed.log与resumed-process-diagnostic.log。停止重复换包，等待负责人完成设备独占协调或明确授权独立AVD；已经通过的host/Room证据不重跑，完整强停矩阵暂不标PASS。
+
+负责人随后明确“改为允许新建 record2-b2-api34”，并补充“不要放到C盘”。后续B2设备执行对象改为独立`record2-b2-api34`，D盘`record2/build/b2/avds/`保存AVD登记ini与设备目录（userdata/快照等），进程级ANDROID_AVD_HOME/ANDROID_USER_HOME/TEMP也限定本任务D盘目录，不修改全局环境文件。使用已装的API34 google_apis x86_64镜像，只读现有SDK；选择空闲5584端口并核名/API/包归属后仅对emulator-5584安装及新b2-contract库验证。停止操作原emulator-5580，不停止其进程/清理原库；新B2 AVD可在测试后关闭并保留文件。生成源码/Schema和已通过host/Room证据不变，不因换设备重跑B1。
+
+### 22.2 实现与验证进展（2026-10-24）
+
+- 已实现records的NoteService/NoteEditor及storage的RoomNoteService，RecordDao仅新增必要生命周期/删除分页查询和条件写；Schema/实体/依赖/构建/普通MainActivity均未修改。正文原样存、发生时间不随保存/删除/恢复改变；正常/已删除读取分离，删除列表按deletedAt倒序/id稳定分页。保存/生命周期version与businessRevision在同一真实Room事务推进，异常/取消回滚；同状态目标幂等且不修改正文/关联。新建空白不写，旧正文清空拒绝，迟到/旧版本保存不复活或覆盖。
+- 非视觉编辑状态使用独立inputRevision，保存串行、约500ms停输/离开flush；旧回执只更新对应persisted状态，不改新输入，只有当前输入版本确已落盘才isSaved。冲突/不可见/未知结果/代际错误保留本地文本且阻断自动重试，显式丢弃重载才采用新业务版本；重载期间拒绝新输入/flush/leave，避免丢输入或等待环。AI预览不接入此owner，最终页面仍归F0/F1。
+- host与完整构建PASS：build-fixed.log为1分13秒，129项任务中29执行/100 up-to-date；Debug/Release各15项host（NoteEditorTest各9项及既有Money/FinanceTime各3项），共30项，fail/error/skip均0。lint原7项警告保留，隔离检查通过。初次host因重载已持锁而flush排队、测试等待flush后才释放重载而停滞；线程栈确认对应B2测试，停止仅该worker并保留原日志，修正重载忙碌时flush在入锁前返回false，9项原测试通过，补JUnit有界超时防止测试无限等待。未删除测试或加绕过标记。
+- 真实磁盘22/22 PASS：NoteServiceContractTest 12项及Schema回归10项，instrumentation-initial.txt明确OK (22 tests)、22个完成状态0、无失败/skip，7.579秒。覆盖原文/空白/同ID重开、合法删除/撤销/恢复与隐藏关系、目标幂等、两个连接CAS、迟到保存/恢复后旧version冲突、创建/编辑/删除/恢复写后StorageFull持续失败及重开、真实协程取消零部分事实、回执未知按身份核查、Long/version/businessRevision溢出和非视觉编辑器实际Room联调。source-host-verification.json记录9份Kotlin/runner来源摘要及30项host回执。
+- 最终APK/Schema静态复核已PASS，apk-verification.json独立核三APK身份/权限/备份规则等；Schema SHA-256仍为94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75。源码未因设备冲突改写，只有host进程runner增加逐轮安装身份防护。该阶段完整8场景强停矩阵尚未通过，独立D盘设备上的最终结果见§22.3，不用局部执行代替完整结果。
+
+### 22.3 B2本地完成与最终证据（2026-10-24）
+
+- **实现交付：** [NoteService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/NoteService.kt)、[RoomNoteService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomNoteService.kt)、[NoteEditor](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/NoteEditor.kt)及必要RecordDao方法实现独立纯文本新建/自动保存、单业务version CAS、软删除/同ID撤销恢复、正常与删除列表分离和有界稳定分页。删除/恢复保留正文/原发生时刻/全部关系，交易不变；迟到保存不能复活或覆盖新正文。错误/冲突保留输入，不盲目更新expectedVersion；未知提交先按同ID核查，首次创建同内容重试不产生第二条。
+- **验证汇总 PASS：** 30项host（新增NoteEditorTest在Debug/Release各9项，共18项；其余为金额/日期基线）及22项真实Room（B2 12项+Schema回归10项）均fail/error/skip=0。保持§22.2的实际回执，不因只修改host runner/设备对象重新执行未变化的生产Kotlin测试；Kotlin摘要逐项与已测试制品来源一致。[NoteEditorTest](../../../../record2/app/src/test/kotlin/com/paherdin/record2/records/NoteEditorTest.kt)验证迟到回执/输入revision/500ms/重载/离开等待，[NoteServiceContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/NoteServiceContractTest.kt)和[fixture](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/NoteContractFixture.kt)穿过正式Room服务，独立只读SQLite比较全14表。
+- **8场景/16重启核验 PASS：** 最终运行[host runner](../../../../record2/tools/verify-b2-process.py)命令为`python record2/tools/verify-b2-process.py --adb C:/Users/p3148/AppData/Local/Android/Sdk/platform-tools/adb.exe --serial emulator-5584`，驱动[NoteProcessContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/NoteProcessContractTest.kt)。CREATE/EDIT/DELETE/RESTORE各提交前/后全部通过，每场景重复两次真实force-stop→旧PID消失→正式MainActivity新PID且前台→同库verify。每次verify明确OK (1 test)，保留原PID/两个Host PID、启动原文/前台证据/独立全表基线；提交前完全等于原状态，提交后只出现预期Note/version/deletedAt/businessRevision变化。已有交易和关系逐字段保持；创建/生命周期重复处理幂等，旧编辑CAS拒绝。verify不补种或重建缺失库，不以Activity重建代替进程终止。
+- **最终runner修正与失败事实：** 第一次独立设备执行前7场景已通过，最后RESTORE_AFTER的`am start -W`先返回等待超时，ActivityTaskManager随后显示正式Host约14秒正常显示，无目标崩溃。保留process-run-isolated及对应活动/崩溃诊断，runner改为保存启动原文、拒绝明确启动错误，再于30秒上限内验证新PID/实际前台状态，仍保留安装SHA防护；每场景完成即保存progress，支持只选择具体失败场景重试。修正后重新取得一份完整8场景/16核验的可复查记录；不关闭数据库断言或放宽Note安全规则，没有改变Kotlin/Schema。
+- **新AVD全部在D盘：** record2-b2-api34 / emulator-5584 / Pixel6 profile / 已安装API34 google_apis x86_64镜像，fingerprint=`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`。登记ini与设备目录为`record2/build/b2/avds/record2-b2-api34.ini`及同名`.avd/`，userdata/快照均在D盘；进程级ANDROID_AVD_HOME/ANDROID_USER_HOME/TEMP/TMP指向本任务D盘目录（[官方环境变量说明](https://developer.android.com/tools/variables)）。C盘不存在该AVD登记或目录；既有SDK仅只读复用，无全局环境文件变更/工具安装。测试后仅关闭本次新AVD并保留16份新b2-contract合成库、APK与设备文件，不删文件/清包或操作原emulator-5580。
+- **制品/范围保护 PASS：** 最终安装及所有完整场景摘要对应同一debug SHA-256=`5b3b0b527851f77162fec2fd850536ee7ef8e5e461462c6085b3757f9a6f4a7e`、test=`65f61f20d7a08b47748a90eb4e35ef4c2823b337e61b049b87cad9a5b27fff31`，设备安装文件、原22项磁盘回执、最终进程summary与本机APK复核一致。Schema v1/实体/构建/依赖/Manifest/普通Host/R1/B1业务源码未改，无普通record2.db、真实用户数据/Key/网络调用或迁移/ZIP恢复。未重跑已接受的B1设备/强停矩阵，未创建UI/AI或B3关联写服务。
+- **证据：** [本机B2目录](../../../../record2/build/b2/)中build-fixed.log、host-fixed.log及原hang线程栈保留；instrumentation-initial/summary为22项磁盘；最终进程目录为`process-d5d421f5f2f84f71aef5087ae4bebe0f/`（summary/progress、8份prepare、16份verify及PID/启动记录）。device-install-isolated、source-host-verification-final、apk-verification及final-verification.json覆盖制品/来源/路径/边界，正式测试源码和runner可纳管复做；大型AVD/本机原始证据被忽略，不声称跨机器归档。所有真实失败和中断目录保留，不挪旧PASS冒充本次运行。
+
+设备共享规则按负责人最新解释执行：AVD可由其他不相互干扰的进程共用；需要串行协调的是同一包的install/instrument/force-stop及共写资源，不把整台AVD设为默认独占锁。本次额外AVD是负责人明确同意后的故障验证隔离，不是后续任务的强制前置。
+
+**完成边界：** B2业务服务与非视觉编辑状态、必要磁盘/异常/取消/并发/强停证明本地完成，自查，无独立Agent审查。最终页面/IME/旋转展示/删除入口与文案仍归F0/F1；BK/完整Agent及M1/V1联合验收未完成。B1未提交的最终接受记录保留。当前尚未Commit/Push或修改远端issue #5状态；不提前宣称远端已交付。最终T0 PASS：6份已有修改/8份新增限本批及原B1收口记录；125个相对链接、9个锚点、UTF-8/围栏/空白和常见凭据模式检查通过；9份源码/runner摘要与实际回执一致，冻结Spec §4–7/架构、R1/B1业务源码、Schema/构建/普通Host及Git index未变；D盘AVD及证据继续被忽略。final-t0.json可复核，git diff --check通过（仅既有CRLF提示）；未为最后文档收口重跑已经通过且源码未变化的测试。
+
+### 22.4 推送前审查、修正与交付授权
+
+负责人以“可以”同意将本批14个文件提交并推送到origin/main、核实远端后关闭issue #5，随后要求“你先自查一下，没问题再推送”。沿用原B2范围完成审查和必要修正；AVD、测试库及本机构建证据继续留在D盘并被Git忽略。
+
+在HEAD `1cd1d2804a006e97c79e3b32b4b466712d405315`与当前工作区之间审查全部14个文件，主Agent复核原始测试记录和来源摘要，并按code-review技能分别进行独立Standards/Spec审查。两轴各发现一项P2，均纳入本批修正：
+
+- Standards：进程runner等待prepare gate超时的异常分支，在force-stop前补齐安装APK身份核查；共享设备期间发生换包时保留日志并退出。真实runner的本机subprocess替身回归先复现“换包仍强停”，修正后“换包不强停/同包正常处理超时”两项PASS，回执为review-runner-guard-result.json；这些替身结果只证明runner命令边界，不替代磁盘证明。
+- Spec：删除列表cursor按B0 §4.2绑定dataGeneration和businessRevision，每页在同一Room读取事务内核查，跨代际/业务变化返回CursorExpired。新增真实双Room连接测试，覆盖第一页后另一连接恢复再删除导致排序前移、旧游标拒绝、跨代际游标拒绝及刷新后完整分页。两轴独立复核均确认对应发现关闭，未发现补丁引入的新问题。
+
+§22.3保留为修正前历史证据，不将旧APK摘要挪给新制品。新修正仅涉及分页读取/DTO、回归测试和runner异常退出分支；保存/删除/恢复事务、NoteEditor、DAO、Schema及原8场景正常强停路径未改，原强停结果仍证明这些未变路径，不因此重跑B1或全部强停矩阵。
+
+修正后同一完整构建任务组PASS（build-review-fixes.log，3分7秒，129项任务中33执行/96 up-to-date）；30项host测试全部通过。复用原D盘record2-b2-api34/emulator-5584，安装前核原包身份和无活动instrumentation，最终新APK上的B2 13项+Schema 10项真实Room测试全部通过（instrumentation-review.txt，8.603秒，23个完成状态0，无失败/skip）。新增23份合成测试库，旧库文件全保留、普通record2.db仍不存在；测试后只关闭本轮启动的AVD，文件继续留D盘。Schema摘要不变，未动原emulator-5580。
+
+新debug APK SHA-256=`1a5d783b7e135393e97c4d1add87fe62d0e6b6d1f7c04f082839934c69232c6c`，test=`1e66cc9ee80a29e887f404ec92cd7ef94f2322083a870fe427da68c1b0cb8923`；安装前后摘要一致，review-verification.json保留当前9份来源摘要、30项host/23项Room及两项runner回归，并明确原8场景/16重启的制品和沿用理由。当前自查及独立复核通过，Git提交/推送和issue关闭按上述授权执行，实际远端身份由Git日志及issue状态核查，不预填提交SHA。最终页面、B3/AI/备份和完整V1联合验收边界不变。
+
+### 22.5 与远端E0交付集成
+
+B2实现与审查修正已保存为`7fefba2`。推送前远端main新增E0的PR #21合并提交`9530833`及其四个实现/修正提交；采用普通merge保留双方历史，冲突仅在README、docs/index、Spec/Plan和record2/AGENTS五份共享文档。两任务入口、B1接受与Plan §22/§23均保留；B2和E0业务源码分别与各自已验证提交保持一致，Schema/构建/Host不变。合并后执行必要构建/host集成检查，原设备证据仍按各任务记录归属，不扩大为完整Agent/凭据外发联合验收。
+
+集成验证PASS：同一完整构建任务组1分39秒完成（build-integrated.log，129项中41执行/88 up-to-date）；B2与E0合计46项host测试fail/error/skip=0，三APK组装通过。B2的9份来源摘要和E0的10份源码/测试/runner分别与各自提交一致，冻结Spec §4–7/Schema保持不变，140个本机相对链接及13个锚点通过；E0两处被忽略的本机证据路径按其原跨机边界保留，不声称已搬入本工作树。integration-verification.json记录实际检查；合并仅解决文档冲突，不重复未变化业务路径的设备矩阵。
+
+## 23. E0 授权、凭据与发送接缝
+
+2026-10-24负责人要求“完成issue e0”。本批按§6 E0及G-CODE执行非视觉授权/认证/私有凭据接缝、必要安全状态接口、系统备份policy与安全测试；沿用A1/Schema v1/B0，不新增ADR、Schema、UI或真实Provider调用。实际对象仅`record2`源码/测试、专用`record2-schema-api34`/API34 AVD及合成凭据；未使用真实Key、DeepSeek、用户数据、网络请求或发布；Git提交/PR按§23.4记录。本批在独立工作树`codex/e0-provider-authorization`执行，主工作树既有未提交`plan.md`修改保持原样，未由本批暂存或提交。
+
+2026-10-24负责人对PR #21的静态审阅确认两项P1：E0初始化可能使B1拒绝数据库，以及凭据轮换期间仍可签发permit。第二轮静态审阅进一步指出：缺失`record_data_state`但已有孤立`ai_control`授权行时，仍可能签发permit。本批在同一PR窄范围修复并增加真实Room联合/同步屏障/孤儿行测试，未重开架构或Schema。
+
+### 23.1 授权、接收方与安全语义
+
+- **接收方身份：** 受控目录采用`deepseek.api.deepseek.com`，`scopeVersion=1`、`disclosureVersion=1`。它是接收方技术身份而非模型可填参数；模型、工具结果或Note正文不能修改。D0实际端点/模型变化、以及F0 D-SAFE/F2告知文案与展示，必须与版本对应；不匹配时旧grant失效并要求重新授权，不能沿用旧接收方资格。B0 §3.5的字段语义不变；实际接收方值/版本由本节拥有，D0模型预算与F2告知文案仍未决。
+- **状态独立：** AI模式（OFF/FULL）、接收方选择、持续授权（receiver/scope/disclosure/grantedAt）和Keystore凭据分别判断。初始OFF、无grant、无凭据；模式关闭不删除grant/凭据；撤销不清除已配置凭据；凭据缺失/不可读不删除历史或已确认业务。
+- **初始化所有权：** `record_data_state`/业务代理由B1初始化拥有。E0在代际不存在时先查`hasDataWithoutGeneration`：完全空库只返回虚拟OFF/无grant/无凭据，不插入`ai_control`；已有任何持久数据（包括孤立`ai_control`）时返回`RecoveryRequired`，不得签发permit；模式/授权/凭据写入要求代际已建立，否则空库返回`NotInitialized`且零写入。代际建立后E0才可幂等创建OFF控制行。E0不通过放宽B1的`hasDataWithoutGeneration`检查解决问题。
+- **epoch失效：** 每次模式、选择、授予、撤销、凭据替换/清除都递增`authEpoch`；授权发送permit捕获epoch，发送前及迟到结果写回前必须复验。撤销/关闭/换接收方先失效权限代次，再取消网络；取消网络不替代持久资格检查。E0负责持久epoch与发送前检查接缝，当前Run终态、网络取消及迟到结果写回由E2/D1/F2在调用点接入并验证。
+- **发送前检查接缝：** `eligibility`区分AI_DISABLED、未选择、未授权、版本不匹配、缺凭据、凭据不可读、非法字段组合（STATE_INVALID）；`requirePermit`只对READY发permit；`useCredential`在复验后短暂解密并回调，明文在`finally`清零。mode字符串不可解析等持久损坏按RecoveryRequired安全拒绝，不伪装成可发送状态。未授权/无AI时调用方必须在任何网络调用前停止，不能以空结果或假成功继续；调用方应只把明文用于构造认证头，调用返回后不保留到请求日志、缓存或模型上下文。这是授权检查与凭据访问接缝，不是完整网络发送门禁；D0/D1必须在实际请求启动边界做最终复验。
+- **凭据：** Android Keystore alias `record2.ai.credential.v1`，AES-256-GCM、认证加密、每次加密由Keystore生成唯一12字节IV；密文+IV写入`Context.noBackupFilesDir/ai_provider_credential.bin`，不进入Room、日志、Prompt、APK、手动ZIP或系统备份。明文只在受控回调中短暂存在并清零；临时网络/服务/额度失败不删Key；不可读/密钥丢失要求重新配置，不删除历史。
+- **凭据轮换排序：** 替换/清除先在Room事务递增epoch并提交，再原子写/删Keystore信封；`requirePermit`与轮换共享进程内互斥，轮换期间不能签发新permit。写入失败/取消/进程在两步之间终止时，epoch已递增、旧凭据保留或新凭据已完整替换，不产生半文件；服务不报成功，重试再递增epoch。
+- **接收方/授权文案边界：** E0冻结技术接收方与版本号，不写设置/告知页面或最终文案；D-SAFE/F2负责人设计决定展示和措辞。“撤销不收回已发送内容”的准确说明归F2，E0只保证后续请求/迟到结果被阻止。
+
+### 23.2 实现交付
+
+- [AiSecurity.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/security/AiSecurity.kt)：`AiMode`、受控`ProviderReceiver`目录、授权状态/拒绝原因/permit、纯策略和`AiSecurityService`/`CredentialVault`合同。业务/UI/Tools不直接读取`ai_control`。
+- [KeystoreCredentialVault.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/security/KeystoreCredentialVault.kt)：认证加密信封、Keystore密钥、唯一IV、原子替换、损坏/密钥丢失识别、回调后清零。
+- [RoomAiSecurityService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomAiSecurityService.kt)及[AiControlDao.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/AiControlDao.kt)：真实Room`ai_control`单例行、条件更新/epoch递增、模式/选择/授予/撤销/凭据替换/清除、状态矩阵、permit和凭据使用。DAO保留原`insertControl`的ABORT语义，新增仅初始化用的`insertControlIfAbsent`。服务先查`record_data_state`；缺代际且`hasDataWithoutGeneration`为真时按RecoveryRequired拒绝，只有完全空库使用虚拟OFF。凭据轮换与permit签发共享进程内`credentialMutation`互斥。
+- 无Schema变更：仍为Schema v1 14表；新DAO查询不改变物理字段/索引/外键。无新增权限/组件/UI/日志/网络/Gateway。凭据目录使用`noBackupFilesDir`，系统备份三层（`allowBackup=false`、full backup rules、API34 data-extraction rules）继续排除全部用户域。
+- 测试：[策略host测试](../../../../record2/app/src/test/kotlin/com/paherdin/record2/ai/security/AiSecurityPolicyTest.kt)、[信封host测试](../../../../record2/app/src/test/kotlin/com/paherdin/record2/ai/security/CredentialEnvelopeTest.kt)、[Keystore设备测试](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/security/KeystoreCredentialVaultTest.kt)、[Room/接缝设备测试](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/AiSecurityContractTest.kt)、[初始化联合设备测试](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/AiSecurityInitializationContractTest.kt)、[E0验证runner](../../../../record2/tools/verify-e0.py)。
+- 发送前检查接缝目前由未来D0/D1/F2调用；本批用受控假transport证明未授权零调用、撤销后旧permit失效，并用同步屏障证明轮换期间不签发permit；没有把假transport或状态测试冒充真实Provider全链路或生产网络门禁。
+
+### 23.3 实际验证与证据
+
+- **构建/host PASS：** 沿用JDK17.0.20+8、Gradle8.13、AGP8.12.3、Kotlin2.3.10、Room2.8.4、KSP2.3.10。修复后以自身wrapper和显式`-p <E0工作树>/record2`运行`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`成功（3分21秒，129项actionable中31执行/98 up-to-date）；`verifyBuildIsolation`及金额/既有host回归通过。本批工作树为`D:/record/.worktrees/e0-provider-authorization`（临时路径，不作为跨机复现契约）。新增8项E0 host测试/变体；Debug、Release各14项、fail/error/skip均0。lint 0错误、6项警告（既有target/version/Composable命名/icon类别），未关闭检查；Gradle9弃用提示保留。
+- **真实设备 PASS：** 仅专用`record2-schema-api34`，serial`emulator-5580`，API34，fingerprint`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`；安装`com.paherdin.record2.debug`及`.debug.test`。E0设备类17项全PASS：Keystore 6项（往返/唯一IV/损坏密文/密钥删除后不可读/重配/清除/空白拒绝）；Room/接缝8项（状态矩阵/未授权零外发/撤销/接收方变更/凭据替换/损坏不改变控制行/秘密哨兵/轮换同步屏障/写入失败保留）；初始化联合3项（E0先读不写控制行且B1仍可初始化、代际建立前所有控制写入返回NotInitialized且零写入、缺代际的孤立授权行被RecoveryRequired拒绝且原行/凭据不变）。同AVD以RecordSchemaContractTest 10项+FinanceServiceContractTest 14项做共用DAO/Schema回归，24项全PASS；合计41项，失败/skip 0。
+- **测试命令：** `adb -s emulator-5580 shell am instrument -w -r -e class com.paherdin.record2.storage.AiSecurityContractTest,com.paherdin.record2.storage.AiSecurityInitializationContractTest,com.paherdin.record2.ai.security.KeystoreCredentialVaultTest com.paherdin.record2.debug.test/androidx.test.runner.AndroidJUnitRunner`；回归同类命令使用`RecordSchemaContractTest,FinanceServiceContractTest`。最终回执见[E0证据](../../../../record2/build/e0/)的`instrumentation-final4.txt`、`instrumentation-regression4.txt`；修复前的并发测试夹具失败回执`instrumentation-fix-initial.txt`保留。未以adb退出码代替runner结果。
+- **制品/备份/秘密 PASS：** 修复后最终Debug/Release/AndroidTest APK SHA-256分别为`865bad027f05ef2453abac29800ae67067716858925c821634937553e5b61dc4`、`a9457153f1de3740fd849ae0eca1d942b7c59ef76250315011b1a9a1a175a2e4`、`78de404149a83580a66c6358cafd45e44c51385bfa3cc8f3ce08bfe4a41c8884`；三包身份/权限/组件、`allowBackup=false`、manifest/APK两层full-backup及API34 data-extraction各9域排除通过。E0类已进入生产dex；合成哨兵`r2-e0-synthetic-9f4c7a2e6b1d4c8f`仅存在于test APK、androidTest源码、E0验证runner及本机证据，在Debug/Release APK、最终logcat、Room/应用数据中均未发现；该哨兵是明确的合成标记，不是真实秘密。Schema v1 JSON的LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`；物理14表/117字段/20索引/13外键未改。runner输出[verification.json](../../../../record2/build/e0/verification.json)。
+- **失败与修订保留：** 首轮host 14项中3项因测试fixture缺少完整grant字段/截断样本不足而失败，修正测试后14/14；首轮设备12项中2项因把`noBackupFilesDir`与测试子目录混同而失败，修正断言后12/12；共用DAO回归首轮24项中1项失败，根因是`insertControl`被改为IGNORE破坏了单例主键重复拒绝。恢复ABORT语义、另加`insertControlIfAbsent`后，E0 12/12与回归24/24重跑通过。负责人静态审阅P1后，本轮新增初始化联合/轮换屏障/失败保留测试；并发测试首版在`runBlocking`单线程等待子协程启动而失败，改为`Dispatchers.IO`后16/16通过；该测试夹具失败回执`instrumentation-fix-initial.txt`保留。第二轮静态审阅指出缺代际时已有孤立`ai_control`行仍可签发permit；改为先查`record_data_state`，缺失且`hasDataWithoutGeneration`为真返回RecoveryRequired，仅完全空库返回虚拟OFF。新增真实Room孤儿行+合成凭据测试（state/eligibility/requirePermit均拒绝、零外发、控制行/全表快照/凭据不变）；重跑E0 17/17与回归24/24。原始`instrumentation-initial.txt`、`instrumentation-regression.txt`亦保留，未用旧APK结果覆盖新APK。
+- **证据范围：** [本机E0证据](../../../../record2/build/e0/)含修复前后构建、设备/日志回执、APK摘要、验证JSON；该目录被忽略，不承诺跨机器存在。正式源码/tests/runner可按上述命令重建。自查完成，无独立Agent审查；本轮未要求负责人代跑自动化。
+- **备份与ZIP边界：** 系统备份三层排除证据已通过；手动ZIP尚未实现，E0不声称ZIP排除PASS。G0/G1仍须在真实导出/SAF/恢复/设备迁移中验证Key/密文/IV/Keystore材料完全排除；E0的`noBackupFilesDir`不抵扣该下游证据。
+
+### 23.4 未执行边界与下游责任
+
+- 未使用真实DeepSeek/API Key/网络请求，未实现D0 Provider协议、D1工具/Agent、E1 ChatMemory/Session、E2取消/迟到写回、F2设置/告知/聊天UI或任何F0视觉设计；这些任务未因E0启动。
+- CTX-01/04/07/10及SES-05/06/07的完整产品验收仍需D1/E2/F2/G1/G2把本接缝接到每个外发、工具结果和迟到落盘边界，并在真实Provider/设备/备份中联合证明；E0只完成授权/凭据接缝合同、状态矩阵、Keystore/备份排除和合成发送零调用证据。
+- **下游发送/撤销/代际排序：** `useCredential`只提供授权检查和凭据访问，不是完整网络发送门禁。D0/D1须在实际请求启动边界做最终eligibility/permit复验；E2须先失效Run/授权代次再取消网络并处理迟到结果；E2/G0须把permit绑定到请求的`dataGeneration`或在恢复/结果边界复验，防止恢复后旧epoch permit被接受。
+- 未执行真实系统云备份/设备迁移/手动ZIP/恢复、用户数据、真实凭据配置、Provider失败/费用/取消、签名/发布/CI/环境修改；迁移/恢复仍按Plan §20边界未授权。
+- “撤销准确说明已发送内容不能收回”、授权告知文案、设置/历史/删除UI及任何未确认交互仍属F0/F2；E0不写页面或产品文案。
+- **推送授权与PR：** 2026-10-24负责人明确要求“推送pr”，覆盖本E0分支的必要Git提交、分支推送及创建PR；实际实现提交为`b464ca2671914b1b3dc8d1e5c215c502a7f79544`，PR [#21](https://github.com/paher-din/record/pull/21)基于main `1cd1d2804a006e97c79e3b32b4b466712d405315`，未合并/未关闭issue。审查修复（初始化所有权、轮换排序、孤儿控制行兜底、联合/并发/孤儿测试）及本记录修订随同一PR提交，提交身份由Git/PR日志证明。主工作树既有未提交修改保持原样；本PR不包含B1 §21.4，该段仍在工作树未提交。
+- 并行B2任务已在主工作树使用Plan §22；E0使用§23以避免编号冲突。本批未合并/重跑B2，也未读取或修改其未提交源码；集成时由负责人按任务owner协调共享文档与同一AVD的串行，不把E0证据挪给B2或反之。
+
+## 24. D0：Koog/DeepSeek 协议验证授权与执行
+
+### 24.1 授权与实际对象
 
 负责人于2026-10-24通过本轮交互明确选择“授权，≤$1（推荐）”与“授权复用该 AVD（推荐）”：D0只使用当前环境中的独立测试Key和合成提示，真实Provider费用上限$1；只复用专用AVD `record2-schema-api34`（adb serial=`emulator-5580`，API34，fingerprint=`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`），只安装/更新`com.paherdin.record2.debug`与`.debug.test`，使用合成数据，不wipe/uninstall/清库、不改普通`record2.db`或旧测试库、不操作真机/API36/其他AVD。D0测试不启动正式Activity、不打开Room库；此前§20/§21许可不泛化。
 
 Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@BeforeClass`读取后立即删除；Key未进入命令行参数、源码、APK、Room、日志或证据。证据只保留SHA-256前12位`9612f585b3ef`。D0未修改Schema、Manifest权限、备份规则、普通Host数据、R1或环境/CI配置；仅新增测试依赖与应用内最小适配。
 
-### 22.2 实际制品与固定协议
+### 24.2 实际制品与固定协议
 
 - **已批准固定坐标（2026-10-24）：** `ai.koog:prompt-executor-deepseek-client:1.3.0-beta`（依赖稳定的`agents-core`/`prompt-executor-openai-client-base:1.3.0`）、`ai.koog:http-client-ktor:1.3.0`、`io.ktor:ktor-client-okhttp:3.3.3`（实际解析OkHttp 5.2.1）；均为Apache-2.0。未见额外Provider/遥测依赖；`prompt-executor-openai-client:1.3.0`仍是既有`agents-core`传递依赖，不是D0新增Provider选择。
 - **模型/端点：** `https://api.deepseek.com`；`/models`实际返回`deepseek-flash`与`deepseek-v4-pro`。适配器以`deepseek-flash`为Flash、`deepseek-v4-pro`为Pro（[DeepSeekProtocol.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/DeepSeekProtocol.kt#L23)）。Beta客户端的内置Flash ID为`deepseek-v4-flash`，与本端点列表不一致；D0以端点ID为准并记录此差异，D1不得复用内置Flash别名。
 - **Thinking协议：** 缺省字段等同开启Thinking；正常路径必须显式`{"thinking":{"type":"disabled"}}`，Thinking路径显式`enabled`。参数与超时接缝见[DeepSeekProtocol.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/DeepSeekProtocol.kt#L42)。
 - **HTTP接缝：** `http-client-ktor` Android AAR未提供`HttpClientFactoryResolver`所需的`META-INF/services`，因此适配器显式构造`KtorKoogHttpClient.Factory()`，不能依赖ServiceLoader自动发现。
 
-### 22.3 测试与真实结果
+### 24.3 测试与真实结果
 
 正式测试位于[DeepSeekProtocolContractTest.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekProtocolContractTest.kt#L30)、[DeepSeekProtocolFailureTest.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekProtocolFailureTest.kt#L32)，共享夹具见[DeepSeekTestSupport.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekTestSupport.kt#L1)。
 
@@ -757,7 +874,7 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 - **实际费用/延迟：** 最终套件真实用量input=3134、output=493、total=3627 tokens；批内估算约$0.00185，远低于批准的Flash $0.10/Pro $0.25每Run上限及批次$1上限（精确账单以Provider为准）。单次真实调用延迟约0.4–2.9秒，最终套件17.5秒。active token守卫测试在64,002 tokens处正确停止。
 - **证据：** 本机[record2/build/d0/](../../../../record2/build/d0/)保留`instrumentation-final.txt`、`real.json`、`failures.json`、`protocol-probe.txt`、`dependencies-debug.txt`、`apk-hashes.txt`、`logcat.txt`及构建日志；被Git忽略，不承诺跨机器存在。脱敏可复核摘要、APK摘要和原始证据SHA-256见[2026-10-24-d0.md](../../../engineering/evidence/2026-10-24-d0.md)。密钥扫描覆盖966份源码/文档、3个APK、证据与logcat，命中0；设备app私有Key文件已确认删除。
 
-### 22.4 D0实际发现（D1/E1输入）
+### 24.4 D0实际发现（D1/E1输入）
 
 1. **Thinking缺省开启：** 省略字段会生成reasoning；正常路径必须显式disabled，否则成本和隐藏推理边界都会偏移。
 2. **模型ID差异：** 端点列出`deepseek-flash`/`deepseek-v4-pro`，而Koog beta内置Flash为`deepseek-v4-flash`；D0用端点ID通过真实调用。D1应集中定义允许的模型ID，不直接使用客户端内置别名。
@@ -770,7 +887,7 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 9. **取消/预算验证边界：** 取消、429/503、超时、no-progress为本地脚本在真实API34进程内执行，不等于真实Provider网络故障；active token预算守卫为本地确定性测试。真实cancel、流式、恢复后新Run仍属E1/E2/D1。
 10. **测试预算已实际执行而不是只统计：** `D0TestLimits`统一300秒单请求/50步/900秒Run/64,000 tokens/Flash $0.10/Pro $0.25/Batch $1；`D0RunBudget`在响应边界主动抛出`BudgetExceededException`，功能测试以`Assume`记录`INCONCLUSIVE/BudgetExceeded`；批次累计费用由证据写入时复核。产品默认预算仍不冻结。
 
-### 22.5 D0测试阈值（2026-10-24批准；产品默认预算不冻结）
+### 24.5 D0测试阈值（2026-10-24批准；产品默认预算不冻结）
 
 负责人撤回了D0此前建议的六项阈值，并批准下列**测试**上限。它们是测试安全边界，不是对实际资源消耗的预测；本次只调整测试参数与验收口径，不扩大真实凭据使用或API费用授权（D0批次累计$1上限不变）。
 
@@ -791,8 +908,8 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 
 正式产品的默认预算暂不冻结：待D0、D1取得真实调用次数、Token、耗时和费用分布后，再按典型/复杂任务制定。D1/E1继承“到达上限即停止、报告而不伪造完成”的行为，但不得把本表当作已冻结的产品参数。
 
-### 22.6 收口边界
+### 24.6 收口边界
 
 D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执行的测试预算 + 可复核证据”，不是D1真实Record Tools、E0 BYOK/Keystore、E1 Room权威历史、E2进程恢复、F2 AI UI或M2/V1完成。真实cancel、流式、物理真机、API36、备份/恢复、发布均NOT RUN。脱敏摘要及原始证据SHA-256见[2026-10-24-d0.md](../../../engineering/evidence/2026-10-24-d0.md)。负责人已批准将本轮源码与Plan改动提交并推送工作树分支`codex/d0-koog-deepseek`；不合并main、不发布，实际提交/远端身份由Git日志和推送回执证明。
 
-并行集成边界：E0 PR #21仍基于`1cd1d28`且与D0同时修改本Plan；第二个合并的PR必须重新同步基线并保留D0 §22与E0 §23的授权、状态和证据。`DeepSeekProtocol.client(apiKey)`只是D0协议接缝，不是凭据/授权入口；D1业务集成必须通过E0的Provider授权/Keystore接缝，不能借该函数绕过E0。
+并行集成边界：E0 PR #21与B2已先于D0合并进main；D0作为后合并方已于2026-10-24同步main基线，本章由§22重编号为§24，B2 §22、E0 §23与本章的授权、状态和证据完整保留。`DeepSeekProtocol.client(apiKey)`只是D0协议接缝，不是凭据/授权入口；D1业务集成必须通过E0的Provider授权/Keystore接缝，不能借该函数绕过E0。
