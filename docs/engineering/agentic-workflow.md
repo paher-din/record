@@ -18,6 +18,36 @@ Functional implementation may be dispatched only when all of these conditions ho
 
 Lifecycle, documentation, research, diagnosis, and other non-implementation work follow their own authorization and acceptance criteria. They do not create implicit authority for product code, schema, interfaces, dependencies, or empty modules.
 
+## Skills routing and adaptation
+
+Read only the skills relevant to the task. Vendored sources, fixed upstream commits, licenses, and local Junction reconstruction are owned by [skills/README.md](../../skills/README.md); use exact `skills/<name>/SKILL.md` paths when a global skill shares the same name. For explicit-only skills, the user request or authorized dispatch contract names the skill and path. Do not treat absence from the implicit skill list as proof that its files are missing.
+
+| Task | Skill and scope |
+|---|---|
+| Product requirements and architecture trade-offs | `grill-with-docs`, including `grilling` and `domain-modeling`: resolve the current decision frontier with the user and record confirmed versus unresolved decisions. |
+| A large effort with unresolved dependent decisions | `wayfinder`: a decision map, not automatic implementation; omit the map when the work is already clear and bounded. |
+| An actual module/interface question | `codebase-design`: assess depth, locality, consumers, deletion test, and existing test seams before proposing an abstraction. |
+| Formal specification and task planning | `to-spec`, then `to-tickets`: synthesize confirmed scope and complete vertical slices with real dependencies, adapted to Record's canonical lifecycle below. |
+| Authorized functional implementation | The assigned owner uses `implement` with the repository's `tdd`; agree test seams in the approved plan and work one observable behavior/invariant at a time. |
+| SDK, AVD, device, and UI operations | `android-cli`; capability-specific SDK/ADB alternatives and environment blockers follow [testing-strategy.md](testing-strategy.md#android-environments-and-capability-checks). |
+| Test infrastructure | `testing-setup`: analyze and reuse the existing stack; retain real persistence/fault tests and require approval for proposed dependency/configuration changes. |
+| Exported/received Intent, URI, or related Android entry points | `android-intent-security`: inspect the actual entry and threat; do not invent an entry or dependency to use the skill. |
+| A demonstrated production Compose bottleneck | `jetpack-compose-performance`: read the matching mandatory references and verify an approved comparable measurement setup. |
+| Trace, CPU, memory, or ANR investigation | `android-profiler`: follow its environment and recording/analysis preflight; missing profiling tools do not invalidate independent functional tests. |
+| Change review | `code-review`: pin base/spec/standards, run its independent Standards and Spec reviews, then perform main-agent raw-evidence acceptance. High-risk behavior still needs its required integration/fault results. |
+| A milestone or repeated tooling/review friction | `retro`: propose evidence-based improvements to existing checks and owning documents; it does not authorize applying CI, environment, or policy changes. |
+
+Other skills run only for a matching task with their prerequisites verified. A skill is a method, not approval to change architecture or the stack. Surface a conflict with its exact source and the owning Record constraint before proposing a revision. In particular, preserve manual composition-root wiring, Navigation 2, SDK targets, and the approved module graph unless that specific change is approved; an adaptive, edge-to-edge, or testing skill cannot silently authorize Hilt, a navigation migration, a targetSdk increase, new libraries, or new abstractions.
+
+### Canonical planning and approval
+
+- `docs/specs/<stage>/<slice>/spec.md` remains the single behavior/acceptance source; its `plan.md` owns tasks, dependencies, write scope, and test seams. Do not create a competing `.scratch/.../spec.md` from a generic tracker template.
+- Adapt `to-tickets` output to the owning plan's task/dependency map. If separate tickets are genuinely useful, keep them subordinate links; they cannot duplicate authoritative acceptance or widen the approved scope. A tracker label such as `ready-for-agent`, an unblocked ticket, or a generated plan never activates a spec or replaces user approval.
+- A `wayfinder` map indexes decisions only. Research branches, pushes, tracker publication, prototypes, closing/deleting tickets, and implementation each remain subject to the current task's authorization and redlines; the skill's default steps do not add permission.
+- Tests at a confirmed seam need no repeated per-test confirmation. Public behavior tests coexist with required schema contracts, independent database observers, persisted-file comparisons, and fault hooks; "test the interface" is not a reason to discard the only proof of a data-safety invariant.
+- The existing main-agent implementation restriction, serial/conflict rules, dispatch contracts, and three-failure takeover rule remain unchanged. Skills routing does not introduce an alternate execution role or permission mechanism.
+- `implement`'s combined validation means the owning task/slice's required gates. Commit only the owned, reviewed change, preserving unrelated staged/untracked work. `code-review` reports do not substitute for actual tests or for main-agent inspection of raw evidence.
+
 ## Dispatch eligibility
 
 The main agent dispatches a task only when it is:
@@ -154,8 +184,9 @@ This rule is the exception to the main agent's non-implementation role.
 ## Long-running and device runs
 
 - Multi-minute Gradle and device suites run in the background and are polled. Agents do not interrupt a healthy run to obtain quicker feedback.
-- On Xiaomi/MIUI devices, `INSTALL_FAILED_USER_RESTRICTED` usually means the on-device USB install confirmation dialog was dismissed or timed out, not a code defect. Confirm the install on the device and rerun the same command. If `adb devices -l` is empty, run `adb kill-server` then `adb start-server` before relisting.
-- An interrupted or timed-out device run leaves a stale test process that holds a lock and can hang the next `connectedDebugAndroidTest` for 10+ minutes. Run `adb shell am force-stop <test package>` before rerunning.
+- Bind the exact approved emulator/device serial before deployment, instrumentation, UI input, or another mutating command; validate the target and data scope per the testing strategy. Android CLI is recommended, while verified absolute SDK/ADB tools remain valid alternatives. A missing CLI is not a blanket emulator-test blocker.
+- On Xiaomi/MIUI devices, `INSTALL_FAILED_USER_RESTRICTED` usually means the on-device USB install confirmation dialog was dismissed or timed out, not a code defect. On an authorized physical run, confirm the install on that device and rerun the same command. An empty `adb devices -l` first triggers AVD/boot/SDK diagnosis; restart the shared ADB server only after proving it is necessary and coordinating with other device work, never as an automatic response to no connected targets.
+- An interrupted or timed-out device run can leave a stale test process that holds a lock and hangs the next `connectedDebugAndroidTest`. Diagnose it, then use `adb -s <approved-serial> shell am force-stop <owned-test-package>` only on the authorized target before rerunning. Do not force-stop unrelated apps or devices.
 - Instrumented-test evidence does not survive the run: a library module's test APK is uninstalled after the suite, and `InstrumentationRegistry.targetContext` returns a redirected path unreachable via `run-as`. Emit evidence through instrumentation output (println to logcat or a retained result file), never through app-private files on `targetContext` paths.
 - logcat truncates long lines at roughly 3KB mid-string and corrupts JSON. Keep evidence lines under 3KB or chunk at ~3000 chars (`...-CHUNK 1/N ...`) and reassemble on the host.
 - A cancelled, timed-out, or externally interrupted run remains incomplete evidence. The worker reports its last observable state and retained artifact path. After any device intervention (force-stop, server restart, install confirmation), the worker records the intervention and re-verifies preconditions before rerunning.

@@ -17,6 +17,47 @@ Although one person develops the app, ownership follows the boundary under test:
 
 When Gradle is introduced, the active slice plan records the exact Gradle tasks and device commands. A generic `build` or assemble result cannot stand in for a required test class, migration fixture, fault injection, benchmark, or round trip.
 
+## Android environments and capability checks
+
+For new functional verification, use one pinned API 34 emulator first. API 36 emulation supplements platform, lifecycle, window, and font compatibility; physical devices supplement OEM behavior, real document/media providers, and physical performance. This execution default does not rewrite historical results or substitute for a spec's frozen reference device, workload, budget, or release gate. A conflict with an approved plan is reported and resolved explicitly before replacing its required environment.
+
+| Verification | Default environment | Required evidence |
+|---|---|---|
+| Domain, parser, reducer, and property tests | Approved host JDK and Gradle wrapper | Exact tasks, seeds where relevant, actual test results |
+| Room/Repository, files, backup/restore, and fault integration | Isolated API 34 AVD with real Android SQLite and test-owned disk files | Exact selectors; old/new stored facts and failure/restart observations; raw instrumentation/JUnit results |
+| Compose and navigation behavior | API 34 instrumented tests | Inputs/actions and observable results; relevant Back, failure retention, and recreation cases |
+| Platform compatibility | API 36 AVD when the changed behavior requires it | Image/profile/ABI and the specific system/lifecycle/configuration case |
+| OEM or physical performance | The approved physical device and benchmark variant | Provider/OEM observations or comparable samples/traces and frozen environment metadata |
+
+### Tool capabilities are independent
+
+Android CLI is the recommended Agent interface for SDK/AVD management and device UI observation. Its absence blocks commands that require that executable; it does **not** by itself block Gradle instrumentation or direct Android SDK tools. An approved run may use existing `adb`, `emulator`, and SDK command-line tools by verified absolute path. Conversely, an installed CLI or a passing `emulator -version` does not prove that an AVD boots or that tests ran.
+
+Before execution, separately record:
+
+1. CLI path/version and the specific CLI operation needed, or its unavailability and the selected supported alternative.
+2. JDK/wrapper, SDK root, required platform/build tools, emulator binary, image revision/ABI, AVD name, and host acceleration readiness.
+3. Exact device serial, actual `ro.build.version.sdk`, boot readiness, and intended test package/data scope. Read-only device inventory never authorizes a write to another target.
+4. Test task or instrumentation runner and class/method selector; expected scope, not a guessed pass count. Distinguish functional classes from frozen performance protocols before choosing a suite.
+
+Missing CLI, SDK, image, booted AVD, or permissions is an environment blocker only for the dependent operation. Preserve the actual nonzero exit/error of an attempted command. Compilation or assertion failures remain failures; cancelled, timed-out, or interrupted runs are incomplete evidence. Neither an unavailable capability nor omitted tests may be reported as PASS. Existing independent host checks can continue while device work is blocked.
+
+### Isolation and data safety
+
+- Record's default development AVD is `record-api34`. Create it only when absent; if that name already exists, verify its ownership and configuration before use. Do not overwrite, wipe, reset, or delete an existing AVD without the applicable authorization.
+- Before every deployment or mutating device command, bind and verify the exact isolated emulator serial. Use explicit `adb -s <serial>` / CLI device selection or a verified Gradle device selection. If the runner cannot guarantee that selection, build APKs on the host and invoke instrumentation on the explicit serial rather than deploying to all connected devices.
+- Personal physical devices, their app databases, and host vaults are outside an emulator task's write scope. Test-owned fixture reset and teardown run only inside the explicitly approved isolated test target; this does not grant general permission to delete user files, reset devices, or run production migrations.
+- Reuse existing Room, Repository, safe startup, generation recovery, and fault suites. In-memory databases and fake repositories can complement pure/state tests but cannot replace disk persistence, reopen, WAL/atomicity, file ownership, backup round-trip, or recovery fault evidence. Keep independent persisted-state observers and schema contracts where they prove an invariant.
+- Reuse the current dependency wiring and test stack first. `testing-setup` suggestions do not authorize installing Hilt, Robolectric, screenshot frameworks, coverage plugins, new modules, or mechanical interfaces. Navigation or targetSdk changes require their own approved scope.
+
+### Behavior, selection, and retained results
+
+New UI requires an observable journey through its production entry: actual input/action, durable outcome where applicable, and relevant reload/Back/failure behavior. A successful build, preview, screenshot, or an injected Composable state alone is insufficient. Existing M1 availability/navigation tests may validate the environment and shell without proving a financial or Note MVP.
+
+Run the affected functional set during development and the owning slice's required combined gates at acceptance. Do not run every historical performance protocol merely because a generic skill says "full suite"; record exclusions and their still-required owner/gate. Preserve the five critical release flows and every existing data-safety and release blocker below.
+
+Use a fresh run ID. Save command/selector/exit, commit and worktree state, image/device/variant identity, test totals and failures/skips, raw runner output and available JUnit XML, plus relevant UI observations/logcat. Copy raw results before a later run can overwrite them. Retain the first failed attempt, intervention, and rerun; never change thresholds, assertions, or fixtures just to obtain a pass. A host-converted result summary must be labelled as derived from its retained raw instrumentation output.
+
 ## Risk matrix
 
 | Risk | Required test and fixture | Pass condition | Gate |

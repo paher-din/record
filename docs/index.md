@@ -8,6 +8,8 @@ Read [root rules](../AGENTS.md), then the [single R2 Engineering Policy](enginee
 |---|---|
 | Product/architecture | [Frozen unified R1](architecture/record2-v1-unified-architecture.md), [V1 Spec](specs/record2/v1/spec.md) |
 | Dependencies/authorization/actual execution state | [V1 Plan](specs/record2/v1/plan.md), including product approval §13 and governance flow §14 |
+| G3 legacy machine constraints / A1 isolation checklist | [Static isolation audit](engineering/record2-g3-machine-isolation.md); task authorization and two-part acceptance status belong to V1 Plan §15 |
+| A0 build structure / identity / asset admission | [Engineering design review package](architecture/record2-a0-engineering-design.md); task authorization and actual state belong to V1 Plan §16 |
 | Product and acceptance provenance/C1 identity | [Self-contained decision baseline](product/record2-v1-decision-baseline.md) |
 | UI | Spec §5.4 / Plan F0–F2, the owner's relevant design approval |
 | Collaboration, task/risk levels, permissions, verification | Engineering Policy; per-task commands/results in the relevant Plan/Verification |
@@ -17,6 +19,8 @@ Approval belongs to Spec metadata/Plan approval record, not a duplicated router 
 R2 V1 is an approved Major; current task execution status remains in the Spec/Plan and is not changed by this router. Design/documentation needs its task permission, not functional activation. Source baseline admission and external C1 reproducibility limits must be read before asset reuse; historical local paths/shared links are not implementation prerequisites.
 
 ## Record 1.0 and history
+
+The R1 Android build root is [record1/](../record1/), with its own wrapper and settings; shared documentation remains here. R2 has a separate build root and does not join the R1 module graph.
 
 For explicitly scoped legacy work, read [preserved R1.0 contract](../AGENTS.record1.md), then the legacy owner: [product](product/mvp-requirements.md), [experience](experience/interaction-rules.md), [architecture](architecture/overview.md), [data](architecture/data-and-storage.md), [engineering](engineering/conventions.md), [testing](engineering/testing-strategy.md), [security](engineering/security-and-privacy.md), [workflow](engineering/agentic-workflow.md), [roadmap](roadmap.md).
 

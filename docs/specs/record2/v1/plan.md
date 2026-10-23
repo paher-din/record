@@ -1,9 +1,9 @@
 # Record 2.0 V1 Implementation Plan — R1
 
-- **Status:** `approved`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 未启动。
-- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 未取得；**Active spec:** none。
+- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 目录重构及A1已完成，G3在A1交付范围的真实隔离通过，结果见§17；其余产品任务未由本授权启动。
+- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 未取得；**Active spec:** R2 V1，仅目录重构/A1范围。
 - **行为与验收来源：** [spec.md](spec.md)与[自包含来源基线](../../../product/record2-v1-decision-baseline.md)；Spec E01～E12保留调查历史和外部C1核实边界。本文只拥有任务、依赖、范围、测试接缝和门禁，不形成另一份行为Spec。
-- **产品执行授权：** 尚未启动A0/B0/F0或功能任务；设计、代码/构建/依赖、Schema、设备/API/数据库及发布分别按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权产品执行。
+- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17；B0/F0、后续代码/构建/依赖、Schema、设备/API/数据库及发布仍分别按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
 - **设计权限：** `DESIGN-OWNER：待负责人指导与确认`。负责人提供方向 → 候选方案 → 负责人审查调整 → 明确批准 → Codex 实现；未经批准不冻结视觉/交互，不以默认 Material 页面通过最终验收。
 
 ## 1. 工程判断与实施入口
@@ -12,7 +12,7 @@
 
 **工程原则：Clean Rebuild First, Selective Reuse When Justified。** 优先评估干净R2工程；现有七模块、Repository/DAO/EntityRef、旧Schema/余额/转账、Navigation/AppContainer、UI/主题、Vault/备份格式和不适用测试不构成默认继承义务。C1是技术基座与已验证成果，不冻结其单模块原型组织或源码。选择只依据完整V1的实现质量、总工作量、风险与维护成本，不以投入时间、已有代码量/文件数决定。
 
-**当前建议（未冻结）：** 在同一Git仓库内设置独立构建根，候选`record2/`，起步一个Android应用模块，内部按业务/服务与数据/AI适配/UI职责分包；不把旧根工程接入新产品依赖图，不为每个逻辑职责创建模块。A0核查路径占用、构建隔离和完整V1成本后，比较此路径与受控改造再提交负责人审核；若没有充分证据表明改造明显更优，推荐干净实现。本轮不创建该目录/工程，也不指定未经批准的最终导航或视觉方案。
+**当前采用结构：** A0审查及后续布局修订见§16：保留现有单Git仓库，R1受控整理至`record1/`，R2使用`record2/`独立Gradle根、单`:app`、按业务职责分包；docs/保留，shared/按真实复用收益再定。两根互不include，不把R2接入旧根，不继承旧七模块。目录移动及A1执行范围另见§17，当前未执行；最终UI仍由F0设计批准。
 
 旧资产可以不进入R2，但原始源码、数据库、测试/实验、文档、Commit和用户修改都保留；不清理、不覆盖、不自动迁移、不destructive migration。A0提出两代文档适用范围及必要ADR/路由同步，由后续明确授权执行；新工程不必迁就旧业务约定，也不能靠放宽旧测试声称R2验收。旧根约束继续保护旧工程，本轮不改它们。
 
@@ -121,7 +121,7 @@ M1/M2是依赖收口标签，不是AI延期或中间正式发布。F0与A0/B0从
 
 - **目标/依赖：** A0推荐方案获负责人审核且G-CODE就绪；在获批正式结构上建立构建基线，选择性接纳审查通过的C1/旧资产，不预设七模块。解析/构建前有对应G-EXEC环境/依赖写入同意。
 - **范围：** A0选定的新工程构建根/应用模块及必要包，或经举证批准的旧工程改造范围；精确build scripts/wrapper/依赖和接纳文件在任务合同列明。旧根默认只读；无自动CI/环境/签名文件改动、源码清理或整个原型覆盖。
-- **验收/测试：** 正式结构下host金额边界/往返、应用/API边界检查与assemble app/test，最小Koog/Tools/ChatMemory编译接缝；检查实际依赖/许可和merged/finalAPK组件/权限/备份规则。A1出口不要求开库/安装；API34真运行归D0及后续业务任务，在其具体设备/Schema/初始化许可下验证。
+- **验收/测试：** 正式结构下host金额边界/往返、应用/API边界检查与assemble app/test，最小Koog/Tools/ChatMemory编译接缝；检查实际依赖/许可和merged/finalAPK组件/权限/备份规则，并执行G3的V1–V8。按A1实际交付配置/变体验证，后续产品/最终发布项目逐项保留NOT RUN及其owner，不要求提前通过全部V1发布验收。兼容、安全且来源清楚时可共享正常Gradle依赖下载缓存/JDK/Android SDK，不强制隔离全部工具缓存。A1出口不要求开库/安装；API34真运行归D0及后续业务任务，在其具体设备/Schema/初始化许可下验证。
 - **风险/回退：** ABI/metadata、KSP、AGP内置Kotlin、Compose编译器、Room生成、HTTP引擎及D8/R8；失败保留原错误，不用metadata skip/manifest override/强制旧stdlib绕过。旧构建入口原样保留，不纳入新依赖；回退只处理本任务获准变更，不回滚用户工作或删除新旧资料。
 - **完成门禁：** 正式构建根/模块清单、版本/制品hash/依赖许可/host原证据接受，且旧根/资产保护通过；没有把B0最终Schema/设备许可倒挂为A1前置。真实Android和Provider仍由D0/下游独立证明，不能用编译通过代替。
 
@@ -525,3 +525,95 @@ Draft R1完成后停止，等待负责人重新审查；不自动进入正式开
 统一切换按Policy §7执行：负责人另批最终采用Diff及明确Git路径/Commit/生效范围；实际提交对象可重建最小资料；产品与保护检查通过后一次记录。部分编辑/提交不分别生效，也不要求提交SHA写入自身。Git身份和执行授权由实际对话/日志/交付记录证明，不以本段预先宣称授权。
 
 本次治理切换不运行旧检查、不修改旧源码/Gradle/Schema/数据库，不自动启动A0/B0/F0、G3机器约束隔离或G5开发，不含Push/发布。G2/G4治理阶段与本Plan工作项G0/G1/G2的同名缩写含义不同，后者仍pending / NOT RUN。
+
+## 15. G3：旧工程机器约束隔离
+
+2026-10-23负责人本轮授权仅限静态隔离审计与方案：旧代码、Gradle、测试、脚本和工具入口只读，交付精确到文件/任务/构建入口的隔离方案及可验证清单；不新增 Spec/Plan/治理阶段，不创建工程，不启动 A0/B0/F0/A1。调查和清单见 [G3 静态隔离报告](../../../engineering/record2-g3-machine-isolation.md)。
+
+| G3 验收部分 | 当前结果与后续条件 |
+|---|---|
+| 静态隔离审计与方案 | **负责人审查通过，阶段收口**；审查含约束触发链、隔离策略和A1 V1–V8清单设计。未冻结 `record2/`、模块/版本/身份，未改旧机器约束；通过的是静态方案，不是运行验证 |
+| 真实工程隔离验证 | **PASS，限A1实际交付的CLI构建与变体/配置**。V1–V8的命令、原证据及未覆盖项见§17.2；不代表IDE真运行、设备/Provider或最终V1发布验收通过 |
+
+审查来源：2026-10-23负责人本轮原话：“G3 静态审计与隔离方案通过，可以结束本阶段，下一步进入 A0 工程结构设计。”负责人说明未独立读取本地Gradle或复核§15差异，接受的是提交的静态审查包及Codex检查回执。两项执行解释已纳入报告§5及A1：允许正常工具缓存/JDK/SDK共享，V5/V6以A1实际交付变体为范围；不新增审查轮次，不将未执行项标PASS。真实隔离仍留A1，A0具体授权及交付见§16；B0/F0未启动。
+
+## 16. A0：工程结构设计授权与交付
+
+2026-10-23负责人在G3审查结论中明确“下一步进入 A0 工程结构设计”，并指定比较独立干净重建与受控改造、推荐构建结构/身份/模块/必要资产接纳。该授权仅覆盖A0只读调查、工程设计报告及相关文档状态/路由同步；不创建工程、不写源码/构建/Schema、不运行构建实验，不启动B0/F0/A1或功能实施。G3审查批准及范围只记录在§15。
+
+- **设计交付：** [A0工程设计审查包](../../../architecture/record2-a0-engineering-design.md)，覆盖§3.2十项比较与§3.3八项交付；推荐`record2/`独立根、单`:app`、按业务包组织，包含身份建议/资产取舍、来源取得限制及A1精确范围建议。
+- **当前状态：** **负责人A0技术审查通过，三项工程决定采纳**；后续布局修订为同一Git仓库下record1/record2双工程，不需重做十项比较。A0审查不自动授权实施；后续目录重构/A1的明确授权与实际执行由§17拥有，B0/F0未启动。
+- **验证：** 仅T0文档/来源/保护检查；命令和实际结果在A0报告§8。本轮无Gradle、Android、数据库、Provider或C1重放证据，G3真实隔离及全部正式产品验收仍NOT RUN。
+- **审查来源与三项决定：** 2026-10-23负责人原话：“A0 设计通过，三项推荐决定均可采纳，不需要重新提交 A0。”接受独立record2根/单app/强类型Navigation Compose（非UI设计批准）；namespace/release为`com.paherdin.record2`、debug为`.debug`、androidTest为`.debug.test`（A1核实际包）；`record2.db`为B0可细化的默认值、`record2.logical`仅G0格式命名候选、R2独立数据代际由B0/G0设计；默认重建业务，旧代码不自动接纳、方法选择性参考且正式重验。A1创建工程明确尚未授权。
+- **同机C1解释：** 负责人明确个人项目不必建立远程实验仓库/跨机器归档；同机可读时直接核本地commit、源码、依赖许可与对应测试，实际接纳代码由正式R2提交维护。未审原型不复制，历史PASS不抵扣新验收；当前未重新访问或接纳C1。详细取得条件由来源基线§5拥有。
+- **布局修订来源：** 后续负责人决定“一个Record仓库，两个独立Android工程，共享资源按需提取”，将旧工程原位保留调整为完整整理至record1，其余已审R2架构/身份/边界不变；docs/不大规模移动、shared/无真实需求不创建。布局批准不等于已批准具体文件移动/环境修改或构建运行。
+- **下一步：** §17整批执行已获授权，先验证R1，再进入A1最小基线/G3验证，无需再审A0。允许正常缓存/JDK/SDK共享，按实际交付变体记录结果；最终产品/发布未执行项明确owner/条件，不提前要求全部V1发布验收。
+
+## 17. 单仓双工程目录重构与A1：授权及执行
+
+这是目录重构任务，不是新的治理阶段或架构研究。2026-10-23负责人针对下列整批范围明确回复“授权”：覆盖旧工程/本地工程配置移动、入口/链接/忽略规则、R1构建及原门禁验证，成功后直接创建最小R2并执行A1/G3 V1–V8；对应新根依赖解析/正常缓存/SDK位置配置已包含。G-CODE与本范围构建G-EXEC就绪，本Major进入in-progress；Schema/数据库/设备/真实Key/API/CI/发布/删除/Commit等排除项不变。执行中，不逐文件/复测申请；遇超范围动作才停止相应部分。
+
+| 顺序 | 已授权操作及精确边界 | 验证/保护条件 |
+|---|---|---|
+| 1 保护和预检 | 记录HEAD、已有修改/未跟踪/忽略资产；确认源绝对路径及目标record1/record2都在`D:/record/`内且目标不覆盖现有内容 | 当前HEAD为`ba6472ef6f89f90629b4892e427e80a20b98a838`；record1/record2/shared均不存在。运行前重查状态/并发变更，保留所有已有成果 |
+| 2 忽略规则先行 | 在根`.gitignore`补record1下Benchmark原始证据及必要本地生成状态的忽略路径；保留旧忽略条目，不删除资料 | 当前`benchmark/p6-frozen/`有129文件、7,679,963,872字节，未读内容；新路径必须继续被忽略，不进源码/日志/Commit |
+| 3 R1完整移动 | `app/`、`core/`、`feature/`、`benchmark/`、`gradle/`、R1专属`tools/`及`build.gradle.kts`、`settings.gradle.kts`、`gradle.properties`、`gradlew`、`gradlew.bat`移入record1；包含目录内已有本地输出和证据 | 共277个纳管文件，源码/测试/Schema内容原样；文件移动前后核相对映射和内容摘要，必要路径修正另列diff。绝不git reset/clean、删文件或改历史 |
+| 4 本地工程状态 | 原样移动旧根`local.properties`、`.idea/`、`.gradle/`、`.kotlin/`、`build/`到record1；必要时仅修IDE项目根引用，不改SDK/JDK安装、代理或秘密配置，不打印内容 | 此项包含环境/IDE文件移动，须本次具体同意；目标已存在/发生冲突则停止，不覆盖。根`.git`、agents/skills/worktrees/会话材料、hprof和共享docs留原处；不作缓存/heap dump清理 |
+| 5 入口和链接 | 修根AGENTS/README/文档路由与R1局部入口，保留根`AGENTS.record1.md`及docs；必要时加record1的轻量规则路由。修实际代码/脚本/IDE路径输入与资料链接，不改业务/数据/门禁语义 | 当前发现4份文档中82个指向待移路径的Markdown链接，含未跟踪资料；仅修改必要链接目标，保留原文/已改内容及历史实际命令/结果语义。不重写冻结产品行为、旧PASS或大批移动文档 |
+| 6 R1真实验证 | 在record1显式指定cwd/`-p`运行projects/tasks、check任务图，实际check（含七模块/API boundary/签名单测等原有host门禁）及M1制品所需app debug/release/benchmark、androidTest、benchmark-tool assemble；运行record1专属M1 verifier并传record1根 | 用正常兼容JDK/SDK/Gradle下载缓存，允许构建/依赖解析及对应生成写入，必要任务`--rerun-tasks`排除旧输出充当新证据；不跑clean/设备/迁移/模型请求。根不残留混合settings/wrapper，旧门禁不放宽；真实失败如实记录 |
+| 7 成功后进入A1 | 按A0报告§7在record2创建自有settings/wrapper/catalog、唯一app、已审包身份、必要金额边界测试及最小Koog/Tools/ChatMemory编译接缝，选择/记录兼容依赖并构建；逐项执行G3 V1–V8 | 仅最小技术基线，不预生成所有业务包/接口/表，不实现未经F0批准的UI；核实际交付Debug/Release/AndroidTest包、任务/依赖/输入/Manifest/APK/host测试与两根保护。未交付最终配置NOT RUN并归后续owner |
+
+本批不含Schema源码/JSON/SQL更改或数据库初始化/迁移/恢复、设备安装/清包/测试、真实Key/Keystore操作/DeepSeek费用调用、全局工具升级、CI/签名配置、公开发布、文件删除、Git暂存/Commit/Push；不创建shared。R2若需要新的local.properties环境文件，只允许在获批SDK位置范围内配置且不打印内容；否则保留为明确依赖，不能借本任务修改真实凭据或其他环境。
+
+失败处理：保留原错误和全部文件/证据，仅修本范围内路径/构建问题，不借搬迁升级旧依赖或修不相干产品问题，不关闭测试或改门禁换PASS；R1搬迁未验证成功就不进入A1。需要回退时只按既定映射原路移动本任务文件且目标无冲突，不删除新增资料或覆盖已有修改。成果在本Plan记录实际命令/结果/未执行项，不另建一套审核文档。
+
+本次T0：Python内联核查87个相对链接、已批准设计/待授权执行语义、旧源/规则无新增diff、两份已有脏文档摘要不变、冻结统一架构及Spec业务/AC正文未改、HEAD不变且record1/record2/shared未创建，全部PASS；`git diff --check`退出0（仅现有换行提示）。初次链接解析器未处理README尖括号内带括号文件名，修正解析后核查通过，未修改该历史链接。R1搬迁构建、A1及G3真实隔离保持NOT RUN。
+
+### 17.1 实际执行记录（2026-10-23）
+
+以下更新当前结果，上段T0及原清单的不存在/未执行描述保留为授权前快照。
+
+- **移动保护 PASS：** 在`D:/record/`内预检16个绝对源/目标，无链接根/覆盖冲突，PowerShell原生Move-Item受控移动至record1；277个纳管文件及129份冻结Benchmark证据等共420个受保护文件前后大小/SHA-256全部一致。既有证据继续被忽略；.git/共享资料/用户修改/堆转储未移动或清理。
+- **入口/引用：** 修复4份资料82个Markdown目标，只改目标不改正文；保留历史命令。根规则指明双构建根，record1局部入口引用原R1合同，README同步实际进度。未改R1业务/Schema/门禁源码。
+- **构建入口 PASS：** record1内显式`-p D:/record/record1 projects tasks --all`成功；`check :app:assembleDebug :app:assembleRelease :app:assembleBenchmark :app:assembleDebugAndroidTest :benchmark:assembleBenchmark --dry-run`成功且任务图未包含设备/clean动作。
+- **环境根因与重跑：** 原系统Java8不能作Gradle9.5运行环境；JDK25首次实际构建在`:core:model:compileKotlin`失败（Java target25与旧Kotlin最高target24不一致），未关闭检查或改旧依赖。改用本机已有Temurin17.0.20+8、仅设置该进程JAVA_HOME，执行同一任务组`--rerun-tasks --console=plain`，12分03秒后BUILD SUCCESSFUL，668项actionable任务全部实际执行。七模块检查、apiBoundaryCheck（5正向/26负向）、原host/lint及全部请求APK构建PASS；41份JUnit suite共399测试，fail/error/skip均0。
+- **R1制品验证 PASS：** `record1/tools/verify-m1-artifacts.ps1 -ProjectRoot D:/record/record1`退出0，原九族90项检查全部PASS；未改变原权限/身份/版本/签名白名单。构建后277个原纳管源/配置及两份既有脏文档摘要仍一致。
+- **A1进入与版本：** R1上述结果接受后才创建record2。选择独立Gradle8.13、AGP8.12.3、Kotlin/Compose compiler2.3.10、Koog1.3.0，JDK17、compileSdk36/build-tools36.0.0、min/target34；不继承旧AGP9根或旧业务。选型依据为[Kotlin兼容矩阵](https://kotlinlang.org/docs/gradle-configure-project.html)、[AGP8.12官方要求](https://developer.android.com/build/releases/agp-8-12-0-release-notes)与[Koog1.3.0源码版本](https://raw.githubusercontent.com/JetBrains/koog/1.3.0/gradle/libs.versions.toml)，实际构建结果仍待记录，不以文档代替PASS。
+- **发行包获取与诊断：** 标准wrapper由已有Gradle9.5的wrapper任务生成；8.13官方包首次Java下载超时，官方直连下载偏慢。PowerShell获取相同官方包并验证SHA-256 `20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78`后放入正常wrapper缓存，再由wrapper校验/使用；未采用第三方镜像、关闭校验或删除原partial文件。首次配置较慢时线程采样显示Gradle在解压/hash JAR，非网络socket或跨进程锁阻塞；未改代理/全局环境。
+- **证据位置：** 本机任务临时目录`C:/Users/p3148/AppData/Local/Temp/record-layout-510f627a716f4cf7837c652fd9bca5dd`保留移动清单/摘要、入口/任务图及两次构建日志；不含Key/真实数据库。最终结果待此处继续记录，不把执行中标PASS。
+
+### 17.2 完成交付：A1与G3实际隔离结果
+
+目录重构及A1完成，未启动B0/F0或后续业务任务。R2主源只有空内容技术Host与纯金额实现；Koog/Tools/ChatMemory、Navigation及Room接缝放在androidTest作真实Android编译验证，不创建executor、凭据、历史库或数据库，不代表已实现产品AI/UI。
+
+| G3项 | 实际结果与证据范围 |
+|---|---|
+| V1 根/Wrapper/工具来源 | **PASS**。显式cwd/`-p`为record2，标准wrapper及官方8.13包SHA校验，JDK17/AGP8.12.3/Kotlin2.3.10实际配置成功。正常共享SDK/JDK/下载缓存；本机Gradle user home未见init.gradle(.kts)/init.d脚本或全局gradle.properties，任务无-I及JAVA_OPTS/GRADLE_OPTS/JAVA_TOOL_OPTIONS注入。未更改全局配置 |
+| V2 项目图 | **PASS**。`projects tasks --all`和实际验证均只有根`record2`与`:app`，无included builds、旧模块或projectDir映射 |
+| V3 任务链 | **PASS**。对`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --dry-run`及实际任务图核查，无旧七模块/API白名单/报告/Benchmark任务、M1脚本或设备/clean任务；按真实project/build归属验证，不仅比较名称 |
+| V4 输入/源码/依赖 | **PASS**。`verifyBuildIsolation`接入check，检查所有实际source set/配置的输入及生产包依赖，含原生/资源/Manifest/ML/baseline profile等输入路径；八组compile/runtime classpath均无R1 artifact或外部project。六个正/负源码边界断言实际通过。此检查为词法依赖保护，不宣称单模块具备编译级权限隔离；真实业务能力约束仍由对应业务任务证明 |
+| V5 构建/host测试 | **PASS**。上述实际任务组在新根BUILD SUCCESSFUL，首次127项actionable任务全部执行；Debug/Release各3个金额JUnit测试共6项，fail/error/skip均0，覆盖已知数值/非法与溢出/1000种子样本对独立BigDecimal oracle。Koog1.3的Basic Agent工厂/封闭测试ToolRegistry/ChatMemory Provider安装及强类型导航、Room平台类型编译成功；未执行模型/设备测试 |
+| V6 Manifest/APK | **PASS**。源、两variant merged/packaged共5份文本Manifest及Debug/Release/AndroidTest三个最终APK独立核验。实际包分别为`com.paherdin.record2.debug`、`com.paherdin.record2`、`com.paherdin.record2.debug.test`，test target为debug；min/target34、INTERNET保留、禁明文HTTP、备份关闭且两层实际备份资源排除私有域、导出组件受控、无旧类/benchmark marker，编译探针只在test APK。Release资源按实际Manifest资源ID→资源表解析，未关闭优化或固定旧资源名 |
+| V7 工具入口 | **PASS，限已交付CLI/当前配置**。仓库根无Gradle入口；各根规则/README显式选wrapper与-p，R1 IDE元数据原样随根移动、项目路径宏仍指向record1。本轮未启动/导入IDE，不声称IDE运行验收；没有为不存在的CI或外部自动化制造配置或PASS |
+| V8 资产保护 | **PASS**。最终再次对420份保护清单逐项核大小/SHA-256，包括全部277个原纳管文件、129份冻结证据和原本地配置；两份已有脏文档摘要不变，原未跟踪资料保留（指定资料仅修链接目标）。HEAD/index未变，无暂存/Commit/Push；原证据/环境/生成输出仍被忽略。仅文件保护证明，不声称设备用户数据库完整性 |
+
+构建与校验记录：
+
+- R1命令和原回执在[layout-20261023](../../../../record1/build/layout-20261023/)；JDK25失败与JDK17重跑均保留，399个host测试/原九族90项通过。R1没有源码/版本/Schema/门禁语义变更。
+- R2使用自身wrapper：`projects tasks --all`；`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --dry-run`；同组实际构建（均显式`-p D:/record/record2 --console=plain`，进程JAVA_HOME为已有JDK17）。初次校验代码的AGP目录读取接口、Android测试多artifact变体选择错误已从根因修正，未放宽检查；原失败诊断仍在任务临时目录。最终校验代码的新增输入覆盖已再跑同组检查。
+- 新源：[构建及边界检查](../../../../record2/build.gradle.kts)、[应用配置](../../../../record2/app/build.gradle.kts)、[版本目录](../../../../record2/gradle/libs.versions.toml)、[金额](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/Money.kt)、[host边界测试](../../../../record2/app/src/test/kotlin/com/paherdin/record2/records/MoneyTest.kt)、[Android编译合同](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/KoogCompilationContract.kt)。未接纳C1原型源、未建空业务包/shared或新通用框架。
+- 可复查本机产物：[构建输入/任务图](../../../../record2/build/a1/build-isolation.json)、[host结果](../../../../record2/build/a1/host-test-summary.json)、[APK校验及SHA-256](../../../../record2/build/a1/apk-verification.json)、[依赖许可清单](../../../../record2/build/a1/dependency-licenses.json)、[最终保护](../../../../record2/build/a1/protection-verification.json)、[构建日志](../../../../record2/build/a1/logs/)、[APK校验runner](../../../../record2/build/a1/verify_r2_apks.py)。runner在record2 cwd运行，按真实资源表解析最终打包资源；typed/URI属性与布尔/整数、优化资源名的自检通过。133个release runtime组件的POM/继承许可均已核对（Apache-2.0/MIT/CC0），无缺项；最终开源告知/分发义务归后续产品发布任务，不把POM盘点当源代码安全审计。这些本机构建证据被忽略、不自动进入Git，需重建/复查时按实际命令及本机runner执行，不承诺跨机器原证据归档。
+
+**未执行/不抵扣：** AndroidTest仅assemble/编译，没有设备安装或测试；IDE真运行、Room物理Schema/KSP生成/开库/迁移/恢复、真实Provider/Key/网络授权控制、F0最终UI、产品63条AC/六旅程与正式签名/优化发布均NOT RUN或留相应owner。Release本次为未签名基础变体，不代表最终发布配置全部完成。Gradle8.13有弃用提示，未隐藏；未来升Gradle9需对应兼容性验证，不借本任务改R1。V1 Major仍in-progress，当前授权工程任务已交付，其余任务等待各自授权。
+
+**最终收口检查 PASS：** 最后一次同组Gradle检查15秒成功（2项执行、125项up-to-date，新增输入覆盖校验实际重跑）；最终任务图/八classpath/所有源输入再次核对，三个APK的SHA-256与校验回执一致。11份受影响资料/入口的223个本地链接有效，新源空白检查及`git diff --check`通过，冻结统一架构和Spec业务/AC正文未改。无需负责人重复本轮可自动化验收；原文件移动在未暂存Git状态中会显示旧路径删除/新目录未跟踪，实际文件与历史均保留，未因此执行git add或Commit。
+
+## 18. 当前工作区提交并集成main
+
+2026-10-23负责人明确要求“现在把目前的工作区合并到main吧，已经要进入正式开发了”，覆盖本工作区现有工程、设计/讨论资料和已有文档修改的Git纳管、提交与本地main集成。该授权取代§17对本批暂存/Commit的历史排除，不包含Push、其他worktree的工作、历史改写或分支删除，也不自动启动B0/F0或扩大功能/数据/设备权限。
+
+集成前确认main是当前`codex/preserve-2026-10-21`的祖先，无分叉，可快进；保留已有三次提交及本批新提交。精确暂存清单覆盖277项R1路径搬迁、R2最小基线和当前文档资料；SDK本地配置、构建产物、原始Benchmark证据、堆转储与其他忽略文件保持本机且不纳管。315份当前提交候选和现有分支新增的568份文件完成敏感路径/常见凭据模式检查，无候选命中；此检查不冒称全面安全审计。
+
+本次仅做Git集成与文档记录，沿用§17已通过的实际工程验证，不重复无代码变化的Android构建。提交前检查暂存差异/277份原文件对象与模式及纳管范围，快进后核对main/工作区一致与源文件保护；提交身份和最终集成结果由Git日志及交付回执证明，不在文档中预填SHA或自引用提交。
+
+暂存核对：277项R100重命名的Git blob和文件模式与旧HEAD完全一致，另含29份新增资料/基线文件及9份已有修改。普通源/资料空白检查通过；历史治理方案内嵌diff的17个单空格上下文前缀经结构断言确认为必要语法，原样保留，不以清理格式破坏原提案。

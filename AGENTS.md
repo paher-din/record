@@ -4,6 +4,8 @@ Record 2.0 follows [docs/index.md](docs/index.md), its [Engineering Policy](docs
 
 Record 1.0 rules in [AGENTS.record1.md](AGENTS.record1.md) apply only to explicitly scoped legacy work. Its code, data and history remain protected; no old module/Schema/navigation/Vault/check is inherited by default.
 
+Android builds have separate roots: `record1/` for R1 and `record2/` for R2. The repository root is not a Gradle project. Run the selected root's wrapper with an explicit project directory; shared docs remain under `docs/`. Relocation/A1 execution and its limits belong to V1 Plan §17.
+
 ## Shared boundaries
 
 - 默认中文沟通；代码、命令和标识符用英文。
