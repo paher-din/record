@@ -1,7 +1,7 @@
 # Record 2.0 V1 Implementation Spec — R1
 
-- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。当前仅目录重构/A1获执行授权，实际范围与结果见 [Plan §17](plan.md)。
-- **Spec approved:** 2026-10-23。**Plan approved:** 2026-10-23；负责人原话与批准范围见 [Plan §13](plan.md#13-r1正式批准记录2026-10-23)。**Schema / migration consent:** 未取得。
+- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。目录重构/A1、B0设计及Schema v1物理约束基线已交付，精确授权/结果见[Plan §20](plan.md#20-schema-v1实施授权与执行)；设计审查见Plan §19，其余产品任务未由本批启动。
+- **Spec approved:** 2026-10-23。**Plan approved:** 2026-10-23；负责人原话与批准范围见 [Plan §13](plan.md#13-r1正式批准记录2026-10-23)。**Schema / migration consent:** 仅Plan §20初始Schema及专用合成磁盘库验证获批；迁移/恢复未授权。
 - **产品执行授权：** Spec/Plan批准不启动A0/B0/F0或功能实施；工程、代码、Schema及外部执行仍须对应任务/设计/对象授权。治理流程修订见§10，不改变产品批准或执行状态。
 - **架构基线：** [统一架构 R1](../../../architecture/record2-v1-unified-architecture.md)，本地 HEAD `57e1b68b309b0459aed1765778b7da4cdfff6f6b`；文件 SHA-256 `5de8670fc60a7226d5e30f409be62f35ded55da5d78353d4fb81bd035fe9cefa`，本轮实测相符。
 - **UI 决策权限：** 所有界面、图标、视觉资源、布局、动效及尚未确认的交互方案均由负责人指导、调整并明确批准。本文只规定功能、数据流与安全结果；未经设计批准的界面不能完成最终验收。

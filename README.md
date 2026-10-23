@@ -3,7 +3,7 @@
 Android本地优先生活记录应用，采用已冻结的Kotlin/Compose/Room与Koog Basic Agent方向。完整V1包括原生记录、完整Agent和安全备份；下方Record1.0的完成记录不代表R2已经实现。
 
 - 当前工程规则与适用范围：[AGENTS.md](AGENTS.md)、[文档路由](docs/index.md)。
-- 产品权威：[统一架构R1](docs/architecture/record2-v1-unified-architecture.md)、[V1 Spec](docs/specs/record2/v1/spec.md)、[实施Plan](docs/specs/record2/v1/plan.md)；批准与实际执行范围见Plan §13、§16–17。
+- 产品权威：[统一架构R1](docs/architecture/record2-v1-unified-architecture.md)、[V1 Spec](docs/specs/record2/v1/spec.md)、[实施Plan](docs/specs/record2/v1/plan.md)；批准与实际执行范围见Plan §13、§16–20，B0审查包见[数据模型设计](docs/architecture/record2-b0-data-model-design.md)，Schema v1真实磁盘约束结果见Plan §20.2。
 - 最小来源资料：[已确认决定/验收与C1身份](docs/product/record2-v1-decision-baseline.md)。文档提交可重建性与C1外部源码可重取性分别验证，后者尚未核实。
 - 单仓库、双独立构建：[record1/](record1/)保留旧工程，[record2/](record2/)为R2单`:app`最小基线。R1搬迁/原门禁、A1及G3在本次交付范围的结果见Plan §17；这些结果不代表完整V1已实现。
 - 两工程均用JDK17验证；在构建进程的`JAVA_HOME`或各自IDE工程中选择兼容JDK。使用选中工程自己的wrapper及显式`-p`，如`record1/gradlew.bat -p record1 check`、`record2/gradlew.bat -p record2 check`（从仓库根调用）。仓库根没有Gradle工程，docs/保留原位，shared/未创建。

@@ -1,9 +1,9 @@
 # Record 2.0 V1 Implementation Plan — R1
 
-- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 目录重构及A1已完成，G3在A1交付范围的真实隔离通过，结果见§17；其余产品任务未由本授权启动。
-- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 未取得；**Active spec:** R2 V1，仅目录重构/A1范围。
+- **Status:** `in-progress`；revision `R1`；2026-10-23（Asia/Shanghai）。**Execution:** 目录重构及A1已完成，G3在A1交付范围的真实隔离通过，结果见§17；B0审查见§19，Schema v1实施及实际结果见§20，其余产品任务未启动。
+- **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema及专用合成磁盘库验证获批，迁移/恢复未授权；**Active spec:** R2 V1，当前Schema v1批次。
 - **行为与验收来源：** [spec.md](spec.md)与[自包含来源基线](../../../product/record2-v1-decision-baseline.md)；Spec E01～E12保留调查历史和外部C1核实边界。本文只拥有任务、依赖、范围、测试接缝和门禁，不形成另一份行为Spec。
-- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17；B0/F0、后续代码/构建/依赖、Schema、设备/API/数据库及发布仍分别按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
+- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema/构建/专用设备合成库见§20；F0及其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
 - **设计权限：** `DESIGN-OWNER：待负责人指导与确认`。负责人提供方向 → 候选方案 → 负责人审查调整 → 明确批准 → Codex 实现；未经批准不冻结视觉/交互，不以默认 Material 页面通过最终验收。
 
 ## 1. 工程判断与实施入口
@@ -199,7 +199,7 @@ R0查阅的公开依据：[Koog quickstart](https://docs.koog.ai/quickstart/)、
 - **目标/依赖：** B1；独立纯文本 Note 创建/编辑，输入 revision 与业务 version 区分；原生删除/撤销/恢复同身份、拒绝迟到写。支持 C-P1～4、SD-P1/3、TP-06 基础。
 - **范围：** 正式Note服务/查询/获准Schema、笔记状态与测试；不依赖旧Note实体/Repository，不引入Markdown/附件。
 - **验收/测试：** Host 时序测试 + 磁盘两个编辑会话 CAS；约500ms 自动保存/离开 flush、空白新建无事实、清空旧正文拒绝、失败保留最新输入；自动保存与删除/恢复交错，旧回执不显示新文本已保存，旧写不能复活。提交前/后与回执前强停，恢复原正文/时间/ID。
-- **风险/回退：** C1 回执检查不能代替数据库 CAS；冲突保留本地输入并重读，不最后写覆盖。软删除失败原状态不变，重试是目标状态而非 toggle。AI 预览不得复用自动保存 owner。
+- **风险/回退：** C1 回执检查不能代替数据库 CAS；冲突保留本地输入并重读，不最后写覆盖，不自动套最新expectedVersion重试；B0 §4.1的编辑缓冲保留规则由B2验证、F0 D-NOTE落实反馈。软删除失败原状态不变，重试是目标状态而非 toggle。AI 预览不得复用自动保存 owner。
 - **完成门禁：** 每个竞态的预期/实际版本、正文摘要/删除状态和重复重启原证据通过，才开放关联/AI 更新接入。
 
 ### B3 — 双向关联、隐藏关系与版本并发
@@ -223,7 +223,7 @@ R0查阅的公开依据：[Koog quickstart](https://docs.koog.ai/quickstart/)、
 ### C0 — 六类 Proposal 的稳定创建与 Revision CAS
 
 - **目标/依赖：** A1+G-SCHEMA（含B0设计审核）；以正式服务提供六类封闭操作的解析、规范化、localRef/依赖、稳定创建请求幂等、单Session活跃提案、revision CAS、冻结后拒绝修订。支持AI-AC2/3/6、TP-01/02。
-- **范围：** 正式提案值/服务/状态/持久约束及tests，轻量Coordinator调用契约；不要求旧模块，不引Koog类型到业务层。
+- **范围：** 正式提案值/服务/状态/持久约束及tests，轻量Coordinator调用契约；不要求旧模块，不引Koog类型到业务层。Rejected/NEEDS_REVIEW重新审核与Pending同ID核查的区别按[B0 §5.1](../../../architecture/record2-b0-data-model-design.md#51-创建身份修订与规范化)，与E1正常Run启动联调。
 - **验收/测试：** Host parser/状态测试和真实 Room 并发；重复 creationRequestId 同内容只一份，不同内容拒绝；rev3/rev4、旧 Run/取消/跨代际晚到、两个活跃 Proposal 竞争；localRef 缺失/循环/类型错误及非法金额时间/身份全部拒绝，未确认零业务事实。
 - **风险/回退：** tool_call_id 不作业务幂等；模型重答不能另造请求身份回避约束。失败保持最后有效 revision，不自动删除原生草稿；失效提案重新审核。
 - **完成门禁：** 完整原始并发结果、唯一性约束与零业务写快照通过；实际原生确认继续等 C1/F2。
@@ -231,7 +231,7 @@ R0查阅的公开依据：[Koog quickstart](https://docs.koog.ai/quickstart/)、
 ### C1 — 用户确认冻结、Transaction A/B 与未知结果恢复
 
 - **目标/依赖：** C0+B1–B3；原生确认指定展示版本→A 锁定 Pending→B 全业务原子提交/Applied；保持不可变 payload、稳定新 ID、operationId 幂等和用户主动恢复。支持 AI-AC4/8/9 与 TP-01～08。
-- **范围：** 正式Application Services/Room/Operation/恢复协调、原生确认状态及tests；不继承旧Repository写模型，不提供Agent commit工具，不把LLM放进事务。
+- **范围：** 正式Application Services/Room/Operation/恢复协调、原生确认状态及tests；不继承旧Repository写模型，不提供Agent commit工具，不把LLM放进事务。[B0 §5.2](../../../architecture/record2-b0-data-model-design.md#52-transaction-a)全状态重复确认矩阵必须覆盖Pending/Applied/两类Rejected、异revision/摘要拒绝、回执丢失与父会话删除后的核查；返回旧Pending不自动执行B。
 - **验收/测试：** Host 规范化 payload/依赖测试；Room 独立连接观察组合交易+Note+关系 all-or-none；确认和修订竞争；同 Operation 双执行/双击；A 前/中/后、B 开始/每个业务变更后/Applied 写前后/事务提交后回执前分别异常、取消、进程终止。RejectedConflict/Invalid 零业务修改，异常必须回滚不吞；Applied 重读同结果，Pending 不自动重放。
 - **风险/回退：** A 成功 B 失败不能解锁后偷偷改 payload；保留同 Operation 核查。冲突需新审核确认，跨代际旧 Pending 无资格，关闭 AI/删 Session 不丢 operation/result。B 未提交保护旧事实，B 已提交通过持久结果消除未知，不能“回滚”已生效业务为重试创造重复。
 - **完成门禁：** TP 全矩阵在真实磁盘/宿主强停与重启中证明；每个故障点记录操作状态、完整事实/版本/ID映射和无假成功。无此证据不得验收 F2 的确认。
@@ -257,7 +257,7 @@ R0查阅的公开依据：[Koog quickstart](https://docs.koog.ai/quickstart/)、
 ### E1 — Room 权威历史与 ChatHistoryProvider
 
 - **目标/依赖：** G-SCHEMA+A1+D0；原子保存user+Running、固定已完成历史边界、当前输入一次、最终回复+终态同事务，Koog ChatMemory可重建。支持SES-01/02/04/10～12/15；库/设备/Provider实际运行逐项核G-EXEC。
-- **范围：** 正式Session/Message/Run服务/持久约束、ChatHistoryProvider/Coordinator与测试；不依赖旧会话/数据模块，不建第二权威历史库。
+- **范围：** 正式Session/Message/Run服务/持久约束、ChatHistoryProvider/Coordinator与测试；不依赖旧会话/数据模块，不建第二权威历史库。正常Run启动须支持[B0 §5.1](../../../architecture/record2-b0-data-model-design.md#51-创建身份修订与规范化)规定的用户主动重新审核入口，生成新的Run/创建身份，不复用Rejected原Run。
 - **验收/测试：** Host 可控调度 + 磁盘事务/故障；同 Session 两 Run 竞争、跨 Session 隔离、长历史窗口裁剪/过滤，UI 全历史仍可读；用户消息落盘后、Koog load/store 前后、最终回复事务前/中/后终止，当前输入不重复、不出现缓存幽灵回复、未完成工具序列不进入下一 Run。真实 Koog/DeepSeek 连续多轮和恢复后新 Run 验证。
 - **风险/回退：** [ChatMemory 官方示例](https://docs.koog.ai/features/chat-memory/) 的 load/store 直接存消息不能照搬为用户历史双写；store 的窗口可能已裁剪。缓存版本/Provider/会话/代际不一致就废弃重建，不能反向覆盖 Room；隐藏推理不进用户历史/备份。
 - **完成门禁：** 所有故障时窗的权威消息/Run 状态独立比对和真实跨 Run 协议证据通过；接口只暴露必要历史 DTO，不做独立 Memory 平台。
@@ -291,10 +291,10 @@ R0查阅的公开依据：[Koog quickstart](https://docs.koog.ai/quickstart/)、
 | 设计组 | 已冻结功能 / 可规划 UI 技术 | 待负责人指导事项 | 最晚确认点 / 可并行工作 |
 |---|---|---|---|
 | D-FIN | CNY 新建/编辑、可选分类、D5/Back/保存状态；Compose 单向状态、IME/系统栏、可访问语义 | DESIGN-OWNER：待负责人指导与确认；记账页布局/层级、输入及账户分类选择表现、草稿选择与保存反馈 | F1 finance 视觉实现前，M1 前；B1/C0/D0 可并行 |
-| D-NOTE | 纯文本自动保存、阅读/编辑、软删除/撤销/专用恢复；状态 CAS 和输入保留 | DESIGN-OWNER：待负责人指导与确认；编辑/阅读/删除/恢复页面、保存反馈与未确认交互 | F1 Note 视觉实现前，M1 前；B2/C1/E0 可并行 |
+| D-NOTE | 纯文本自动保存、阅读/编辑、软删除/撤销/专用恢复；状态 CAS 和输入保留，冲突反馈遵守B0 §4.1 | DESIGN-OWNER：待负责人指导与确认；编辑/阅读/删除/恢复页面、保存反馈与未确认交互 | F1 Note 视觉实现前，M1 前；B2/C1/E0 可并行 |
 | D-TIME | 混排/日期跳转/类型/分页/详情返回、双向关联；强类型导航合同和状态保留，具体导航实现由A0审核 | DESIGN-OWNER：待负责人指导与确认；首页/导航组织、卡片、关联选择/详情信息层级及空错态 | F1 timeline/links 视觉实现前，M1 前；B3/B4/C0 可并行 |
 | D-AI | 全局角色隐藏/移动/贴边、Bottom Sheet、四种输出、草稿冲突/原生确认；应用级 owner/Overlay/导航/Proposal 状态 | DESIGN-OWNER：待负责人指导与确认；角色形象/表情、聊天面板、Proposal 确认/编辑、导航与冲突表现、动画/转场/反馈 | F2 视觉实现前，M2 前；C/D/E 全部非视觉工作可并行 |
-| D-SAFE | 两 AI 模式、授权/BYOK、历史/删除、完整 ZIP/恢复确认；SAF/Keystore/可恢复状态 | DESIGN-OWNER：待负责人指导与确认；设置/授权告知、历史管理、备份进度/取消/恢复回退表现及具体交互 | F2 设置/历史和 G1 恢复 UI 实现前；E0/E2/G0 算法可并行 |
+| D-SAFE | 两 AI 模式、授权/BYOK、历史/删除、完整 ZIP/恢复确认；SAF/Keystore/可恢复状态；会话删除披露遵守B0 §8 | DESIGN-OWNER：待负责人指导与确认；设置/授权告知、历史管理、备份进度/取消/恢复回退表现及具体交互 | F2 设置/历史和 G1 恢复 UI 实现前；E0/E2/G0 算法可并行 |
 | D-SYS | 触控/文字缩放/IME避让/屏幕阅读器/状态公告；测试语义与共享组件技术接口 | DESIGN-OWNER：待负责人指导与确认；整体风格、主题/字体/间距/组件/图标系统和跨页动效规范 | 首项 F1/F2 视觉编码前，随候选完善；所有业务/Agent/数据任务可并行 |
 
 设计尚未完成不改变完整 V1 功能目标。负责人可以按组批准，不必等全部视觉确定才做非 UI 工作；共享设计规则变更须重新检查已实现页面。
@@ -617,3 +617,70 @@ Draft R1完成后停止，等待负责人重新审查；不自动进入正式开
 本次仅做Git集成与文档记录，沿用§17已通过的实际工程验证，不重复无代码变化的Android构建。提交前检查暂存差异/277份原文件对象与模式及纳管范围，快进后核对main/工作区一致与源文件保护；提交身份和最终集成结果由Git日志及交付回执证明，不在文档中预填SHA或自引用提交。
 
 暂存核对：277项R100重命名的Git blob和文件模式与旧HEAD完全一致，另含29份新增资料/基线文件及9份已有修改。普通源/资料空白检查通过；历史治理方案内嵌diff的17个单空格上下文前缀经结构断言确认为必要语法，原样保留，不以清理格式破坏原提案。
+
+## 19. B0：数据模型设计授权与交付
+
+2026-10-23负责人明确要求“正式进入 B0：Record 2.0 数据模型设计”。按§4 B0及G-DESIGN执行，覆盖冻结合同/现有R2基线只读调查、数据设计审查包、必要Proposed ADR和文档状态/路由同步；不含源码、Room注解/Schema JSON/SQL、数据库初始化/迁移/恢复、构建/设备/真实Key/API、F0设计实施、删除、CI、发布或Git提交。
+
+- **设计交付：** [B0数据模型审查包](../../../architecture/record2-b0-data-model-design.md)及[Proposed ADR 0018](../../../architecture/decisions/0018-record2-data-concurrency-and-history.md)。14张候选表覆盖业务事实/原生草稿/提案与Operation/权威历史/本机授权；说明字段类型、外键/唯一索引、服务约束、统一version、A/B、Session删除、代际/备份与独立oracle。
+- **当前状态：** B0有条件审核通过后的指定修订已完成并获接受，ADR Accepted及Schema v1具体实施同意由§20拥有；设计任务收口。A0已批工程/身份直接沿用，不重新设计工程、不默认接纳R1/C1模型，不启动B1或F0。下列验证和§19.1保留设计交付/修订当时结果。
+- **自查：** 主Agent设计自查，无独立Agent审查。检查了隐藏关系、每个端点CAS、原生草稿消费、重复创建/修订、单Run/Proposal、会话删除保留Operation、当前输入一次/最终回复事务、旧Pending与授权隔离；数据库物理约束与服务约束明确区分。
+- **验证：** T0 PASS：Python内联断言检查6份变更资料的97个相对链接、UTF-8/围栏、14表及关键状态/引用字段、ADR Proposed与精确变更路径；对比HEAD确认冻结架构全文及Spec §4–7正文未变，R1/R2源码和Git index未变。`git diff --check`退出0，仅提示Plan/Spec未来Git写入会转CRLF。核读SQLite UNIQUE/null、外键/事务及Room外键官方说明；Room Index页面直开失败后，使用官方Room实体文档的唯一索引说明补核并更新来源链接。此项为主Agent自查；正式Room/并发/备份/Provider及全部V1产品验收仍NOT RUN，不沿用A1编译或C1实验PASS。
+- **后续门禁：** 正式Schema源码写入及隔离库验证按§20具体范围单独同意；B1种子清单、C0编码限额、B4查询预算、D0/E0授权/Provider、G0 ZIP/草稿/恢复协议及F0最终设计各归原任务，不阻本次设计交付。
+
+### 19.1 负责人审查及条件落实（2026-10-23）
+
+负责人原话：“三项核心设计原则均通过，B0 整体有条件通过”，并要求“小范围修订”后“进入正式 Schema 实施授权审查”；ADR结论为“技术方向通过，修订后可建议接受”。这授权当前设计/ADR及任务约束同步，不授权Schema、开库、设备或正式功能实现。
+
+- Transaction A按B0 §5.2改为先查既有唯一Operation，再判断新建资格；同revision/展示摘要对Pending、Applied、RejectedConflict、RejectedInvalid均返回原ID与当前结果，异revision/摘要拒绝。展示摘要存于既有冻结payload，不新建表；父Session/Proposal已删除仍能核查，旧代际Pending仍不可执行。
+- B0 §5.1规定Rejected/恢复待审材料需要用户主动发起正常新Run，生成新创建身份/提案/确认，不复用旧Run；Pending核查/受控重试仍使用原operationId。C0/E1/C1及G0/G1按各自任务验证，不增加反向业务依赖。
+- B0 §4.1明确自动保存冲突保留未存文本，重读不覆盖缓冲、不自动套新version；B2/F0 D-NOTE落实。B0 §8明确只保留必要冻结业务材料、禁止完整聊天/推理/Trace，并由F0 D-SAFE/E2披露删除会话与提交依据保留的区别。
+- ADR保持简短，仅引用A的全状态幂等保证并说明隐私代价；技术方向已通过，未将“建议接受”擅自改为最终Accepted。本轮T0复核PASS：Python内联断言检查6份相关资料的103个本地链接、10个Markdown锚点、围栏/UTF-8、四状态确认规则及其判断顺序、新Run/输入保留/披露语义与§20未授权边界；只改本设计、ADR、Plan三份文档，其余三份已有B0修改摘要不变，冻结Spec §4–7/统一架构、R1/R2源码及Git index未变；`git diff --check`退出0（仅既有CRLF提示）。正式Room磁盘、并发、恢复及产品AC仍NOT RUN。
+
+## 20. Schema v1实施授权与执行
+
+负责人对“接受修订版ADR，并按Plan §20授权初始Schema v1的14表、内部DAO、KSP生成及新建专用API34 AVD上的合成磁盘库测试”明确回复“同意”（2026-10-23）。ADR 0018修订版Accepted，G-SCHEMA及下列构建/隔离设备/合成库G-EXEC就绪，**本批已完成，实际证据见§20.2**。这是现有V1的实施批次，不重开14表设计、不增加数据库抽象层、不把骨架交付记为B1/C0/E1产品完成。
+
+| 对象 | 已授权的精确范围 | 验证/排除边界 |
+|---|---|---|
+| Schema身份 | R2独立`RecordDatabase`，初始Room版本**1**，含B0的14表：record_data_state、account、category、record_transaction、note、transaction_note_link、native_finance_draft、change_proposal、commit_operation、agent_session、agent_run、agent_message、agent_message_reference、ai_control | 不打开R1/C1或任何已有用户库；不实施旧格式迁移，不启用destructive fallback；数据库basename仍为record2.db，普通App启动本批不接入自动开库 |
+| 实体/数据库源码 | 仅`record2/app/src/main/kotlin/com/paherdin/record2/storage/`：`RecordDatabase.kt`；按业务事实（含草稿/代际）、提案、会话、本机授权分组的`RecordEntities.kt`、`ProposalEntities.kt`、`SessionEntities.kt`、`AiControlEntity.kt` | 精确对应B0字段/空值/外键/索引；可在同目录做必要小范围命名整理，不新建Repository框架或业务模块，不改变已审语义 |
+| 内部DAO | 同目录`RecordDao.kt`、`ProposalDao.kt`、`SessionDao.kt`、`AiControlDao.kt`；仅本批真实约束测试所需的插入、读取、version/state条件更新和增量关系方法 | 不提供无条件覆盖Operation payload、历史级联清除或整组关系替换；完整Application Services/Transaction A/B/自动保存/Agent生命周期仍归B1–B4/C0/C1/E0–E2；不提前生成未被调用的方法 |
+| 构建/生成 | `record2/build.gradle.kts`、`record2/app/build.gradle.kts`、`record2/gradle/libs.versions.toml`添加必要KSP与匹配**现有Room 2.8.4**的compiler/schema输出；KSP精确pin经只读官方兼容核对后记录；正常依赖/缓存生成写入 | 不升级既有AGP/Kotlin/Koog/SDK，不改CI、环境文件、真实凭据或R1构建；如兼容失败不能关闭metadata/边界检查或强制绕过 |
+| 导出路径 | `record2/app/schemas/com.paherdin.record2.storage.RecordDatabase/1.json`（Room生成），必要Schema输出配置在app构建脚本 | 不手改生成JSON伪造匹配；本批完整14表生成版本1；后续改变已有Schema另匹配版本/非破坏演进授权 |
+| host/编译检查 | `record2/app/src/test/kotlin/com/paherdin/record2/storage/`及`src/androidTest/kotlin/com/paherdin/record2/storage/`的必要合同测试/合成fixture/独立观察器；自身wrapper显式`-p D:/record/record2`运行`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest` | Schema生成/索引外键结构、已有金额/边界/编译回归；T0/T1与compile不能抵扣真实Room或C1幂等/并发证明 |
+| 精确设备范围 | 新建专用AVD **`record2-schema-api34`**，使用本机已有`system-images;android-34;google_apis;x86_64`；仅启动这个新AVD并核对其serial/包身份，安装R2 debug和androidTest：`com.paherdin.record2.debug`、`com.paherdin.record2.debug.test` | AVD同名已存在则停止该设备步骤核查，不覆盖；不操作现有`record-api34`、真机/API36或其他已连接设备；本轮只通过文件目录元数据确认已有镜像/命令行工具，未启动/查询设备 |
+| 真实数据库初始化/测试 | 仅新AVD内R2 debug私有`databases/schema-contract-<UUID>.db`及其SQLite关联文件，使用正式Room数据库类创建真实磁盘Schema、写入合成数据、关闭/重开，并通过独立连接核验主键/外键/唯一配对/nullable活跃slot及复合会话归属 | 每次测试用新名字；不初始化普通`record2.db`，不导入个人数据；按明确serial直接运行本批instrumentation，关闭连接后保留测试库/AVD/APK，不执行wipe/uninstall/文件删除。应用服务约束、A/B故障、跨进程恢复、ZIP与Provider不在本批PASS范围 |
+| 交付记录 | 在本Plan记录精确依赖pin/实际命令/测试数量与原始结果位置/未跑项；必要时仅同步路由状态 | 不暂存/Commit/Push，不新增治理阶段，不把T2 Schema约束通过当成完整B0数据安全或V1验收 |
+
+理由与风险：当前只有Room类型编译接缝，缺少正式生成Schema及真实物理约束证据；本批会首次写入R2 Schema源码/生成JSON，并在新隔离AVD创建持久合成数据库、安装测试APK，占用磁盘。数据库值域/状态/可见性仍需后续服务事务验证。新AVD/UUID测试库限制数据影响，绝不触及现有库；如发现同名资源冲突或任何已有用户数据，停止相应操作，不覆盖或清理。
+
+回退：保留本批文件与差异，普通App不接入开库，停止新AVD并关闭测试连接即可退出执行；不自动删除生成文件/AVD/测试库，不回滚或覆盖他人修改。不将测试库降级重开为旧版；已有真实R2库的任何演进另做非破坏方案。本表授权不扩大到其他库/设备、用户数据、迁移/恢复、UI、真实Key/API、删除、CI或Git提交。
+
+### 20.1 实际执行记录
+
+- 2026-10-23开始本批。KSP固定2.3.10，Room runtime/compiler保持2.8.4；[官方兼容矩阵](https://kotlinlang.org/docs/ksp-overview.html#requirements)覆盖当前Kotlin2.3.10、AGP8.12.3、Gradle8.13、JDK17。仅新增处理器，不升级既有栈。Schema通过[Room compiler参数导出](https://developer.android.com/training/data-storage/room/migrating-db-versions#export-schemas)，不手写JSON。
+- 启动前快照：新AVD同名路径预检不存在；新版android CLI未安装，使用已有SDK工具，不执行技能建议的全局安装。当时尚未创建AVD/数据库，实际结果见下节。
+
+### 20.2 完成交付与实际验证（2026-10-23）
+
+- **正式Schema v1：** [RecordDatabase](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RecordDatabase.kt)及同目录9份内部源码落地14表/117字段、20索引、13条RESTRICT外键；无Operation→聊天生命周期外键。DAO仅包含本批测试实际使用的插入/读取、Note version/正常状态条件更新、Proposal revision/状态条件更新、Operation Pending→终态条件更新和单条关系增减，没有无条件覆盖冻结输入/整组关系或生产历史清除方法。枚举/正文空白/JSON/slot与状态组合/代际授权等业务服务校验未借本批实现。
+- **真实生成：** KSP2.3.10 + Room compiler/runtime2.8.4，JDK17.0.20+8（进程JAVA_HOME=`C:/Users/p3148/tools/jdk/jdk-17.0.20+8`），既有Gradle8.13/AGP8.12.3/Kotlin2.3.10不变。[1.json](../../../../record2/app/schemas/com.paherdin.record2.storage.RecordDatabase/1.json)完全由Room生成；identityHash=`c1b84c0a7822f354324484b6995cfb0d`，SHA-256=`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。Debug/Release生成实现与同一导出身份一致。
+- **构建/host PASS：** 在record2 cwd使用自身wrapper及显式`-p D:/record/record2`运行`:app:kspDebugKotlin`，首次生成成功；随后`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`最终成功（18秒，129项任务中8项执行/121项up-to-date；受改AndroidTest编译/打包和lint实际重跑）。金额JUnit Debug/Release各3项，共6项，fail/error/skip均0；新Schema没有额外host状态逻辑，不为实体构造器制造单测。现有隔离检查/八classpath通过。lint 0错误/7项既有范围警告（版本、target、空Host图标和旧编译探针命名），未忽略/关闭检查；Gradle9弃用与SDK XML版本提示保留。
+- **实际设备：** 仅新`record2-schema-api34`，Pixel6 profile、已有google_apis x86_64 API34镜像，serial=`emulator-5580`，fingerprint=`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`。先核名称/API/目标包缺失，再安装两个获批包；最终安装APK SHA与构建产物逐项一致。未向既有emulator-5560/record-api34或真机发送安装、测试、清除或停止命令。
+- **空间根因及处理：** 首次启动C盘可用约2.9GB，AVD需约7.4GB而拒绝创建userdata；`-datadir`重试仍检查原AVD目录。avdmanager跨卷move失败且原目录/登记未改，随后核源/目标绝对边界，PowerShell原生移动**仅本次新AVD**到`record2/build/schema-v1/record2-schema-api34.avd/`，5份已有文件SHA前后一致，更新该AVD自己的登记路径后成功启动。没有清理C盘、删文件、wipe或改旧AVD；日志/失败目录均保留。此为同一获批新AVD的存储位置修正，不创建第二设备。
+- **磁盘T2 PASS，10/10：** [RecordSchemaContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/RecordSchemaContractTest.kt)、[合成夹具](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/SchemaTestFixtures.kt)、[独立观察器](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/SchemaDiskObserver.kt)使用正式Room类创建UUID命名真实磁盘库，独立只读SQLite连接逐字段/整数类型/原文比较14表，关闭重开；覆盖主键/非空/复合分类方向外键、关系唯一/孤立拒绝、父删除RESTRICT、跨Session复合外键、nullable活跃slot历史与互斥、创建请求唯一、Note/Proposal CAS旧版本/已删/锁定/溢出拒绝、Operation条件终态及移除合成聊天行后仍保留Applied与正式事实。每次预期约束失败还比较全表快照零变化。不把内部SQL条件测试当成完整Application Services/用户行为已实现。
+- **实际命令：** SDK adb始终`-s emulator-5580`；安装debug/androidTest APK，测试夹具修正后对同一专用新设备使用`install -r`更新test APK，再执行`adb -s emulator-5580 shell am instrument -w -r -e class com.paherdin.record2.storage.RecordSchemaContractTest com.paherdin.record2.debug.test/androidx.test.runner.AndroidJUnitRunner`。最终`OK (10 tests)`、10个结束状态0、无失败/skip，用时2.753秒；不凭adb退出0判断测试成功。未运行Gradle connected任务以免自动选其他设备。
+- **保留失败事实：** 首次完整构建因测试两个混合类型arrayOf被Kotlin推断为交叉类型失败，补显式`arrayOf<Any>`后通过，未改编译器门禁。首次磁盘10项中9过1失败：跨会话消息夹具还撞同run/role唯一性，先触发UNIQUE而非预期FK；改用尚无消息的合法Run隔离目标FK，保留独立唯一性用例，最终10项全通过，Schema/DAO未因此改变。
+- **制品与范围保护 PASS：** 复用原APK校验runner，只将输出路由到本批目录，未覆盖A1历史APK回执；Debug/Release/AndroidTest实际包身份、权限/组件、云备份/设备迁移排除资源及旧fixture隔离通过。新AVD内仅有20份`schema-contract-<UUID>.db`合成测试库（两次测试），未创建普通`record2.db`；测试后关闭连接、停止本批AVD，保留APK/库/AVD。普通MainActivity及生产入口未接入Room开库，不涉及R1/C1或真实用户库/数据。
+- **证据位置：** [本批日志/回执](../../../../record2/build/schema-v1/)含compile-initial/build-initial/build-fixed/build-final、AVD启动失败/移动/成功日志、device-install、instrumentation-initial/final/summary、apk-verification、schema-verification及final-verification JSON；[Schema静态复核runner](../../../../record2/build/schema-v1/verify_schema.py)核14表117字段的顺序/空值/SQLite类型、索引/复合外键、Operation无父外键和两变体生成身份。此目录属于被忽略的本机证据，不承诺跨机归档；正式测试源码及生成Schema位于纳管候选路径，可按上述命令重建。初始失败证据不覆盖。
+
+**未执行及风险：** 本批只完成物理模型/内部DAO约束基线。Transaction A/B的全状态重复确认、真正并发/取消/强停/未知提交、Run/授权/Session产品生命周期、B1种子与业务服务、F0 UI、Keystore/Provider、ZIP/迁移/恢复和63条产品AC/六联合旅程均未执行或未实现，仍归原任务；不抵扣C1/E1/G1的T3/T4。字符串状态/JSON/可见性跨对象校验必须由后续服务及恢复预检实现。Release仍为未签名基础制品，不是发布许可；未Commit/Push或改环境秘密/CI，旧文件和历史保留。
+
+**最终T0 PASS：** 23份纳管候选变更（含此前6份B0文档状态）限定在批准文档/入口、3份构建声明、12份新源码和1份Room生成Schema；115个相对链接/12个Markdown锚点有效，UTF-8/围栏/空白检查通过。冻结Spec §4–7及统一架构、R1源码和Git index未变；普通App未引入开库/破坏性fallback，源码无REPLACE/@Upsert/@Update覆盖入口，本机证据继续被忽略。`git diff --check`通过，仅既有CRLF提示；最终APK/Schema摘要与回执一致。检查回执为本批final-t0.json。本批自查，没有独立Agent审查。等待下一明确任务，不自行启动B1/F0。
+
+### 20.3 本批Git提交与推送授权
+
+负责人明确要求“提交并推送吧”，授权本轮B0设计/ADR、Schema v1源码/生成JSON、测试和必要构建/文档入口共23个文件提交，并推送当前main到origin/main；取代本批实施授权中“不Commit/Push”的历史限制。不包含忽略的本机环境、构建证据、AVD/测试库或其他产品任务。
+
+提交前fetch确认main与origin/main无分叉且同步；精确候选清单、敏感路径/常见凭据模式检查及Schema摘要复核通过，构建/磁盘验证回执均PASS。仅追加本授权记录，不重跑未变化的源码构建；实际提交身份与推送结果由Git日志、远端引用和交付回执证明，不预填或自引用提交SHA。
