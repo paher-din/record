@@ -9,7 +9,9 @@ import ai.koog.http.client.KoogHttpClient
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.MessagePart
 import ai.koog.serialization.typeToken
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -20,6 +22,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -28,6 +31,88 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.reflect.KClass
+
+internal object D0TestLimits {
+    const val REQUEST_TIMEOUT_MS = 300_000L
+    const val CONNECT_TIMEOUT_MS = 30_000L
+    const val MAX_AGENT_STEPS = 50
+    const val RUN_WALL_MS = 900_000L
+    const val RUN_TOKENS = 64_000
+    const val FLASH_RUN_USD = 0.10
+    const val PRO_RUN_USD = 0.25
+    const val NO_PROGRESS_CALLS = 3
+    const val BATCH_USD = 1.00
+
+    fun costUsd(model: String, inputTokens: Int, outputTokens: Int): Double =
+        if (model.contains("pro")) {
+            (inputTokens * 1.32 + outputTokens * 3.96) / 1_000_000.0
+        } else {
+            (inputTokens * 0.30 + outputTokens * 1.20) / 1_000_000.0
+        }
+
+    fun costUsd(model: String, usage: UsageTotals): Double =
+        costUsd(model, usage.inputTokens, usage.outputTokens)
+
+    fun costCapUsd(model: String): Double =
+        if (model.contains("pro")) PRO_RUN_USD else FLASH_RUN_USD
+}
+
+internal class BudgetExceededException(
+    val reasons: List<String>,
+) : RuntimeException(reasons.joinToString("; "))
+
+internal class D0RunBudget {
+    var inputTokens: Int = 0
+        private set
+    var outputTokens: Int = 0
+        private set
+    var estimatedCostUsd: Double = 0.0
+        private set
+    var exceeded: Boolean = false
+        private set
+    val reasons: MutableList<String> = mutableListOf()
+
+    fun reset() {
+        inputTokens = 0
+        outputTokens = 0
+        estimatedCostUsd = 0.0
+        exceeded = false
+        reasons.clear()
+    }
+
+    fun recordFrom(requestBody: String, responseBody: String) {
+        val model = runCatching {
+            Json.parseToJsonElement(requestBody).jsonObject.stringField("model")
+        }.getOrNull() ?: "deepseek-flash"
+        val usage = runCatching {
+            Json.parseToJsonElement(responseBody).jsonObject["usage"]?.jsonObject
+        }.getOrNull() ?: return
+        inputTokens += usage.intField("prompt_tokens") ?: 0
+        outputTokens += usage.intField("completion_tokens") ?: 0
+        estimatedCostUsd = D0TestLimits.costUsd(model, inputTokens, outputTokens)
+        val total = inputTokens + outputTokens
+        if (total > D0TestLimits.RUN_TOKENS && reasons.none { it.startsWith("tokens") }) {
+            reasons += "tokens $total > ${D0TestLimits.RUN_TOKENS}"
+        }
+        val cap = D0TestLimits.costCapUsd(model)
+        if (estimatedCostUsd > cap && reasons.none { it.startsWith("cost") }) {
+            reasons += "cost $estimatedCostUsd > $cap"
+        }
+        if (reasons.isNotEmpty()) {
+            exceeded = true
+            throw BudgetExceededException(reasons.toList())
+        }
+    }
+}
+
+internal suspend fun <T> withD0RunLimit(block: suspend () -> T): T =
+    try {
+        withTimeout(D0TestLimits.RUN_WALL_MS) { block() }
+    } catch (_: TimeoutCancellationException) {
+        throw BudgetExceededException(
+            listOf("run wall clock exceeded ${D0TestLimits.RUN_WALL_MS}ms"),
+        )
+    }
 
 internal object D0Key {
     private const val RELATIVE_PATH = "d0/deepseek.key"
@@ -54,6 +139,7 @@ internal object D0Key {
 
 internal class RecordingHttpClient(
     private val delegate: KoogHttpClient,
+    private val budget: D0RunBudget? = null,
 ) : KoogHttpClient by delegate {
     val requests = CopyOnWriteArrayList<String>()
     val responses = CopyOnWriteArrayList<String>()
@@ -68,7 +154,10 @@ internal class RecordingHttpClient(
     ): R {
         if (requestBody is String) requests += requestBody
         val response = delegate.post(path, requestBody, requestBodyType, responseType, parameters, headers)
-        if (response is String) responses += response
+        if (response is String) {
+            responses += response
+            if (requestBody is String) budget?.recordFrom(requestBody, response)
+        }
         return response
     }
 
@@ -88,6 +177,7 @@ internal class RecordingFactory(
     private val delegate: KoogHttpClient.Factory,
 ) : KoogHttpClient.Factory {
     val clients = CopyOnWriteArrayList<RecordingHttpClient>()
+    val budget = D0RunBudget()
 
     override fun create(
         clientName: String,
@@ -99,7 +189,7 @@ internal class RecordingFactory(
         socketTimeoutMillis: Long,
         json: Json,
     ): KoogHttpClient = RecordingHttpClient(
-        delegate.create(
+        delegate = delegate.create(
             clientName = clientName,
             baseUrl = baseUrl,
             headers = headers,
@@ -109,6 +199,7 @@ internal class RecordingFactory(
             socketTimeoutMillis = socketTimeoutMillis,
             json = json,
         ),
+        budget = budget,
     ).also { clients += it }
 
     val requests: List<String> get() = clients.flatMap { it.requests }
@@ -360,12 +451,22 @@ internal class D0Evidence(
     fun write(context: Context) {
         val directory = File(context.getExternalFilesDir(null) ?: context.filesDir, "d0")
         directory.mkdirs()
+        val batchCostUsd = records
+            .filterNot { (it["test"] as? JsonPrimitive)?.content?.endsWith("-budget") == true }
+            .sumOf { record ->
+                (record["estimatedCostUsd"] as? JsonPrimitive)?.doubleOrNull ?: 0.0
+            }
+        check(batchCostUsd <= D0TestLimits.BATCH_USD) {
+            "D0 batch estimated cost $batchCostUsd exceeds ${D0TestLimits.BATCH_USD}"
+        }
         val body = buildJsonObject {
             put("device", Build.FINGERPRINT)
             put("sdk", Build.VERSION.SDK_INT)
             put("manufacturer", Build.MANUFACTURER)
             put("model", Build.MODEL)
             put("key_fingerprint", keyFingerprint ?: "unavailable")
+            put("batchEstimatedCostUsd", batchCostUsd)
+            put("batchWithinCap", true)
             put("records", JsonArray(records))
         }
         File(directory, fileName).writeText(body.toString())

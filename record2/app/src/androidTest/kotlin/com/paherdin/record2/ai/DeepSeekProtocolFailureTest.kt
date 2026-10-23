@@ -1,5 +1,6 @@
 package com.paherdin.record2.ai
 
+import ai.koog.agents.core.agent.exception.AIAgentMaxNumberOfIterationsReachedException
 import ai.koog.http.client.KoogHttpClientException
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.clients.LLMClientException
@@ -123,6 +124,68 @@ class DeepSeekProtocolFailureTest {
     }
 
     @Test
+    fun activeTokenBudgetGuardStopsOversizedResponse() {
+        val fake = ScriptedHttpClient { _, _ ->
+            chatResponse(text = "synthetic oversized response", inputTokens = 64_001, outputTokens = 1)
+        }
+        val budget = D0RunBudget()
+        val requestBody = """{"model":"deepseek-flash","messages":[]}"""
+        RecordingHttpClient(fake, budget).use { guarded ->
+            val failure = runCatching {
+                runBlocking {
+                    guarded.post(
+                        path = "chat/completions",
+                        requestBody = requestBody,
+                        requestBodyType = String::class,
+                        responseType = String::class,
+                        parameters = emptyMap(),
+                        headers = emptyMap(),
+                    )
+                }
+            }.exceptionOrNull()
+            assertTrue("active budget guard must stop the response", failure is BudgetExceededException)
+            assertTrue(budget.exceeded)
+            assertTrue(budget.reasons.any { it.startsWith("tokens") })
+            assertEquals(1, fake.requests.size)
+            evidence.add(
+                buildJsonObject {
+                    put("test", "activeTokenBudgetGuardStopsOversizedResponse")
+                    put("requestCount", fake.requests.size)
+                    put("budgetOutcome", "BudgetExceeded")
+                    put("budgetReasons", budget.reasons.joinToString("; "))
+                    put("result", "PASS")
+                },
+            )
+        }
+    }
+
+    @Test
+    fun http503SurfacesWithoutRetry() {
+        val fake = ScriptedHttpClient { _, _ ->
+            throw KoogHttpClientException(
+                clientName = "record2-d0-scripted",
+                statusCode = 503,
+                errorBody = "synthetic service unavailable",
+            )
+        }
+        newClient(fake).use { client ->
+            val failure = expectClientFailure { runBlocking { client.execute(request(), DeepSeekProtocol.Flash) } }
+            val cause = failure.cause
+            assertTrue(cause is KoogHttpClientException)
+            assertEquals(503, (cause as KoogHttpClientException).statusCode)
+            assertEquals(1, fake.requests.size)
+            evidence.add(
+                buildJsonObject {
+                    put("test", "http503SurfacesWithoutRetry")
+                    put("requestCount", fake.requests.size)
+                    put("status", 503)
+                    put("result", "PASS")
+                },
+            )
+        }
+    }
+
+    @Test
     fun timeoutSurfacesWithoutRetry() {
         val fake = ScriptedHttpClient { _, _ -> throw SocketTimeoutException("synthetic timeout") }
         newClient(fake).use { client ->
@@ -184,14 +247,21 @@ class DeepSeekProtocolFailureTest {
                 maxIterations = 4,
             )
             val failure = runCatching { runBlocking { agent.run("Synthetic loop probe.") } }.exceptionOrNull()
-            assertTrue(echo.calls.size <= 1)
-            assertTrue(fake.requests.size <= 2)
+            assertTrue(
+                "expected max-iterations termination, got $failure",
+                failure is AIAgentMaxNumberOfIterationsReachedException,
+            )
+            val terminal = failure as AIAgentMaxNumberOfIterationsReachedException
+            assertTrue(terminal.message.orEmpty().contains("steps"))
+            assertEquals(1, echo.calls.size)
+            assertEquals(2, fake.requests.size)
             evidence.add(
                 buildJsonObject {
                     put("test", "budgetExhaustionStopsToolLoop")
                     put("requestCount", fake.requests.size)
                     put("toolCalls", echo.calls.size)
-                    put("failure", failure?.javaClass?.simpleName ?: "none")
+                    put("failure", terminal.javaClass.simpleName)
+                    put("terminal", "AIAgentMaxNumberOfIterationsReachedException")
                     put("result", "PASS")
                 },
             )
@@ -215,13 +285,19 @@ class DeepSeekProtocolFailureTest {
                 maxIterations = 2,
             )
             val failure = runCatching { runBlocking { agent.run("Synthetic unknown tool probe.") } }.exceptionOrNull()
+            assertTrue(
+                "expected max-iterations termination, got $failure",
+                failure is AIAgentMaxNumberOfIterationsReachedException,
+            )
+            val terminal = failure as AIAgentMaxNumberOfIterationsReachedException
             assertTrue(echo.calls.isEmpty())
-            assertTrue(fake.requests.size <= 2)
+            assertEquals(1, fake.requests.size)
             evidence.add(
                 buildJsonObject {
                     put("test", "unknownToolIsNotExecuted")
                     put("requestCount", fake.requests.size)
-                    put("failure", failure?.javaClass?.simpleName ?: "none")
+                    put("failure", terminal.javaClass.simpleName)
+                    put("terminal", "AIAgentMaxNumberOfIterationsReachedException")
                     put("result", "PASS")
                 },
             )
@@ -245,13 +321,19 @@ class DeepSeekProtocolFailureTest {
                 maxIterations = 2,
             )
             val failure = runCatching { runBlocking { agent.run("Synthetic malformed args probe.") } }.exceptionOrNull()
+            assertTrue(
+                "expected JsonDecodingException termination, got $failure",
+                failure != null && failure.javaClass.simpleName == "JsonDecodingException",
+            )
+            val terminal = requireNotNull(failure)
             assertTrue(echo.calls.isEmpty())
-            assertTrue(fake.requests.size <= 2)
+            assertEquals(1, fake.requests.size)
             evidence.add(
                 buildJsonObject {
                     put("test", "malformedToolArgumentsAreNotExecuted")
                     put("requestCount", fake.requests.size)
-                    put("failure", failure?.javaClass?.simpleName ?: "none")
+                    put("failure", terminal.javaClass.simpleName)
+                    put("terminal", "JsonDecodingException")
                     put("result", "PASS")
                 },
             )
@@ -275,6 +357,11 @@ class DeepSeekProtocolFailureTest {
                 maxIterations = 12,
             )
             val failure = runCatching { runBlocking { agent.run("Synthetic no-progress probe.") } }.exceptionOrNull()
+            assertTrue(
+                "expected max-iterations termination, got $failure",
+                failure is AIAgentMaxNumberOfIterationsReachedException,
+            )
+            val terminal = failure as AIAgentMaxNumberOfIterationsReachedException
             assertTrue(echo.calls.size >= 4)
             assertTrue(echo.calls.size <= 7)
             assertTrue(fake.requests.size <= 7)
@@ -284,7 +371,8 @@ class DeepSeekProtocolFailureTest {
                     put("requestCount", fake.requests.size)
                     put("toolCalls", echo.calls.size)
                     put("threshold", 3)
-                    put("failure", failure?.javaClass?.simpleName ?: "none")
+                    put("failure", terminal.javaClass.simpleName)
+                    put("terminal", "AIAgentMaxNumberOfIterationsReachedException")
                     put("finding", "tool exception is converted to a tool result; loop continues")
                     put("result", "PASS")
                 },
@@ -310,30 +398,41 @@ class DeepSeekProtocolFailureTest {
             )
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             var cancelled = false
+            var requestsAtCancel = -1
             val run = scope.async { agent.run("Synthetic no-progress watchdog probe.") }
             val watchdog = scope.launch {
                 while (isActive) {
-                    if (echo.calls.count { it == "repeat" } >= 3) {
+                    if (echo.calls.count { it == "repeat" } >= D0TestLimits.NO_PROGRESS_CALLS) {
                         cancelled = true
+                        requestsAtCancel = fake.requests.size
                         run.cancel(CancellationException("synthetic no-progress watchdog"))
                         break
                     }
                     delay(10)
                 }
             }
-            runCatching { runBlocking { run.await() } }
-                .onFailure { assertTrue(it is CancellationException) }
+            val outcome = runCatching { runBlocking { run.await() } }
+            val failure = outcome.exceptionOrNull()
+            assertTrue("watchdog must cancel the run, got $failure", failure is CancellationException)
             watchdog.cancel()
+            runBlocking { delay(250) }
+            assertEquals(
+                "no request may start after watchdog cancellation",
+                requestsAtCancel,
+                fake.requests.size,
+            )
             scope.cancel()
             assertTrue(cancelled)
-            assertTrue(echo.calls.size in 3..5)
-            assertTrue(fake.requests.size <= 5)
+            assertTrue(echo.calls.size in D0TestLimits.NO_PROGRESS_CALLS..(D0TestLimits.NO_PROGRESS_CALLS + 1))
+            assertTrue(fake.requests.size in D0TestLimits.NO_PROGRESS_CALLS..(D0TestLimits.NO_PROGRESS_CALLS + 1))
             evidence.add(
                 buildJsonObject {
                     put("test", "noProgressWatchdogCancelsRun")
                     put("requestCount", fake.requests.size)
                     put("toolCalls", echo.calls.size)
-                    put("threshold", 3)
+                    put("threshold", D0TestLimits.NO_PROGRESS_CALLS)
+                    put("terminal", failure?.javaClass?.simpleName ?: "none")
+                    put("requestsAtCancel", requestsAtCancel)
                     put("result", "PASS")
                 },
             )
@@ -399,7 +498,7 @@ class DeepSeekProtocolFailureTest {
         newClient(fake).use { client ->
             val result = runBlocking { client.execute(request(), DeepSeekProtocol.Flash) }
             assertEquals("OK", result.textContent())
-            assertTrue((result.metaInfo as? ai.koog.prompt.message.ResponseMetaInfo)?.totalTokensCount == null)
+            assertTrue(result.metaInfo.totalTokensCount == null)
             evidence.add(
                 buildJsonObject {
                     put("test", "missingUsageStillReturnsText")

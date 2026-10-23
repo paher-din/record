@@ -51,6 +51,10 @@ object DeepSeekProtocol {
         },
     )
 
+    /**
+     * D0 protocol seam. Production callers must acquire and authorize credentials through the E0 flow;
+     * this function is not a credential UI or an authorization-policy bypass.
+     */
     fun client(
         apiKey: String,
         timeouts: ConnectionTimeoutConfig = DefaultTimeouts,

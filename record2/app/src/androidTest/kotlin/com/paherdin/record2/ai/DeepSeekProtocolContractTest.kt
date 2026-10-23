@@ -12,7 +12,6 @@ import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.MessagePart
 import ai.koog.prompt.message.RequestMetaInfo
-import ai.koog.prompt.message.ResponseMetaInfo
 import ai.koog.utils.time.KoogClock
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
@@ -23,7 +22,9 @@ import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
 import org.junit.Test
 
@@ -40,9 +41,20 @@ class DeepSeekProtocolContractTest {
                 user("Synthetic probe: say ALPHA.")
             }
             val started = SystemClock.elapsedRealtime()
-            val response = client.execute(request, DeepSeekProtocol.Flash)
+            val outcome = runCatching { withD0RunLimit { client.execute(request, DeepSeekProtocol.Flash) } }
             val elapsed = SystemClock.elapsedRealtime() - started
-            val usage = response.metaInfo as ResponseMetaInfo
+            val usage = usageTotals(recorder.responses)
+            checkFunctionalBudget(
+                "normalChatExplicitlyDisablesThinking",
+                recorder,
+                "deepseek-flash",
+                usage,
+                elapsed,
+                configuredSteps = 0,
+                runFailure = outcome.exceptionOrNull(),
+            )
+            val response = outcome.getOrThrow()
+            val meta = response.metaInfo
             val body = recorder.requests.single()
 
             assertTrue(response.textContent().isNotBlank())
@@ -50,8 +62,8 @@ class DeepSeekProtocolContractTest {
             assertTrue(response.parts.none { it is MessagePart.Reasoning })
             assertFalse(body.contains(key()))
             assertRequestMetadata(body, "deepseek-flash", "disabled")
-            assertNotNull(usage.totalTokensCount)
-            assertTrue(usage.totalTokensCount!! > 0)
+            assertNotNull(meta.totalTokensCount)
+            assertTrue(meta.totalTokensCount!! > 0)
             assertTrue("deepseek-flash" in models)
 
             evidence.add(
@@ -60,9 +72,11 @@ class DeepSeekProtocolContractTest {
                     put("model", "deepseek-flash")
                     put("thinking", "disabled")
                     put("elapsedMs", elapsed)
-                    put("inputTokens", usage.inputTokensCount ?: 0)
-                    put("outputTokens", usage.outputTokensCount ?: 0)
-                    put("totalTokens", usage.totalTokensCount ?: 0)
+                    put("inputTokens", meta.inputTokensCount ?: 0)
+                    put("outputTokens", meta.outputTokensCount ?: 0)
+                    put("totalTokens", meta.totalTokensCount ?: 0)
+                    put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-flash", usage))
+                    put("budgetOutcome", "WITHIN")
                     put("requestCount", recorder.requests.size)
                     put("reasoningPresent", false)
                     put("models", models.joinToString(","))
@@ -81,16 +95,27 @@ class DeepSeekProtocolContractTest {
                 user("Synthetic probe: compute 17 + 25.")
             }
             val started = SystemClock.elapsedRealtime()
-            val response = client.execute(request, DeepSeekProtocol.Flash)
+            val outcome = runCatching { withD0RunLimit { client.execute(request, DeepSeekProtocol.Flash) } }
             val elapsed = SystemClock.elapsedRealtime() - started
-            val usage = response.metaInfo as ResponseMetaInfo
+            val usage = usageTotals(recorder.responses)
+            checkFunctionalBudget(
+                "thinkingChatReturnsReasoning",
+                recorder,
+                "deepseek-flash",
+                usage,
+                elapsed,
+                configuredSteps = 0,
+                runFailure = outcome.exceptionOrNull(),
+            )
+            val response = outcome.getOrThrow()
+            val meta = response.metaInfo
             val body = recorder.requests.single()
 
             assertTrue(response.textContent().contains("42"))
             assertTrue(response.reasoningText().isNotBlank())
             assertFalse(body.contains(key()))
             assertRequestMetadata(body, "deepseek-flash", "enabled")
-            assertTrue((usage.totalTokensCount ?: 0) > 0)
+            assertTrue((meta.totalTokensCount ?: 0) > 0)
 
             evidence.add(
                 buildJsonObject {
@@ -98,9 +123,11 @@ class DeepSeekProtocolContractTest {
                     put("model", "deepseek-flash")
                     put("thinking", "enabled")
                     put("elapsedMs", elapsed)
-                    put("inputTokens", usage.inputTokensCount ?: 0)
-                    put("outputTokens", usage.outputTokensCount ?: 0)
-                    put("totalTokens", usage.totalTokensCount ?: 0)
+                    put("inputTokens", meta.inputTokensCount ?: 0)
+                    put("outputTokens", meta.outputTokensCount ?: 0)
+                    put("totalTokens", meta.totalTokensCount ?: 0)
+                    put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-flash", usage))
+                    put("budgetOutcome", "WITHIN")
                     put("requestCount", recorder.requests.size)
                     put("reasoningPresent", true)
                     put("result", "PASS")
@@ -118,16 +145,27 @@ class DeepSeekProtocolContractTest {
                 user("Synthetic probe: say PRO.")
             }
             val started = SystemClock.elapsedRealtime()
-            val response = client.execute(request, DeepSeekProtocol.Pro)
+            val outcome = runCatching { withD0RunLimit { client.execute(request, DeepSeekProtocol.Pro) } }
             val elapsed = SystemClock.elapsedRealtime() - started
-            val usage = response.metaInfo as ResponseMetaInfo
+            val usage = usageTotals(recorder.responses)
+            checkFunctionalBudget(
+                "proModelRespondsWithDisabledThinking",
+                recorder,
+                "deepseek-v4-pro",
+                usage,
+                elapsed,
+                configuredSteps = 0,
+                runFailure = outcome.exceptionOrNull(),
+            )
+            val response = outcome.getOrThrow()
+            val meta = response.metaInfo
             val body = recorder.requests.single()
 
             assertTrue(response.textContent().isNotBlank())
             assertTrue(response.parts.none { it is MessagePart.Reasoning })
             assertFalse(body.contains(key()))
             assertRequestMetadata(body, "deepseek-v4-pro", "disabled")
-            assertTrue((usage.totalTokensCount ?: 0) > 0)
+            assertTrue((meta.totalTokensCount ?: 0) > 0)
 
             evidence.add(
                 buildJsonObject {
@@ -135,11 +173,63 @@ class DeepSeekProtocolContractTest {
                     put("model", "deepseek-v4-pro")
                     put("thinking", "disabled")
                     put("elapsedMs", elapsed)
-                    put("inputTokens", usage.inputTokensCount ?: 0)
-                    put("outputTokens", usage.outputTokensCount ?: 0)
-                    put("totalTokens", usage.totalTokensCount ?: 0)
+                    put("inputTokens", meta.inputTokensCount ?: 0)
+                    put("outputTokens", meta.outputTokensCount ?: 0)
+                    put("totalTokens", meta.totalTokensCount ?: 0)
+                    put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-v4-pro", usage))
+                    put("budgetOutcome", "WITHIN")
                     put("requestCount", recorder.requests.size)
                     put("reasoningPresent", false)
+                    put("result", "PASS")
+                },
+            )
+        }
+    }
+
+    @Test
+    fun proThinkingReturnsReasoning() = runBlocking {
+        val recorder = recordingFactory()
+        DeepSeekProtocol.client(key(), httpClientFactory = recorder).use { client ->
+            val request = prompt("d0-pro-thinking", DeepSeekProtocol.params(thinking = true)) {
+                system("Explain the arithmetic in one short sentence, then answer.")
+                user("Synthetic probe: compute 31 + 11.")
+            }
+            val started = SystemClock.elapsedRealtime()
+            val outcome = runCatching { withD0RunLimit { client.execute(request, DeepSeekProtocol.Pro) } }
+            val elapsed = SystemClock.elapsedRealtime() - started
+            val usage = usageTotals(recorder.responses)
+            checkFunctionalBudget(
+                "proThinkingReturnsReasoning",
+                recorder,
+                "deepseek-v4-pro",
+                usage,
+                elapsed,
+                configuredSteps = 0,
+                runFailure = outcome.exceptionOrNull(),
+            )
+            val response = outcome.getOrThrow()
+            val meta = response.metaInfo
+            val body = recorder.requests.single()
+
+            assertTrue(response.textContent().contains("42"))
+            assertTrue(response.reasoningText().isNotBlank())
+            assertFalse(body.contains(key()))
+            assertRequestMetadata(body, "deepseek-v4-pro", "enabled")
+            assertTrue((meta.totalTokensCount ?: 0) > 0)
+
+            evidence.add(
+                buildJsonObject {
+                    put("test", "proThinkingReturnsReasoning")
+                    put("model", "deepseek-v4-pro")
+                    put("thinking", "enabled")
+                    put("elapsedMs", elapsed)
+                    put("inputTokens", meta.inputTokensCount ?: 0)
+                    put("outputTokens", meta.outputTokensCount ?: 0)
+                    put("totalTokens", meta.totalTokensCount ?: 0)
+                    put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-v4-pro", usage))
+                    put("budgetOutcome", "WITHIN")
+                    put("requestCount", recorder.requests.size)
+                    put("reasoningPresent", true)
                     put("result", "PASS")
                 },
             )
@@ -157,22 +247,40 @@ class DeepSeekProtocolContractTest {
                 system("Use the record2_echo tool whenever the user asks for an echo.")
                 user("Synthetic probe: call record2_echo with word orange, then report the exact result.")
             }
-            val first = client.execute(base, DeepSeekProtocol.Flash, toolDescriptors(echo))
-            val call = first.toolCalls().single()
-            val followUp = base.withMessages { messages ->
-                messages + first + Message.User(
-                    MessagePart.Tool.Result(id = call.id, tool = call.tool, output = "ECHO:orange"),
-                    RequestMetaInfo.create(KoogClock.System),
-                )
+            val started = SystemClock.elapsedRealtime()
+            val outcome = runCatching {
+                val first = withD0RunLimit { client.execute(base, DeepSeekProtocol.Flash, toolDescriptors(echo)) }
+                val call = first.toolCalls().single()
+                val followUp = base.withMessages { messages ->
+                    messages + first + Message.User(
+                        MessagePart.Tool.Result(id = call.id, tool = call.tool, output = "ECHO:orange"),
+                        RequestMetaInfo.create(KoogClock.System),
+                    )
+                }
+                val second = withD0RunLimit { client.execute(followUp, DeepSeekProtocol.Flash, toolDescriptors(echo)) }
+                Triple(first, call, second)
             }
-            val second = client.execute(followUp, DeepSeekProtocol.Flash, toolDescriptors(echo))
+            val elapsed = SystemClock.elapsedRealtime() - started
+            val usage = usageTotals(recorder.responses)
+            checkFunctionalBudget(
+                "directToolRoundTripKeepsPairingAndReasoningWhenPresent",
+                recorder,
+                "deepseek-flash",
+                usage,
+                elapsed,
+                configuredSteps = 0,
+                runFailure = outcome.exceptionOrNull(),
+            )
+            val (first, call, second) = outcome.getOrThrow()
 
             assertTrue(second.textContent().contains("ECHO:orange"))
             assertEquals(2, recorder.requests.size)
             val secondRequest = recorder.requests[1]
             assertFalse(secondRequest.contains(key()))
             assertTrue(secondRequest.contains(call.id.orEmpty()))
-            assertToolPairing(secondRequest)
+            val pairing = assertToolPairing(secondRequest)
+            assertEquals(1, pairing.calls)
+            assertEquals(1, pairing.results)
             if (first.reasoningText().isNotBlank()) {
                 assertTrue(secondRequest.contains("reasoning_content"))
                 assertTrue(secondRequest.contains(first.reasoningText().take(24)))
@@ -182,10 +290,17 @@ class DeepSeekProtocolContractTest {
                     put("test", "directToolRoundTripKeepsPairingAndReasoningWhenPresent")
                     put("model", "deepseek-flash")
                     put("thinking", "enabled")
+                    put("elapsedMs", elapsed)
                     put("requestCount", recorder.requests.size)
                     put("toolCallIdPresent", call.id != null)
+                    put("pairingCalls", pairing.calls)
+                    put("pairingResults", pairing.results)
                     put("reasoningPresent", first.reasoningText().isNotBlank())
-                    put("usage", usageTotals(recorder.responses).toString())
+                    put("inputTokens", usage.inputTokens)
+                    put("outputTokens", usage.outputTokens)
+                    put("totalTokens", usage.totalTokens)
+                    put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-flash", usage))
+                    put("budgetOutcome", "WITHIN")
                     put("result", "PASS")
                 },
             )
@@ -203,16 +318,30 @@ class DeepSeekProtocolContractTest {
                 model = DeepSeekProtocol.Flash,
                 toolRegistry = toolRegistry(echo),
                 thinking = false,
-                maxIterations = 6,
+                maxIterations = D0TestLimits.MAX_AGENT_STEPS,
                 systemPrompt = "You are a deterministic tool-use test agent. Follow the tool instruction exactly.",
             )
             val started = SystemClock.elapsedRealtime()
-            val output = agent.run(
-                "Synthetic probe: call record2_echo exactly once with word alpha, " +
-                    "then reply with the exact tool output and nothing else.",
-            )
+            val outcome = runCatching {
+                withD0RunLimit {
+                    agent.run(
+                        "Synthetic probe: call record2_echo exactly once with word alpha, " +
+                            "then reply with the exact tool output and nothing else.",
+                    )
+                }
+            }
             val elapsed = SystemClock.elapsedRealtime() - started
             val usage = usageTotals(recorder.responses)
+            checkFunctionalBudget(
+                "aiAgentExecutesSingleToolCall",
+                recorder,
+                "deepseek-flash",
+                usage,
+                elapsed,
+                configuredSteps = D0TestLimits.MAX_AGENT_STEPS,
+                runFailure = outcome.exceptionOrNull(),
+            )
+            val output = outcome.getOrThrow()
 
             assertEquals(listOf("alpha"), echo.calls.toList())
             assertTrue(output.contains("ECHO:alpha"))
@@ -230,6 +359,9 @@ class DeepSeekProtocolContractTest {
                     put("inputTokens", usage.inputTokens)
                     put("outputTokens", usage.outputTokens)
                     put("totalTokens", usage.totalTokens)
+                    put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-flash", usage))
+                    put("budgetOutcome", "WITHIN")
+                    put("configuredSteps", D0TestLimits.MAX_AGENT_STEPS)
                     put("result", "PASS")
                 },
             )
@@ -254,49 +386,75 @@ class DeepSeekProtocolContractTest {
                     model = DeepSeekProtocol.Flash,
                     toolRegistry = toolRegistry(step),
                     thinking = true,
-                    maxIterations = 10,
+                    maxIterations = D0TestLimits.MAX_AGENT_STEPS,
                     systemPrompt = "You are a deterministic tool-use test agent. Never reply before both " +
                         "record2_step calls have completed, and follow the tool result instructions exactly.",
                 )
                 val started = SystemClock.elapsedRealtime()
-                val output = runCatching { agent.run(promptText) }.getOrNull()
+                val outcome = runCatching {
+                    withD0RunLimit { agent.run(promptText) }
+                }
+                val output = outcome.getOrNull()
                 val elapsed = SystemClock.elapsedRealtime() - started
                 val usage = usageTotals(recorder.responses)
                 val calls = step.calls.toList()
-                val pairingOk = runCatching {
-                    recorder.requests.forEach { body ->
+                val pairings = runCatching {
+                    recorder.requests.map { body ->
                         assertFalse(body.contains(key()))
                         assertToolPairing(body)
                     }
-                }.isSuccess
+                }
+                val pairingOk = pairings.isSuccess &&
+                    pairings.getOrNull()?.lastOrNull()?.let { it.calls >= 2 && it.calls == it.results } == true
                 val reasoning = reasoningPreservation(recorder)
                 val reasoningOk = !reasoning.observed || reasoning.preserved
-                val ok = calls.size >= 2 &&
-                    calls.take(2) == listOf("first", "second") &&
-                    output?.contains("DONE-ORANGE-731") == true &&
-                    pairingOk &&
-                    reasoningOk
+                val protocolPathAvailable = calls.isNotEmpty()
+                val fullSequenceObserved = calls.take(2) == listOf("first", "second")
+                val modelCompliant = fullSequenceObserved && output?.contains("DONE-ORANGE-731") == true
+                val budgetExceeded = recorder.budget.exceeded
+                val ok = modelCompliant && pairingOk && reasoningOk
                 evidence.add(
                     buildJsonObject {
                         put("test", "aiAgentExecutesTwoConsecutiveToolCalls")
                         put("attempt", attempt)
+                        put("attemptsAllowed", 3)
                         put("model", "deepseek-flash")
                         put("thinking", "enabled")
                         put("elapsedMs", elapsed)
                         put("requestCount", recorder.requests.size)
                         put("toolCalls", calls.joinToString(","))
+                        put("protocolPathAvailable", protocolPathAvailable)
+                        put("fullSequenceObserved", fullSequenceObserved)
+                        put("modelCompliant", modelCompliant)
+                        put("pairingOk", pairingOk)
                         put("reasoningObserved", reasoning.observed)
                         put("reasoningPreserved", reasoning.preserved)
                         put("inputTokens", usage.inputTokens)
                         put("outputTokens", usage.outputTokens)
                         put("totalTokens", usage.totalTokens)
-                        put("result", if (ok) "PASS" else "RETRY")
+                        put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-flash", usage))
+                        put("budgetOutcome", if (budgetExceeded) "INCONCLUSIVE/BudgetExceeded" else "WITHIN")
+                        put("configuredSteps", D0TestLimits.MAX_AGENT_STEPS)
+                        put("result", when {
+                            budgetExceeded -> "INCONCLUSIVE"
+                            ok -> "PASS"
+                            else -> "RETRY"
+                        })
                     },
+                )
+                checkFunctionalBudget(
+                    "aiAgentExecutesTwoConsecutiveToolCalls-attempt-$attempt",
+                    recorder,
+                    "deepseek-flash",
+                    usage,
+                    elapsed,
+                    configuredSteps = D0TestLimits.MAX_AGENT_STEPS,
+                    runFailure = outcome.exceptionOrNull(),
                 )
                 lastObservation =
                     "attempt=$attempt calls=$calls requests=${recorder.requests.size} " +
                         "output=${output?.replace('\n', ' ')?.take(160) ?: "exception"}"
-                if (ok) {
+                if (ok && !budgetExceeded) {
                     passed = true
                     return@use
                 }
@@ -317,7 +475,7 @@ class DeepSeekProtocolContractTest {
                     system("Answer synthetic questions exactly. Preserve the requested code verbatim.")
                 },
                 model = DeepSeekProtocol.Flash,
-                maxAgentIterations = 6,
+                maxAgentIterations = D0TestLimits.MAX_AGENT_STEPS,
             )
             val agent = AIAgent(
                 promptExecutor = executor,
@@ -329,10 +487,30 @@ class DeepSeekProtocolContractTest {
                     windowSize(40)
                 }
             }
-            val first = agent.run("Synthetic probe: remember code ORANGE-731. Reply OK.")
-            val second = agent.run(
-                "Synthetic probe: which code did I ask you to remember? Reply with the code only.",
+            val started = SystemClock.elapsedRealtime()
+            val outcome = runCatching {
+                val first = withD0RunLimit {
+                    agent.run("Synthetic probe: remember code ORANGE-731. Reply OK.")
+                }
+                val second = withD0RunLimit {
+                    agent.run(
+                        "Synthetic probe: which code did I ask you to remember? Reply with the code only.",
+                    )
+                }
+                first to second
+            }
+            val elapsed = SystemClock.elapsedRealtime() - started
+            val usage = usageTotals(recorder.responses)
+            checkFunctionalBudget(
+                "crossRunChatMemoryRecallsSyntheticFact",
+                recorder,
+                "deepseek-flash",
+                usage,
+                elapsed,
+                configuredSteps = D0TestLimits.MAX_AGENT_STEPS,
+                runFailure = outcome.exceptionOrNull(),
             )
+            val (first, second) = outcome.getOrThrow()
 
             assertTrue(first.isNotBlank())
             assertTrue(second.contains("ORANGE-731"))
@@ -347,13 +525,63 @@ class DeepSeekProtocolContractTest {
                     put("test", "crossRunChatMemoryRecallsSyntheticFact")
                     put("model", "deepseek-flash")
                     put("thinking", "disabled")
+                    put("elapsedMs", elapsed)
                     put("requestCount", recorder.requests.size)
                     put("storedMessages", provider.stored.size)
-                    put("usage", usageTotals(recorder.responses).toString())
+                    put("inputTokens", usage.inputTokens)
+                    put("outputTokens", usage.outputTokens)
+                    put("totalTokens", usage.totalTokens)
+                    put("estimatedCostUsd", D0TestLimits.costUsd("deepseek-flash", usage))
+                    put("budgetOutcome", "WITHIN")
+                    put("configuredSteps", D0TestLimits.MAX_AGENT_STEPS)
                     put("result", "PASS")
                 },
             )
         }
+    }
+
+    private fun checkFunctionalBudget(
+        testName: String,
+        recorder: RecordingFactory,
+        model: String,
+        usage: UsageTotals,
+        elapsedMs: Long,
+        configuredSteps: Int,
+        runFailure: Throwable? = null,
+    ) {
+        val reasons = mutableListOf<String>()
+        if (runFailure is BudgetExceededException) {
+            reasons += runFailure.reasons.ifEmpty { listOf("run budget exceeded") }
+        }
+        if (configuredSteps > D0TestLimits.MAX_AGENT_STEPS) {
+            reasons += "agent steps $configuredSteps > ${D0TestLimits.MAX_AGENT_STEPS}"
+        }
+        if (usage.totalTokens > D0TestLimits.RUN_TOKENS) {
+            reasons += "tokens ${usage.totalTokens} > ${D0TestLimits.RUN_TOKENS}"
+        }
+        if (elapsedMs > D0TestLimits.RUN_WALL_MS) {
+            reasons += "run wall ${elapsedMs}ms > ${D0TestLimits.RUN_WALL_MS}ms"
+        }
+        val cost = D0TestLimits.costUsd(model, usage)
+        if (cost > D0TestLimits.costCapUsd(model)) {
+            reasons += "cost $cost > ${D0TestLimits.costCapUsd(model)}"
+        }
+        if (recorder.budget.exceeded) reasons += recorder.budget.reasons
+        evidence.add(
+            buildJsonObject {
+                put("test", "$testName-budget")
+                put("model", model)
+                put("configuredSteps", configuredSteps)
+                put("approvedStepCap", D0TestLimits.MAX_AGENT_STEPS)
+                put("runWallMs", elapsedMs)
+                put("totalTokens", usage.totalTokens)
+                put("estimatedCostUsd", cost)
+                put("budgetOutcome", if (reasons.isEmpty()) "WITHIN" else "INCONCLUSIVE/BudgetExceeded")
+                put("budgetReasons", reasons.joinToString("; "))
+                put("result", if (reasons.isEmpty()) "PASS" else "INCONCLUSIVE")
+            },
+        )
+        assumeTrue("BudgetExceeded: ${reasons.joinToString("; ")}", reasons.isEmpty())
     }
 
     private fun assertRequestMetadata(body: String, model: String, thinkingType: String) {
@@ -363,19 +591,58 @@ class DeepSeekProtocolContractTest {
         assertFalse(request.toString().contains(key()))
     }
 
-    private fun assertToolPairing(body: String) {
+    private data class ToolPairingSummary(
+        val calls: Int,
+        val results: Int,
+    )
+
+    private data class PairingCall(val id: String, val name: String, val messageIndex: Int)
+
+    private data class PairingResult(val id: String, val messageIndex: Int)
+
+    private fun assertToolPairing(body: String): ToolPairingSummary {
         val messages = parseMessages(body)
-        val callIds = messages.flatMap { message ->
-            message["tool_calls"].jsonObjectList().mapNotNull { call ->
-                (call["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        val calls = mutableListOf<PairingCall>()
+        val results = mutableListOf<PairingResult>()
+        messages.forEachIndexed { messageIndex, message ->
+            message["tool_calls"].jsonObjectList().forEach { call ->
+                val id = (call["id"] as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.takeIf { it.isString }
+                    ?.content
+                    .orEmpty()
+                val name = call["function"]?.jsonObject?.stringField("name").orEmpty()
+                calls += PairingCall(id, name, messageIndex)
             }
-        }.toSet()
-        val resultIds = messages.mapNotNull { message ->
-            (message["tool_call_id"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+            val resultId = (message["tool_call_id"] as? kotlinx.serialization.json.JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+            if (resultId != null) {
+                assertEquals("tool result message must have role=tool", "tool", message.stringField("role"))
+                results += PairingResult(resultId, messageIndex)
+            }
         }
-        if (resultIds.isNotEmpty()) {
-            assertTrue("tool result without matching call: $resultIds vs $callIds", callIds.containsAll(resultIds))
+
+        calls.forEach { call ->
+            assertTrue("tool call id must be non-blank", call.id.isNotBlank())
+            assertTrue("tool call name must be non-blank", call.name.isNotBlank())
         }
+        results.forEach { result ->
+            assertTrue("tool result id must be non-blank", result.id.isNotBlank())
+        }
+        assertEquals("duplicate tool call ids", calls.size, calls.map { it.id }.toSet().size)
+        assertEquals("duplicate tool result ids", results.size, results.map { it.id }.toSet().size)
+
+        results.forEach { result ->
+            val matches = calls.filter { it.id == result.id }
+            assertEquals("tool result must match exactly one call: ${result.id}", 1, matches.size)
+            assertTrue(
+                "tool result ${result.id} precedes its call",
+                result.messageIndex > matches.single().messageIndex,
+            )
+        }
+        val unmatched = calls.filter { call -> results.none { it.id == call.id } }
+        assertTrue("unanswered tool calls: ${unmatched.map { it.id }}", unmatched.isEmpty())
+        return ToolPairingSummary(calls.size, results.size)
     }
 
     private data class ReasoningCheck(
