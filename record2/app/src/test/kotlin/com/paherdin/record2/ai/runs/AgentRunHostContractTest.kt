@@ -9,7 +9,10 @@ import ai.koog.serialization.typeToken
 import com.paherdin.record2.ai.security.AiDenial
 import com.paherdin.record2.ai.security.AiSecurityService
 import com.paherdin.record2.sessions.AgentHistoryError
+import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.AgentHistoryService
+import com.paherdin.record2.sessions.MessageResultKind
+import com.paherdin.record2.sessions.RunOutcome
 import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.SafeRunErrorCode
@@ -378,6 +381,53 @@ class AgentRunHostContractTest {
         val secondRun = requestMessages(http.requests[1])
         assertTrue(secondRun.any { it.textContent() == "hello" })
         assertTrue(secondRun.any { it.textContent() == "COMMITTED-REPLY" })
+    }
+
+    @Test
+    fun completionReceiptLossWithDifferentPersistedOutcomeStaysOutcomeUnknown() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        history.completeRunPersistThenOutcomeUnknown = true
+        history.persistedOutcomeOverride = RunOutcome(
+            resultKind = MessageResultKind.Navigate,
+            body = "COMMITTED-REPLY",
+        )
+        val http = ScriptedHttp { _, _ -> chatResponse("COMMITTED-REPLY") }
+        val coord = coordinator(history, FakeAiSecurity(), http)
+        try {
+            coord.run(session.id, "hello")
+            fail("a persisted outcome with a different result kind is not the same completion")
+        } catch (error: AgentRunException) {
+            assertEquals(AgentRunError.OutcomeUnknown, error.code)
+        }
+        assertEquals(
+            listOf(Triple("run-1", RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)),
+            history.failedRuns,
+        )
+    }
+
+    @Test
+    fun completionReceiptLossReadFailureKeepsOutcomeUnknownAndOriginalError() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        history.completeRunPersistThenOutcomeUnknown = true
+        val readError = IOException("synthetic recovery read failure")
+        history.persistedResultError = readError
+        val http = ScriptedHttp { _, _ -> chatResponse("COMMITTED-REPLY") }
+        val coord = coordinator(history, FakeAiSecurity(), http)
+        try {
+            coord.run(session.id, "hello")
+            fail("a failed recovery read must not be reported as success")
+        } catch (error: AgentRunException) {
+            assertEquals(AgentRunError.OutcomeUnknown, error.code)
+            val original = error.cause as AgentHistoryException
+            assertEquals(AgentHistoryError.OutcomeUnknown, original.code)
+            assertTrue(original.suppressed.any { it === readError })
+        }
+        assertEquals(
+            listOf(Triple("run-1", RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)),
+            history.failedRuns,
+        )
     }
 
     private companion object {

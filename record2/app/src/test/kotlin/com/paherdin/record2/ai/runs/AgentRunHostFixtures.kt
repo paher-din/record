@@ -149,6 +149,8 @@ internal class FakeHistoryService(
     // Commit-then-lose-the-receipt simulations for coordinator reconciliation paths.
     var startRunPersistThenOutcomeUnknown: Boolean = false
     var completeRunPersistThenOutcomeUnknown: Boolean = false
+    var persistedOutcomeOverride: RunOutcome? = null
+    var persistedResultError: Exception? = null
 
     private var sequence = 0L
     private var sessionId: String? = null
@@ -261,6 +263,7 @@ internal class FakeHistoryService(
     }
 
     override suspend fun persistedResult(runId: String): PersistedRunResult? {
+        persistedResultError?.let { throw it }
         val completed = completedRuns.singleOrNull { it.first.runId == runId }
         return if (completed != null) {
             PersistedRunResult(
@@ -269,7 +272,7 @@ internal class FakeHistoryService(
                 assistantMessageId = "assistant-${completedRuns.indexOf(completed) + 1}",
                 assistantMessageSequence = completed.second.let { sequence - 1 },
                 finishedAt = 0,
-                body = completed.second.body,
+                outcome = persistedOutcomeOverride ?: completed.second,
             )
         } else {
             startedRuns.singleOrNull { it.runId == runId }?.let {

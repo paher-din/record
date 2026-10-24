@@ -132,6 +132,7 @@ internal class AgentRunCoordinator(
             throw AgentRunException(safeStartError(error), error)
         }
         var reply: String? = null
+        var outcome: RunOutcome? = null
         try {
             // The plaintext exists only inside the E0 callback: build the client there, clear the
             // array, then run the agent. The client keeps its own copy for the network calls the
@@ -146,14 +147,16 @@ internal class AgentRunCoordinator(
             val executor = MultiLLMPromptExecutor(LLMProvider.DeepSeek to client)
             reply = agent(start, executor).run(userText)
             if (reply.isBlank()) fail(AgentRunError.ProviderFailure)
+            val completedOutcome = RunOutcome(resultKind = MessageResultKind.Answer, body = reply)
+            outcome = completedOutcome
             val completion = history.completeRun(
                 runId = start.runId,
                 receiverIdentity = receiver.identity,
                 authEpoch = permit.authEpoch,
                 processOwnerId = processOwnerId,
-                outcome = RunOutcome(resultKind = MessageResultKind.Answer, body = reply),
+                outcome = completedOutcome,
             )
-            RunResult(start.runId, sessionId, reply!!, completion)
+            RunResult(start.runId, sessionId, reply, completion)
         } catch (error: CancellationException) {
             // The coroutine is already cancelled: a plain suspend call could be skipped
             // entirely, stranding the run as RUNNING with its slot held. Run the terminal
@@ -166,13 +169,35 @@ internal class AgentRunCoordinator(
         } catch (error: Exception) {
             if (error is AgentHistoryException && error.code == AgentHistoryError.OutcomeUnknown) {
                 // The final reply may already be committed; never report failure while Room says
-                // otherwise. Reconcile by run identity and surface success or a true unknown.
-                val persisted = history.persistedResult(start.runId)
-                if (reply != null && persisted?.state == RunState.COMPLETED && persisted.body == reply) {
+                // otherwise. Reconcile by run identity using the same full outcome semantics as
+                // completeRun idempotence, not just the reply body.
+                val expected = outcome
+                val persisted = try {
+                    history.persistedResult(start.runId)
+                } catch (readError: Exception) {
+                    if (readError is CancellationException) {
+                        withContext(NonCancellable) {
+                            markTerminal(start.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+                        }
+                        throw readError
+                    }
+                    // The read failed, so the run may still be committed. Free the slot when
+                    // possible, but preserve the original OutcomeUnknown instead of surfacing
+                    // an unrelated storage exception.
+                    withContext(NonCancellable) {
+                        markTerminal(start.runId, RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)
+                    }
+                    error.addSuppressed(readError)
+                    throw AgentRunException(AgentRunError.OutcomeUnknown, error)
+                }
+                if (expected != null &&
+                    persisted?.state == RunState.COMPLETED &&
+                    persisted.outcome == expected
+                ) {
                     return@withContext RunResult(
                         runId = start.runId,
                         sessionId = sessionId,
-                        answer = reply,
+                        answer = expected.body,
                         completion = RunCompletionReceipt(
                             runId = start.runId,
                             assistantMessageId = persisted.assistantMessageId!!,
@@ -182,7 +207,9 @@ internal class AgentRunCoordinator(
                         ),
                     )
                 }
-                markTerminal(start.runId, RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)
+                withContext(NonCancellable) {
+                    markTerminal(start.runId, RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)
+                }
                 throw AgentRunException(AgentRunError.OutcomeUnknown, error)
             }
             markTerminal(start.runId, RunTerminal.FAILED, safeErrorCode(error))

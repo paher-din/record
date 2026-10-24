@@ -108,7 +108,8 @@ internal data class PersistedRunResult(
     val assistantMessageId: String?,
     val assistantMessageSequence: Long?,
     val finishedAt: Long?,
-    val body: String?,
+    /** Full persisted outcome semantics, including resultKind, result payload and references. */
+    val outcome: RunOutcome?,
 )
 
 internal data class ProcessOwnershipReceipt(

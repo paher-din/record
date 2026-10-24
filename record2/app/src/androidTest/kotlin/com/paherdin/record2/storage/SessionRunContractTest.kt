@@ -542,6 +542,10 @@ class SessionRunContractTest {
         val messages = history.sessionMessages(session.id)
         assertEquals(listOf("输入", "已提交的回复"), messages.map { it.body })
         assertEquals(2, messages.count { it.runState == RunState.COMPLETED })
+        assertEquals(
+            RunOutcome(MessageResultKind.Answer, "已提交的回复"),
+            history.persistedResult(result.runId)?.outcome,
+        )
     }
 
     @Test

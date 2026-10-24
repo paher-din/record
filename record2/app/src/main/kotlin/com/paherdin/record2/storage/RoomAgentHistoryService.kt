@@ -142,7 +142,7 @@ internal class RoomAgentHistoryService(
                 assistantMessageId = assistant?.id,
                 assistantMessageSequence = assistant?.sequence,
                 finishedAt = run.finishedAt,
-                body = assistant?.body,
+                outcome = assistant?.let { persistedOutcome(it) },
             )
         }
     }
@@ -373,17 +373,22 @@ internal class RoomAgentHistoryService(
         }
     }
 
-    private fun sameOutcome(existing: AgentMessageEntity, outcome: RunOutcome): Boolean {
-        val persistedReferences = dao.referencesForMessage(existing.id)
-            .map { Triple(it.ordinal, it.transactionId, it.noteId) }
-        val requestedReferences = outcome.references
-            .map { Triple(it.ordinal, it.transactionId, it.noteId) }
-        return existing.body == outcome.body &&
-            existing.resultKind == outcome.resultKind.name &&
-            existing.resultJson == outcome.resultJson &&
-            existing.proposalId == outcome.proposalId &&
-            existing.proposalRevision == outcome.proposalRevision &&
-            persistedReferences == requestedReferences
+    private fun sameOutcome(existing: AgentMessageEntity, outcome: RunOutcome): Boolean =
+        persistedOutcome(existing) == outcome
+
+    private fun persistedOutcome(existing: AgentMessageEntity): RunOutcome? {
+        val kind = parseKind(existing.resultKind)
+        if (kind == MessageResultKind.INPUT) return null
+        val references = dao.referencesForMessage(existing.id)
+            .map { MessageReference(it.ordinal, it.transactionId, it.noteId) }
+        return RunOutcome(
+            resultKind = kind,
+            body = existing.body,
+            resultJson = existing.resultJson,
+            proposalId = existing.proposalId,
+            proposalRevision = existing.proposalRevision,
+            references = references,
+        )
     }
 
     private fun validateOutcome(outcome: RunOutcome) {
