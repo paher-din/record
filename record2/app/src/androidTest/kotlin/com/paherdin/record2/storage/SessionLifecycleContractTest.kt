@@ -382,6 +382,37 @@ class SessionLifecycleContractTest {
     }
 
     @Test
+    fun deletionReceiptLossCancelsTheWorkAfterTheCommittedDelete() = runBlocking {
+        fixture.initialize()
+        val session = fixture.history.createSession("e2 receipt loss")
+        val gate = CompletableDeferred<Unit>()
+        val http = ScriptedDeviceHttp { _, _ -> gate.await(); chatDeviceResponse("TOO-LATE") }
+        // The fault fires only at the post-commit receipt checkpoint, so the owner (built after
+        // the reinstated service) sees a deletion that committed but whose receipt was lost.
+        fixture.reinstateHistory(checkpoint = { if (it == SessionCheckpoint.DELETION_COMMITTED) throw SQLiteFault() })
+        val runOwner = owner(http)
+        val handle = runOwner.launchRun(session.id, "运行中的输入")
+        awaitDeviceRequests(http, 1)
+        try {
+            runOwner.deleteSession(session.id)
+            fail("the lost receipt must surface as OutcomeUnknown")
+        } catch (error: com.paherdin.record2.sessions.AgentHistoryException) {
+            assertEquals(AgentHistoryError.OutcomeUnknown, error.code)
+        }
+        // The deletion actually committed: the session is verifiably gone, the in-flight work
+        // is stopped, and no further request goes out for the deleted session.
+        expectHistoryError(AgentHistoryError.NotFound) { fixture.history.session(session.id) }
+        assertTrue(fixture.rows("agent_session").isEmpty())
+        withTimeout(20_000) {
+            try { handle.await(); fail("work of a deleted session must stop") } catch (_: CancellationException) {}
+        }
+        gate.complete(Unit)
+        delay(300)
+        assertEquals(1, http.requests.size)
+        Unit
+    }
+
+    @Test
     fun deletionCheckpointFaultRollsBackKeepingHistoryIntact() = runBlocking {
         fixture.initialize()
         val session = fixture.history.createSession("e2 fault")

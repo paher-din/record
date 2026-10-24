@@ -1513,3 +1513,17 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 负责人“完成issue e2继续”按C0/C1/E1先例覆盖本分支必要Git提交、分支推送与创建PR；不关闭issue #13、不合并PR、不动F1/D1分支或其工作树。共享文件冲突（AgentRunCoordinator.kt与D1、plan.md与F1）按实际占用在PR合并时协调。
 
+### 32.6 2026-10-25 PR #29 审阅修复（REQUEST CHANGES）
+
+负责人对PR #29（提交`8f01938`）给出REQUEST CHANGES：3项P1（重复启动覆盖活动Job、启动前取消致await悬挂、删除回执丢失不停止旧网络任务）与2项P2（取消持久化失败被静默转为null、注册表无终态清理），并要求同步main后集成回归。§32.1–32.5首轮交付事实保留不变；本节记录修复与集成后重验。
+
+- **P1-1 注册表覆盖（修复）：** `AgentRunOwner`注册表改为**按runId键控**（`ConcurrentHashMap<String, TrackedRun>`），按sessionId派生查找；同Session重复启动时新条目独立注册并在SessionBusy失败后自行注销，不再覆盖活动Run的条目；取消/删除按session遍历停全部条目。新增host `duplicateLaunchCannotOrphanTheActiveRun`：活动Run飞行中重复启动→败者SessionBusy→cancelRun仍精确取消活动Run，门闩释放后零新增请求。
+- **P1-2 await悬挂（修复）：** `OwnedRunHandle`完成语义改用真实`scope.async`返回的`Deferred<RunResult>`（删除手写`CompletableDeferred`）：协程启动前被取消时Deferred即为cancelled，`await()`立刻抛`CancellationException`而不悬挂；`close()`后新launch同样快速失败。新增host `immediateCancellationNeverHangsAwait`、`closeTerminatesPendingAwaitsAndLaterLaunchesFailFast`。
+- **P1-3 删除回执丢失不停止网络（修复）：** `deleteSession`整体置于`NonCancellable`，捕获`OutcomeUnknown`后重读session——确认NotFound（删除确已提交）即停止该session全部内存任务并**原样上抛OutcomeUnknown**；重读失败或session仍在则不动任务、原样上抛。新增host `deleteSessionReceiptLossStillStopsTheWorkAfterTheCommit`（fake提交后丢回执）与设备`deletionReceiptLossCancelsTheWorkAfterTheCommittedDelete`（真实Room在`DELETION_COMMITTED`检查点注入故障：事务已提交、回执丢失→OutcomeUnknown上抛、session行确删、任务停止、门闩释放后零新增请求）。
+- **P2-1 取消持久化失败静默（修复）：** `cancelRun`同样整体`NonCancellable`；持久化failRun抛出的存储异常在停止内存任务后**原样上抛**（不再吞为null），调用方可区分“无活动Run（null）”与“取消结果未确认（异常）”；协调器自身NonClicable终态补偿与所有权门禁仍是后备。新增host `cancelPersistenceFailureSurfacesAndStillStopsTheWork`（含存储恢复后重取消成功收敛）。
+- **P2-2 注册表终态清理（修复）：** 每次launch以`invokeOnCompletion`挂钩注销（覆盖完成/失败/取消/启动前取消四种终态），终态Run不再滞留注册表。新增host `terminalRunsLeaveTheRegistry`（3轮完成后注册表归零）。测试缝`trackedRunCount()`仅供断言。
+- **fixture真实化：** FakeHistoryService补齐与真实服务一致的语义——同Session第二启动抛SessionBusy、已删session的`session()`抛NotFound、`failRunError`/`deleteSessionPersistThenOutcomeUnknown`故障开关；既有host用例不受影响。
+- **同步main与集成回归（2026-10-25）：** main自`64daa57`起的11个提交全部为G0设计文档（PR #28，含ADR 0019 Accepted），**零源码变更**（`git diff --stat`核对）；冲突仅本Plan的§31/§32衔接，保留G0 §31全文、E2顺延为§32，引言占位说明同步修正。审阅所述“D1/F1已进入主线”与实际不符——二者仍在各自分支未合并；源码层共享文件（AgentRunCoordinator.kt）无冲突。
+- **集成后重验 PASS：** 任务组BUILD SUCCESSFUL；host Debug/Release各114项（新增审阅回归6项）fail/error/skip=0；设备`OK (95 tests)`（生命周期9项[含新增回执丢失]+Schema/SessionRun/Proposal/Commit/Note/AiSecurity/Init 86项），安装前后test APK摘要一致；进程矩阵`RUN_LIFECYCLE: PASS`（pid`4364`force-stop→`4435`新前台，冷启动请求计数不变、新Run恰+1）。最终APK：debug`0f03db93…`、release-unsigned`63be6e7e…`、androidTest`fd714d7d…`（[apk-hashes-review.txt](../../../../record2/build/e2/apk-hashes-review.txt)）。AVD曾在验证间隙离线，本批自行重启同一`record2-schema-api34`实例后完成全部复验；未wipe/卸载/清库。
+- **边界不变：** F2/D1/G1/G2职责与§32.4一致；本修复轮未改Schema、未引入Service、未做UI。
+

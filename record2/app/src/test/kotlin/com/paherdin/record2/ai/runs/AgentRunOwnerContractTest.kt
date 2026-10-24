@@ -292,4 +292,156 @@ class AgentRunOwnerContractTest {
         runOwner.close()
         Unit
     }
+
+    // ---- PR #29 review regressions: registry and cancellation lifecycle ----
+
+    @Test
+    fun duplicateLaunchCannotOrphanTheActiveRun() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        val gate = CompletableDeferred<Unit>()
+        val http = ScriptedHttp { _, _ -> gate.await(); chatResponse("R") }
+        val runOwner = owner(history, FakeAiSecurity(), http)
+        val active = runOwner.launchRun(session.id, "active input")
+        awaitRequests(http, 1)
+        // A duplicate launch on the busy session fails at startRun; it must not displace the
+        // live run from the owner's registry, so a later cancel still reaches it.
+        val duplicate = runOwner.launchRun(session.id, "duplicate input")
+        try {
+            withTimeout(10_000) { duplicate.await() }
+            fail("the duplicate must fail with SessionBusy")
+        } catch (error: AgentRunException) {
+            assertEquals(AgentRunError.SessionBusy, error.code)
+        }
+        val receipt = runOwner.cancelRun(session.id)
+        assertEquals(active.runId, receipt?.runId)
+        assertEquals(RunState.CANCELLED, receipt?.state)
+        withTimeout(10_000) {
+            try { active.await(); fail("cancelled run must not await") } catch (_: CancellationException) {}
+        }
+        // No further outbound work for either the live run or the rejected duplicate.
+        gate.complete(Unit)
+        delay(200)
+        assertEquals(1, http.requests.size)
+        runOwner.close()
+        Unit
+    }
+
+    @Test
+    fun immediateCancellationNeverHangsAwait() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        val startGate = CompletableDeferred<Unit>()
+        history.startRunGate = startGate
+        val http = ScriptedHttp { _, _ -> chatResponse("R") }
+        val runOwner = owner(history, FakeAiSecurity(), http)
+        // Cancel right after launch, before the start transaction commits: whether the
+        // coroutine already suspended at the gate or never started, await must terminate.
+        val handle = runOwner.launchRun(session.id, "hello")
+        runOwner.cancelRun(session.id)
+        withTimeout(10_000) {
+            try { handle.await(); fail("cancelled run must not await") } catch (_: CancellationException) {}
+        }
+        startGate.complete(Unit)
+        runOwner.close()
+        Unit
+    }
+
+    @Test
+    fun closeTerminatesPendingAwaitsAndLaterLaunchesFailFast() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        val gate = CompletableDeferred<Unit>()
+        val http = ScriptedHttp { _, _ -> gate.await(); chatResponse("R") }
+        val runOwner = owner(history, FakeAiSecurity(), http)
+        val handle = runOwner.launchRun(session.id, "hello")
+        awaitRequests(http, 1)
+        runOwner.close()
+        withTimeout(10_000) {
+            try { handle.await(); fail("closed owner must terminate awaits") } catch (_: CancellationException) {}
+        }
+        // A launch after close cannot hang either: the deferred is dead on arrival.
+        val late = runOwner.launchRun(session.id, "after close")
+        withTimeout(10_000) {
+            try { late.await(); fail("launch after close must fail fast") } catch (_: CancellationException) {}
+        }
+        Unit
+    }
+
+    @Test
+    fun deleteSessionReceiptLossStillStopsTheWorkAfterTheCommit() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        val gate = CompletableDeferred<Unit>()
+        val http = ScriptedHttp { _, _ -> gate.await(); chatResponse("TOO-LATE") }
+        history.deleteSessionPersistThenOutcomeUnknown = true
+        val runOwner = owner(history, FakeAiSecurity(), http)
+        val handle = runOwner.launchRun(session.id, "hello")
+        awaitRequests(http, 1)
+        try {
+            runOwner.deleteSession(session.id)
+            fail("the lost receipt must surface as OutcomeUnknown")
+        } catch (error: com.paherdin.record2.sessions.AgentHistoryException) {
+            assertEquals(AgentHistoryError.OutcomeUnknown, error.code)
+        }
+        // The deletion actually committed: the session is gone and the work is stopped even
+        // though the receipt was lost — a deleted session keeps no network life.
+        assertTrue(session.id in history.deletedSessions)
+        withTimeout(10_000) {
+            try { handle.await(); fail("work of a deleted session must stop") } catch (_: CancellationException) {}
+        }
+        gate.complete(Unit)
+        delay(200)
+        assertEquals(1, http.requests.size)
+        Unit
+    }
+
+    @Test
+    fun cancelPersistenceFailureSurfacesAndStillStopsTheWork() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        val gate = CompletableDeferred<Unit>()
+        val http = ScriptedHttp { _, _ -> gate.await(); chatResponse("TOO-LATE") }
+        val runOwner = owner(history, FakeAiSecurity(), http)
+        val handle = runOwner.launchRun(session.id, "hello")
+        awaitRequests(http, 1)
+        // The durable CANCELLED mark fails: the storage error must surface (never a fake null),
+        // while the in-memory work still stops.
+        history.failRunError = AgentHistoryError.RecoverableIO
+        try {
+            runOwner.cancelRun(session.id)
+            fail("a failed durable mark must not be reported as a clean cancel")
+        } catch (error: com.paherdin.record2.sessions.AgentHistoryException) {
+            assertEquals(AgentHistoryError.RecoverableIO, error.code)
+        }
+        withTimeout(10_000) {
+            try { handle.await(); fail("the work must still stop") } catch (_: CancellationException) {}
+        }
+        gate.complete(Unit)
+        delay(200)
+        assertEquals(1, http.requests.size)
+        // Recovery: once storage accepts writes again, the cancel lands and reconciles.
+        history.failRunError = null
+        val receipt = runOwner.cancelRun(session.id)
+        assertEquals(handle.runId, receipt?.runId)
+        assertEquals(RunState.CANCELLED, receipt?.state)
+        runOwner.close()
+        Unit
+    }
+
+    @Test
+    fun terminalRunsLeaveTheRegistry() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        val http = ScriptedHttp { index, _ -> chatResponse("R$index") }
+        val runOwner = owner(history, FakeAiSecurity(), http)
+        repeat(3) {
+            val handle = runOwner.launchRun(session.id, "turn $it")
+            withTimeout(10_000) { handle.await() }
+        }
+        withTimeout(10_000) { while (runOwner.trackedRunCount() > 0) delay(10) }
+        assertEquals(0, runOwner.trackedRunCount())
+        runOwner.close()
+        Unit
+    }
 }

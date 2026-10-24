@@ -165,6 +165,10 @@ internal class FakeHistoryService(
     var deleteSessionError: AgentHistoryError? = null
     var deleteSessionCancelledActiveRuns: Int = 1
 
+    // PR #29 review fixtures: durable-mark failure and commit-then-lose-the-receipt deletion.
+    var failRunError: AgentHistoryError? = null
+    var deleteSessionPersistThenOutcomeUnknown: Boolean = false
+
     private var sequence = 0L
     private var sessionId: String? = null
     private val entries = CopyOnWriteArrayList<CompletedHistoryEntry>()
@@ -211,8 +215,10 @@ internal class FakeHistoryService(
 
     override suspend fun createSession(title: String?): AgentSessionInfo = newSession()
 
-    override suspend fun session(sessionId: String): AgentSessionInfo =
-        AgentSessionInfo(sessionId, null, 0, 0, 1, sequence)
+    override suspend fun session(sessionId: String): AgentSessionInfo {
+        if (sessionId in deletedSessions) throw AgentHistoryException(AgentHistoryError.NotFound)
+        return AgentSessionInfo(sessionId, null, 0, 0, 1, sequence)
+    }
 
     override suspend fun sessionMessages(sessionId: String): List<AgentSessionMessage> =
         inputs.mapIndexed { index, (body, state) ->
@@ -255,6 +261,11 @@ internal class FakeHistoryService(
         startRunGate?.await()
         startRunError?.let { throw AgentHistoryException(it) }
         if (requireAuthorizationMismatch) throw AgentHistoryException(AgentHistoryError.AuthorizationRequired)
+        if (startedRuns.any { it.sessionId == sessionId && stateOf(it.runId) == RunState.RUNNING } &&
+            sessionId !in deletedSessions
+        ) {
+            throw AgentHistoryException(AgentHistoryError.SessionBusy)
+        }
         val receipt = RunStartReceipt(
             runId = identity.runId,
             sessionId = sessionId,
@@ -326,6 +337,7 @@ internal class FakeHistoryService(
         state: RunTerminal,
         safeErrorCode: SafeRunErrorCode,
     ): RunTerminalReceipt {
+        failRunError?.let { throw AgentHistoryException(it) }
         val start = startedRuns.singleOrNull { it.runId == runId }
             ?: throw AgentHistoryException(AgentHistoryError.NotFound)
         val current = if (start.sessionId in deletedSessions) RunState.INTERRUPTED else stateOf(runId)
@@ -363,6 +375,9 @@ internal class FakeHistoryService(
         deleteSessionError?.let { throw AgentHistoryException(it) }
         val cancelled = startedRuns.count { it.sessionId == sessionId && stateOf(it.runId) == RunState.RUNNING }
         deletedSessions.addIfAbsent(sessionId)
+        if (deleteSessionPersistThenOutcomeUnknown) {
+            throw AgentHistoryException(AgentHistoryError.OutcomeUnknown)
+        }
         return SessionDeletionReport(
             sessionId = sessionId,
             cancelledActiveRuns = cancelled,
