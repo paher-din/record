@@ -1461,4 +1461,5 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 - **范围：** 修改[G0设计](../../../architecture/record2-g0-backup-restore-design.md)、[ADR 0019](../../../architecture/decisions/0019-record2-logical-backup-restore-protocol.md)与本节；G0-D1～D14/总体架构不变；ADR仍为Proposed。无Schema/源码/构建/环境/凭据/CI修改，无数据库/设备/SAF/Provider操作。
 - **T0 Rev2.1 PASS（仅文档）：** 2026-10-25静态检查，修改3份文件（G0设计/ADR 0019/本Plan）；设计/ADR/Plan新增与受影响30个本地链接/锚点全部解析通过；新文档UTF-8无BOM/LF/无行尾空白/围栏成对；内容断言覆盖空段`STORED`/0/0、禁止`DEFLATE`空块、空段往返测试、`authEpoch`上限拒绝及`MAX`不写入测试。`git diff --check`退出0（仅既有CRLF提示）；`record2/`、`record1/`、Gradle根、Schema源码/生成JSON无tracked diff，Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。未构建/安装Android、未打开数据库、未操作设备/SAF/Provider/网络；G1/G2 NOT RUN。设计自查，无独立Agent审查。
-- **状态：** 两处P1修订提交并更新PR #28后，等待负责人最终批准/合并。issue #18保持OPEN；G1/G2 NOT RUN；G1的真实Room/SAF/故障/性能验收仍必须单独完成。
+- **Rev2.1提交/PR：** 设计提交`b68239769fd0ccf5394174f69886d87babda8b56`，已推送`codex/g0-backup-restore`并更新[PR #28](https://github.com/paher-din/record/pull/28)；PR head以GitHub当前引用为准。
+- **状态：** 等待负责人最终批准/合并。issue #18保持OPEN；G1/G2 NOT RUN；G1的真实Room/SAF/故障/性能验收仍必须单独完成。
