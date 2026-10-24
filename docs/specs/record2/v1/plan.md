@@ -1222,3 +1222,7 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 ### 29.5 Git 交付状态
 
 2026-10-24负责人明确选择“提交+推送分支+PR”，覆盖本任务实现、测试、Plan §29与路由文件的提交、推送分支`codex/b4-timeline-search`及创建PR；不合并main、不关闭issue #7、不发布。实际提交、远端引用与PR身份由Git/GitHub回执证明，本Plan不预填；本机构建证据/合成库/AVD仍被Git忽略。
+
+### 29.6 PR交付（2026-10-24）
+
+源码/测试/Plan/路由提交为`406edc6959f80005b29b8a85d91b0c780e519975`，已推送`codex/b4-timeline-search`并创建[PR #26](https://github.com/paher-din/record/pull/26)（base `main`、head `codex/b4-timeline-search`）。PR包含本任务12个文件及§29证据；未合并main、未关闭issue #7。本节文档回执不改变源码或已测APK；审查、合并与issue收口由负责人决定。
