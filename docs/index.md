@@ -13,6 +13,7 @@ Read [root rules](../AGENTS.md), then the [single R2 Engineering Policy](enginee
 | B0 data model / CAS / durable history | [Data model review package](architecture/record2-b0-data-model-design.md), [ADR 0018](architecture/decisions/0018-record2-data-concurrency-and-history.md); design review belongs to V1 Plan §19, Schema authorization/results to §20 |
 | B1 seeds / finance services / native draft persistence | [V1 Plan §21](specs/record2/v1/plan.md#21-b1种子基线与收支草稿服务实施), including approved seed content, execution boundaries and actual verification |
 | B2 Note autosave / CAS / soft deletion | [V1 Plan §22](specs/record2/v1/plan.md#22-b2note自动保存cas与软删除issue-5), including issue #5 scope, fault selectors and device coordination |
+| B3 bidirectional links / hidden relations / versions | [V1 Plan §26](specs/record2/v1/plan.md#26-b3双向关联隐藏关系与版本并发issue-6), including issue #6 scope, selectors, process and failure evidence |
 | Provider authorization / BYOK / Keystore | [V1 Plan §23](specs/record2/v1/plan.md#23-e0-授权凭据与发送接缝), including the controlled receiver identity, initialization ownership, authorization state matrix, actual Keystore/Room/device evidence and remaining D0/D1/F2 responsibilities |
 | Product and acceptance provenance/C1 identity | [Self-contained decision baseline](product/record2-v1-decision-baseline.md) |
 | UI | Spec §5.4 / Plan F0–F2, the owner's relevant design approval |
