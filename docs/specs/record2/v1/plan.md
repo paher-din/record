@@ -1428,7 +1428,7 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 ### 31.4 审阅PR交付（2026-10-24）
 
-设计/ADR/Plan/index首版提交为`3a49247598a0adb6937c8d03cbbb31ddb540cda0`；其后仅文档措辞/交付回执为`c26e7ad`/`dbb9474`，PR #28最终审阅head为`dbb9474`。已推送`codex/g0-backup-restore`并创建[PR #28](https://github.com/paher-din/record/pull/28)（base `main`）。GitHub只读回执：`state=OPEN`、`mergeable=MERGEABLE`、`mergeStateStatus=CLEAN`。上述提交只含4份文档，不含源码/Schema/构建/设备/数据库变更；§31.3 T0结果对应其设计内容，最终措辞修正后复跑仍为26个链接/锚点通过、Schema LF SHA-256不变、`git diff --check`退出0。
+设计/ADR/Plan/index首版提交为`3a49247598a0adb6937c8d03cbbb31ddb540cda0`；设计内容的最终措辞修正为`dbb9474`，其后仅交付回执/Plan记录提交，不再改变设计内容。已推送`codex/g0-backup-restore`并创建[PR #28](https://github.com/paher-din/record/pull/28)（base `main`）；PR head以GitHub当前引用为准。GitHub只读回执：`state=OPEN`、`mergeable=MERGEABLE`、`mergeStateStatus=CLEAN`。上述提交只含文档，不含源码/Schema/构建/设备/数据库变更；§31.3 T0结果对应其设计内容，最终措辞修正后复跑仍为26个链接/锚点通过、Schema LF SHA-256不变、`git diff --check`退出0。
 
 - **未做：** 未合并main、未关闭issue #18、未发布；ADR 0019仍为Proposed，G1/G2仍未启动。PR仅作为负责人审阅材料。
 - **批准待办：** 负责人对G0-D1～D14明确批准后，才更新ADR/Plan状态并关闭issue #18；若要求调整任一格式/限额/状态转换，按审阅意见修订后重新推送本分支，不先写恢复实现。
