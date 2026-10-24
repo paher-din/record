@@ -1,0 +1,20 @@
+{
+  "version": "F0-C3",
+  "tool": "built-in image_gen.imagegen",
+  "date": "2026-10-24",
+  "purpose": "Consistency corrections only; original images retained",
+  "images": [
+    {
+      "id": "c3-links-v2",
+      "file": "c3-links-v2.png",
+      "source": "C:\\Users\\p3148\\.codex\\generated_images\\01a16dc6-ecca-7420-8bd0-874083eb8588\\exec-42c9582a-1354-4214-a023-62623e25231e.png",
+      "prompt": "Edit only the two bottom buttons of this Record native relation-selection design for design-system consistency. Preserve the entire white/black/vermilion layout, text, selection checkboxes, note excerpts, precise ruled rows, phone and caption. Convert the full-pill '保存关联' black button and outlined '取消' button into crisp 6dp small-rounded RECTANGLES, same dimensions and position. Do not change text, add any controls, or turn this into an AI confirmation page. Everything else stays exactly as in the supplied image."
+    },
+    {
+      "id": "c3-restore-v2",
+      "file": "c3-restore-v2.png",
+      "source": "C:\\Users\\p3148\\.codex\\generated_images\\01a16dc6-ecca-7420-8bd0-874083eb8588\\exec-c145fe00-e8d6-4e74-aeee-39f9251295ca.png",
+      "prompt": "Make only three narrow consistency corrections to this Record restore design. Preserve ALL typography, body text, actual warning, counts128/36/8, phone frame, composition and safe areas. Change the green '备份已校验' badge to a WHITE or transparent badge with thin neutral boundary and a BLACK check plus BLACK text, absolutely no green. Change the primary '替换并恢复' and secondary '取消' buttons from full-pill corners to crisp SMALL 6dp rounded RECTANGLES, same size and labels. Nothing else changes; preserve this native restore confirmation as a deliberate data-replacement action. Keep caption F0-C3 候选 / 非 Android 截图. No new controls, photos or colors."
+    }
+  ]
+}

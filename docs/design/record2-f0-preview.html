@@ -1,0 +1,414 @@
+<meta charset="UTF-8">
+<div id="record-f0-review">
+  <style>
+    #record-f0-review { font-family: system-ui, "Microsoft YaHei", sans-serif; color: var(--foreground, #1D1D1F); width: 100%; }
+    #record-f0-review * { box-sizing: border-box; }
+    #record-f0-review .rf-controls { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0 18px; }
+    #record-f0-review .rf-controls label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 140px; }
+    #record-f0-review .rf-controls select { font: inherit; color: inherit; background: var(--background, #F5F5F7); border: 1px solid currentColor; border-radius: 8px; padding: 10px; min-height: 44px; width: 100%; }
+    #record-f0-review .rf-caption { margin: 0 0 12px; font-size: 14px; color: inherit; }
+    #record-f0-review .rf-stage { --rf-page: #F5F5F7; --rf-surface: #FFFFFF; --rf-blue: #0071E3; --rf-orange: #FF9F0A; --rf-green: #34C759; --rf-ink: #1D1D1F; --rf-muted: #6E6E73; --rf-line: rgb(110 110 115 / 20%); color-scheme: light; position: relative; width: 100%; max-width: var(--rf-preview-width, 390px); margin: 0 auto; color: var(--rf-ink); background: var(--rf-page); border: 1px solid var(--rf-muted); border-radius: 24px; overflow: clip; font-size: 16px; line-height: 1.5; }
+    #record-f0-review .rf-stage[data-theme="dark"] { --rf-page: #000000; --rf-surface: #1D1D1F; --rf-ink: #FFFFFF; --rf-muted: #86868B; --rf-line: rgb(134 134 139 / 20%); color-scheme: dark; }
+    #record-f0-review .rf-stage[data-scale="large"] { font-size: 20px; }
+    #record-f0-review .rf-stage ::selection { color: #FFFFFF; background: var(--rf-blue); }
+    #record-f0-review .rf-statusbar { display: flex; justify-content: space-between; padding: 15px 22px 5px; font-size: .875em; font-weight: 500; }
+    #record-f0-review .rf-appbar { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 8px 16px; }
+    #record-f0-review .rf-appbar strong { font-size: 1.125em; font-weight: 600; }
+    #record-f0-review .rf-appbar button { min-width: 48px; padding-inline: 6px; }
+    #record-f0-review .rf-body { padding: 12px 20px 24px; min-height: 510px; }
+    #record-f0-review h1 { font-size: 1.75em; line-height: 1.25; margin: 8px 0 20px; font-weight: 600; letter-spacing: -.02em; }
+    #record-f0-review h2 { font-size: 1.25em; margin: 24px 0 12px; line-height: 1.4; font-weight: 600; }
+    #record-f0-review h3 { font-size: 1em; margin: 0 0 6px; font-weight: 600; }
+    #record-f0-review p { margin: 0 0 14px; overflow-wrap: anywhere; }
+    #record-f0-review .rf-muted { color: var(--rf-muted); }
+    #record-f0-review .rf-small { font-size: .875em; }
+    #record-f0-review .rf-stage button { color: var(--rf-ink); background: transparent; font: inherit; font-weight: 500; border: 0; min-height: 48px; padding: 10px 12px; border-radius: 12px; overflow-wrap: anywhere; }
+    #record-f0-review .rf-stage button:hover { background: var(--rf-surface); }
+    #record-f0-review .rf-stage :focus-visible { outline: 2px solid var(--rf-ink); outline-offset: 3px; }
+    #record-f0-review .rf-stage button.rf-primary { background: var(--rf-blue); color: #FFFFFF; }
+    #record-f0-review .rf-stage button.rf-secondary { background: var(--rf-surface); border: 1px solid var(--rf-muted); }
+    #record-f0-review .rf-stage button:disabled { color: var(--rf-muted); background: var(--rf-surface); }
+    #record-f0-review .rf-stack { display: flex; flex-direction: column; gap: 10px; }
+    #record-f0-review .rf-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+    #record-f0-review .rf-actions > button { flex: 1 1 120px; }
+    #record-f0-review .rf-panel { background: var(--rf-surface); border-radius: 16px; padding: 18px; margin: 16px 0; }
+    #record-f0-review .rf-panel > :last-child { margin-bottom: 0; }
+    #record-f0-review .rf-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--rf-line); padding: 14px 0; }
+    #record-f0-review .rf-row:last-child { border-bottom: 0; }
+    #record-f0-review .rf-row > :first-child { flex: 1; min-width: 0; }
+    #record-f0-review .rf-row button { flex: none; }
+    #record-f0-review .rf-row label { display: flex; align-items: center; gap: 12px; }
+    #record-f0-review .rf-row input { width: 22px; height: 22px; accent-color: var(--rf-blue); flex: none; }
+    #record-f0-review .rf-tag { color: #1D1D1F; background: var(--rf-orange); display: inline-block; padding: 4px 9px; border-radius: 8px; font-size: .875em; font-weight: 500; margin-bottom: 10px; }
+    #record-f0-review .rf-tag.rf-saved { background: var(--rf-green); }
+    #record-f0-review .rf-notice { margin: 16px 0; }
+    #record-f0-review .rf-notice p { margin: 3px 0 8px; }
+    #record-f0-review .rf-filters { display: flex; gap: 4px; flex-wrap: wrap; padding-bottom: 4px; }
+    #record-f0-review .rf-filters button[aria-pressed="true"] { color: #FFFFFF; background: var(--rf-blue); }
+    #record-f0-review .rf-date { font-size: .875em; color: var(--rf-muted); margin: 24px 0 6px; }
+    #record-f0-review .rf-entry { display: block; width: 100%; text-align: left; background: var(--rf-surface); border-radius: 16px; margin: 8px 0; padding: 16px; }
+    #record-f0-review button.rf-entry { padding: 16px; background: var(--rf-surface); font-weight: 400; }
+    #record-f0-review .rf-entry-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 8px; font-weight: 600; }
+    #record-f0-review .rf-money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #record-f0-review .rf-amount { font-size: 2.5em; line-height: 1.2; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; margin: 12px 0 22px; }
+    #record-f0-review .rf-field { display: block; margin-bottom: 18px; }
+    #record-f0-review .rf-field > span { display: block; font-size: .875em; color: var(--rf-muted); margin-bottom: 6px; }
+    #record-f0-review .rf-field input, #record-f0-review .rf-field textarea, #record-f0-review .rf-field select { display: block; width: 100%; color: var(--rf-ink); background: var(--rf-surface); font: inherit; line-height: 1.5; border: 1px solid var(--rf-muted); border-radius: 12px; padding: 12px; caret-color: var(--rf-ink); min-height: 48px; }
+    #record-f0-review .rf-field input::placeholder, #record-f0-review .rf-field textarea::placeholder { color: var(--rf-muted); opacity: 1; }
+    #record-f0-review .rf-field textarea { resize: vertical; min-height: 180px; }
+    #record-f0-review .rf-field input.rf-amount-input { font-size: 2.5em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    #record-f0-review .rf-note { line-height: 1.8; white-space: pre-wrap; }
+    #record-f0-review .rf-footer { padding: 16px 20px 22px; border-top: 1px solid var(--rf-line); display: flex; gap: 10px; flex-wrap: wrap; }
+    #record-f0-review .rf-footer button { flex: 1 1 100px; }
+    #record-f0-review .rf-stage button.rf-assistant { position: absolute; right: 12px; bottom: 106px; width: 52px; height: 52px; border-radius: 50%; background: var(--rf-blue); color: #FFFFFF; touch-action: none; display: flex; justify-content: center; align-items: center; gap: 8px; border: 2px solid #FFFFFF; }
+    #record-f0-review button.rf-assistant:hover { background: var(--rf-blue); }
+    #record-f0-review .rf-eye { width: 4px; height: 9px; border-radius: 4px; background: #FFFFFF; }
+    #record-f0-review .rf-message { margin: 20px 0; }
+    #record-f0-review .rf-message.rf-user { margin-left: 30px; background: var(--rf-surface); padding: 14px; border-radius: 16px; }
+    #record-f0-review .rf-link { text-decoration: underline; text-underline-offset: 3px; text-align: left; }
+    #record-f0-review .rf-composer { display: flex; align-items: flex-end; gap: 8px; margin-top: 24px; }
+    #record-f0-review .rf-composer .rf-field { margin: 0; flex: 1; }
+    #record-f0-review .rf-composer textarea { min-height: 76px; }
+    #record-f0-review .rf-sheet { background: var(--rf-surface); margin: 22px -20px -24px; padding: 20px; border-radius: 24px 24px 0 0; }
+    #record-f0-review .rf-sheet .rf-field input, #record-f0-review .rf-sheet .rf-field textarea { background: var(--rf-page); }
+    #record-f0-review .rf-sheet-handle { width: 36px; height: 4px; border-radius: 4px; background: var(--rf-muted); margin: 0 auto 16px; }
+    #record-f0-review .rf-demo-feedback { color: inherit; text-align: center; font-size: 14px; min-height: 24px; padding-top: 14px; }
+    #record-f0-review .rf-palette { display: flex; gap: 10px; align-items: center; justify-content: center; margin: 12px 0; }
+    #record-f0-review .rf-swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--rf-muted); }
+    @media (max-width: 360px) { #record-f0-review .rf-body { padding-inline: 16px; } #record-f0-review .rf-controls { gap: 8px; } #record-f0-review .rf-appbar { padding-inline: 10px; } }
+    @media (prefers-reduced-motion: no-preference) { #record-f0-review .rf-stage button { transition: background-color 180ms ease-out; } }
+  </style>
+  <p class="rf-caption">F0-C1 · 设计候选 · 全部为合成示例，操作不保存真实数据</p>
+  <div class="rf-controls" aria-label="设计审阅控制">
+    <label>主题<select id="rf-theme"><option value="light">浅色</option><option value="dark">深色</option></select></label>
+    <label>页面<select id="rf-page"></select></label>
+    <label>状态<select id="rf-state"></select></label>
+    <label>文字<select id="rf-scale"><option value="normal">标准</option><option value="large">放大 125%</option></select></label>
+    <label>预览宽度<select id="rf-width"><option value="390">390dp</option><option value="320">320dp</option><option value="412">412dp</option></select></label>
+  </div>
+  <div class="rf-stage" id="rf-stage" data-theme="light" data-scale="normal" aria-label="Record 原生界面候选">
+    <div class="rf-statusbar"><span>9:41</span><span>Record</span></div>
+    <div id="rf-screen"></div>
+  </div>
+  <div class="rf-demo-feedback" id="rf-feedback" role="status" aria-live="polite"></div>
+  <script>
+    (() => {
+      const root = document.getElementById('record-f0-review');
+      const stage = root.querySelector('#rf-stage');
+      const screen = root.querySelector('#rf-screen');
+      const pageSelect = root.querySelector('#rf-page');
+      const stateSelect = root.querySelector('#rf-state');
+      const feedback = root.querySelector('#rf-feedback');
+      const pages = {
+        timeline: ['时间线', ['正常','空白','加载中','读取失败','翻页失败']],
+        finance: ['记账 / 编辑', ['正常','校验失败','发现草稿','草稿保存失败','离开确认','保存中','保存失败','结果未知','版本冲突']],
+        detail: ['收支详情', ['正常','读取失败']],
+        note: ['笔记阅读', ['正常','关联只读预览','删除确认','删除中','删除失败','已删除']],
+        editor: ['笔记编辑', ['已保存','尚未保存','保存中','保存失败','清空正文','版本冲突','离开确认']],
+        links: ['双向关联', ['正常','无候选','加载中','读取失败','保存中','版本冲突','离开确认']],
+        ai: ['AI 聊天面板', ['待确认','回答','导航','待补充','处理中','请求失败','已中断','未启用','缺凭据','授权撤销']],
+        proposal: ['原生提案确认', ['待确认','编辑提案','原生草稿冲突','提交中','结果未知','版本冲突','已保存']],
+        settings: ['设置', ['正常','AI 已关闭','缺凭据']],
+        authorization: ['Provider 授权', ['未授权','凭据配置','凭据不可用']],
+        history: ['会话历史', ['正常','空白','删除确认','待核查提交']],
+        backup: ['完整备份 / 恢复', ['正常','导出确认','导出中','导出失败','校验中','恢复确认','恢复中','恢复失败','恢复后']],
+        deleted: ['已删除笔记', ['正常','空白','只读预览','恢复中','恢复失败']]
+      };
+      let current = 'timeline';
+      let selectedState = '正常';
+      let filter = '全部';
+      let assistantVisible = true;
+      let navStack = [];
+      let financeDirty = false;
+      let linkDirty = false;
+      let financeBuffer = { amount:'58.00', time:'2026-10-24T12:30', memo:'午饭', category:'餐饮', direction:'支出' };
+      let linkSelection = [true,false];
+      const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const action = (text, name, kind = '') => `<button type="button" class="${kind}" data-action="${name}">${text}</button>`;
+      const tag = (text, saved = false) => `<span class="rf-tag${saved ? ' rf-saved' : ''}">${text}</span>`;
+      const notice = (title, text, buttons = '') => `<div class="rf-notice" role="status">${tag(title)}<p>${text}</p>${buttons}</div>`;
+      const field = (label, content) => `<label class="rf-field"><span>${label}</span>${content}</label>`;
+      const row = (label, content) => `<div class="rf-row"><div>${label}</div>${content}</div>`;
+      const actions = content => `<div class="rf-actions">${content}</div>`;
+      const record = (title, amount, extra, target) => `<button type="button" class="rf-entry" data-action="${target}"><span class="rf-entry-top"><span>${title}</span><span class="rf-money">${amount}</span></span><span class="rf-muted rf-small">${extra}</span></button>`;
+      const noteBody = '和同学讨论课程项目。\n\n午饭时确定了分工：先把记录与关联做好，再逐步接入 AI。\n\n先完成一件具体的事。';
+      let noteBuffer = noteBody;
+      let proposalBuffer = '和同学讨论课程项目。';
+      let proposalRevision = 3;
+      function header(title, right = action('设置','settings')) {
+        return `<div class="rf-appbar">${current === 'timeline' ? '<strong>记录</strong>' : action('返回','back')}${current === 'timeline' ? action('10月24日','date','rf-link') : `<strong>${title}</strong>`}${right}</div>`;
+      }
+      function nav(page, state) {
+        if (pages[page]) {
+          navStack.push([current, selectedState]);
+          current = page;
+          selectedState = state || pages[page][1][0];
+          sync();
+        }
+      }
+      function sync() {
+        pageSelect.value = current;
+        stateSelect.replaceChildren(...pages[current][1].map(value => new Option(value,value)));
+        stateSelect.value = selectedState;
+        render();
+      }
+      function render() {
+        let title = pages[current][0], body = '', footer = '', right = action('首页','home');
+        const s = selectedState;
+        if (current === 'timeline') {
+          right = action('设置','settings');
+          body = `<div class="rf-filters" aria-label="记录类型">${['全部','收支','笔记'].map(f => `<button type="button" data-filter="${f}" aria-pressed="${filter === f}">${f}</button>`).join('')}</div>`;
+          if (s === '空白') body += '<div class="rf-panel"><h2>还没有记录</h2><p class="rf-muted">记下一笔收支，或写下此刻的想法。</p></div>';
+          else if (s === '加载中') body += '<p role="status">正在加载记录…</p>';
+          else if (s === '读取失败') body += notice('记录加载失败','已有数据未被更改。请重试读取。',action('重试读取','retry','rf-secondary'));
+          else {
+            body += '<p class="rf-date">今天 · 10月24日</p>';
+            if (filter !== '笔记') body += record('支出 · 午饭','−¥58.00','12:30 · 餐饮 · 关联 1 篇笔记','detail');
+            if (filter !== '收支') body += record('笔记','','12:20 · 和同学讨论课程项目。 · 关联 1 笔收支','note');
+            if (filter !== '笔记') body += '<p class="rf-date">昨天 · 10月23日</p>' + record('收入 · 兼职','+¥200.00','18:00 · 未分类','detail');
+            if (s === '翻页失败') body += notice('更多记录加载失败','当前列表已保留。',action('重试加载更多','retry','rf-secondary'));
+          }
+          body += `<p class="rf-muted rf-small">按发生时间排列</p>${assistantVisible ? '' : action('显示助手','show-assistant','rf-link')}`;
+          footer = action('记账','finance','rf-primary') + action('写笔记','editor','rf-secondary');
+        }
+        if (current === 'finance') {
+          title = '记一笔';
+          body = `<div class="rf-filters" aria-label="收支方向">${['支出','收入'].map(d => `<button type="button" data-direction="${d}" aria-pressed="${financeBuffer.direction === d}">${d}</button>`).join('')}</div>`;
+          if (s === '发现草稿') body += notice('有一份未完成的草稿','支出 ¥58.00 · 午饭。草稿尚未成为正式记录。',actions(action('继续草稿','continue-draft','rf-primary')+action('放弃草稿','discard-draft','rf-secondary')));
+          body += field('金额 · CNY',`<input aria-label="金额" data-finance-field="amount" class="rf-amount-input" inputmode="decimal" value="${s === '校验失败' ? '58.001' : escape(financeBuffer.amount)}">`);
+          if (s === '校验失败') body += '<p role="alert">金额最多保留两位小数，请修改后保存。</p>';
+          body += field('发生时间',`<input data-finance-field="time" type="datetime-local" value="${escape(financeBuffer.time)}">`) + field('账户','<select><option>默认账户</option></select>') + field('分类 · 可不选',`<select data-finance-field="category">${['餐饮','未分类'].map(c => `<option${financeBuffer.category === c ? ' selected' : ''}>${c}</option>`).join('')}</select>`) + field('说明',`<input data-finance-field="memo" value="${escape(financeBuffer.memo)}">`);
+          if (s === '草稿保存失败') body += notice('草稿尚未保存','输入仍在当前页面。请重试，或继续编辑。',action('重试保留草稿','retry','rf-secondary'));
+          if (s === '保存失败') body += notice('保存失败','输入已保留，正式记录未被改动。',action('重试保存','save-finance','rf-secondary'));
+          if (s === '版本冲突') body += notice('记录已变化','本地输入已保留。请查看最新记录，重新审核后再保存。',action('查看最新记录','detail','rf-secondary'));
+          if (s === '结果未知') body += notice('正在核查保存结果','保存回执未到达，请先核查同一记录。不要重复新建。');
+          if (s === '离开确认') body += `<div class="rf-sheet">${tag('有尚未完成的输入')}<p>请选择如何处理这份记账草稿。</p><div class="rf-stack">${action('继续编辑','continue-finance','rf-primary')}${action('保留草稿并离开','leave-with-draft','rf-secondary')}${action('放弃输入','leave-without-draft','rf-secondary')}</div></div>`;
+          const locked = s === '保存中' || s === '结果未知' || s === '版本冲突';
+          body += actions(`<button type="button" class="rf-primary" data-action="save-finance" ${locked ? 'disabled' : ''}>${s === '保存中' ? '正在保存…' : s === '结果未知' ? '正在核查…' : '保存记录'}</button>`);
+        }
+        if (current === 'detail') {
+          title = '收支详情'; right = action('编辑','finance');
+          body = s === '读取失败' ? notice('详情加载失败','请重试，不会打开空编辑器。',action('重试读取','retry','rf-secondary')) : `<p class="rf-muted">支出</p><div class="rf-amount">¥58.00</div><div class="rf-panel">${row('发生时间','<span>10月24日 12:30</span>')}${row('账户','<span>默认账户</span>')}${row('分类','<span>餐饮</span>')}${row('说明','<span>午饭</span>')}</div><h2>关联笔记</h2>${record('和同学讨论课程项目','','10月24日 12:20','note')}${action('管理关联','links','rf-link')}`;
+        }
+        if (current === 'note') {
+          title = '笔记'; right = action('编辑','editor');
+          body = `<p class="rf-muted rf-small">10月24日 12:20</p><p class="rf-note">${noteBody}</p><h2>关联收支</h2>${record('支出 · 午饭','−¥58.00','10月24日 12:30','detail')}${action('管理关联','links','rf-link')}${actions(action('更多：删除笔记','delete-confirm','rf-secondary'))}`;
+          if (s === '删除确认') body += `<div class="rf-sheet">${tag('删除笔记')}<p>笔记将从时间线及关联列表隐藏，可在已删除笔记中恢复。</p>${actions(action('取消','cancel-delete','rf-secondary')+action('删除笔记','delete-note','rf-primary'))}</div>`;
+          if (s === '删除中') body = '<p role="status">正在删除笔记…</p><p class="rf-muted">请等待提交结果。</p>';
+          if (s === '删除失败') body += notice('删除失败','笔记正文和关联均保持原状。',action('重试删除','delete-confirm','rf-secondary'));
+          if (s === '已删除') { right = action('首页','home'); body = notice('笔记已删除','正文与原关联仍保留，可从专用入口恢复。',action('查看已删除笔记','deleted','rf-secondary')); }
+          if (s === '关联只读预览') { right='';body=`${tag('关联选择中的只读预览')}<p class="rf-muted rf-small">返回后保留未提交勾选。</p><p class="rf-note">${noteBody}</p>${action('返回选择','back','rf-secondary')}`; }
+        }
+        if (current === 'editor') {
+          title = '编辑笔记'; right = action('完成编辑','complete-note');
+          body = `<p class="rf-muted rf-small">10月24日 12:20</p>${s === '已保存' ? tag('已保存',true) : tag(s === '保存中' ? '正在保存' : s === '清空正文' ? '正文不能为空' : s)}${field('正文',`<textarea aria-label="笔记正文" placeholder="写下此刻的想法">${s === '清空正文' ? '' : escape(noteBuffer)}</textarea>`)}`;
+          if (s === '保存失败') body += notice('保存失败，输入仍保留','可以继续编辑或重试最新文本。',actions(action('重试保存','retry-note','rf-primary')+action('放弃未保存修改并离开','discard-note','rf-secondary')));
+          if (s === '清空正文') body += '<p role="alert">正文不能为空，原记录尚未改动。</p>' + action('恢复上次正文','retry-note','rf-secondary');
+          if (s === '版本冲突') body += notice('笔记已有更新','本地文本已保留。查看最新内容后重新审核，不自动覆盖。',action('查看最新内容','latest-note','rf-secondary'));
+          if (s === '离开确认') body += `<div class="rf-sheet">${tag('正文尚未确认保存')}<p>未保存的修改只保留在当前编辑页。</p><div class="rf-stack">${action('继续编辑','continue-note','rf-primary')}${action('重试保存','retry-note','rf-secondary')}${action('放弃未保存修改并离开','discard-note','rf-secondary')}</div></div>`;
+        }
+        if (current === 'links') {
+          title = '管理关联';
+          body = '<h1>关联笔记</h1><p class="rf-muted">更改尚未保存。保存后统一更新关联。</p>';
+          if (s === '无候选') body += '<p>暂无可关联的笔记。</p>';
+          else if (s === '加载中') body += '<p role="status">正在加载可选笔记…</p>';
+          else if (s === '读取失败') body += notice('候选加载失败','保留当前未提交的选择。',action('重新加载','retry','rf-secondary'));
+          else body += `<div class="rf-panel">${row(`<label><input type="checkbox" data-link-index="0" ${linkSelection[0] ? 'checked' : ''}><span>和同学讨论课程项目<br><span class="rf-muted rf-small">今天 12:20</span></span></label>`,action('查看','preview-linked-note'))}${row(`<label><input type="checkbox" data-link-index="1" ${linkSelection[1] ? 'checked' : ''}><span>下周的计划<br><span class="rf-muted rf-small">昨天 20:10</span></span></label>`,action('查看','preview-linked-note'))}</div>`;
+          if (s === '版本冲突') body += notice('记录已变化','本次关联未保存，选择已保留。请重新加载后确认。',action('重新加载','retry','rf-secondary'));
+          if (s === '离开确认') body += `<div class="rf-sheet">${tag('关联更改尚未保存')}<div class="rf-stack">${action('继续选择','continue-links','rf-primary')}${action('放弃本次更改','discard-links','rf-secondary')}</div></div>`;
+          body += actions(`<button type="button" class="rf-primary" data-action="save-links" ${['保存中','加载中','读取失败','版本冲突','无候选'].includes(s) ? 'disabled' : ''}>${s === '保存中' ? '正在保存…' : '保存关联'}</button>`);
+        }
+        if (current === 'ai') {
+          title = 'AI 助手'; right = action('收起','home');
+          body = `<p class="rf-muted rf-small">今天的记录</p>${action('会话历史','history','rf-link')}<div class="rf-sheet"><div class="rf-sheet-handle"></div><div class="rf-message rf-user">记一笔午饭 58 元，顺便把刚才的想法关联上。</div>`;
+          if (s === '待确认') body += `<div class="rf-message"><p>提案已准备好，请检查具体内容。</p>${tag('待确认，尚未写入记录')}${actions(action('检查提案','proposal','rf-primary'))}</div>`;
+          if (s === '回答') body += `<div class="rf-message"><p>在这两条示例记录中，午饭支出为 ¥58.00，关联了课程项目讨论笔记。</p>${action('查看午饭记录','detail','rf-link')}<p class="rf-muted rf-small">覆盖范围：本次读取的 2 条记录。</p></div>`;
+          if (s === '导航') body += `<p>找到这条午饭记录。</p>${action('查看这条记录','detail','rf-primary')}`;
+          if (s === '待补充') body += '<p>这笔午饭发生在今天，还是其他日期？</p>';
+          if (s === '处理中') body += `<p role="status">正在处理你的请求…</p>${action('停止生成','stop-run','rf-secondary')}`;
+          if (s === '请求失败') body += notice('请求失败','输入和已完成历史仍保留。你可以主动重试。',action('重试请求','retry','rf-secondary'));
+          if (s === '已中断') body += notice('本次请求已中断','未自动继续生成，未自动提交任何提案。',action('重新发送','retry','rf-secondary'));
+          if (['未启用','授权撤销'].includes(s)) body += notice(s === '未启用' ? 'AI 尚未启用' : '授权已撤销','原生记录与本地历史仍可使用。',action('查看启用说明','authorization','rf-primary'));
+          if (s === '缺凭据') body += notice('需要配置 API Key','不会自动删除凭据或改变 AI 模式。',action('配置凭据','credentials','rf-primary'));
+          body += `<div class="rf-composer">${field('消息','<textarea placeholder="告诉我你想记录什么"></textarea>')}<button type="button" class="rf-primary" data-action="send-message" ${['处理中','未启用','缺凭据','授权撤销'].includes(s) ? 'disabled' : ''}>发送</button></div>${action('隐藏助手','hide-assistant','rf-link')}</div>`;
+        }
+        if (current === 'proposal') {
+          title = '检查提案';
+          body = `${tag(s === '已保存' ? '已保存' : '待确认，尚未写入记录',s === '已保存')}<p class="rf-muted rf-small">提案 revision ${proposalRevision}</p><h2>新增支出</h2><div class="rf-amount">¥58.00</div><p>今天 12:30 · 默认账户 · 餐饮<br>说明：午饭</p><h2>新增笔记</h2><p class="rf-note">${escape(proposalBuffer)}</p><h2>建立关联</h2><p>将这笔支出与新笔记关联。</p>`;
+          if (s === '编辑提案') body += `${tag('仅编辑提案，不自动保存笔记')}${field('提案笔记正文',`<textarea data-proposal-field>${escape(proposalBuffer)}</textarea>`)}${action('保存提案修订','revise-proposal','rf-primary')}`;
+          if (s === '原生草稿冲突') body += notice('有一份原生记账草稿','处理提案不会自动覆盖草稿。',`<div class="rf-stack">${action('继续原生草稿','finance','rf-secondary')}${action('保留原生草稿并处理提案','keep-draft','rf-primary')}${action('放弃原生草稿后处理提案','discard-native-draft','rf-secondary')}</div>`);
+          if (s === '结果未知') body += notice('正在核查提交结果','请等待同一 operation 的持久结果，不要重复创建。');
+          if (s === '版本冲突') body += notice('目标记录已变化','未按旧版本写入，提案已保留。请重新审核。',action('查看最新记录','detail','rf-secondary'));
+          if (s === '已保存') body += '<p>记录已保存，关联已建立。</p>' + action('查看记录','detail','rf-primary');
+          else if (!['原生草稿冲突','编辑提案'].includes(s)) body += actions(action('编辑提案','edit-proposal','rf-secondary') + `<button type="button" class="rf-primary" data-action="confirm-proposal" ${['提交中','结果未知','版本冲突'].includes(s) ? 'disabled' : ''}>${s === '提交中' ? '正在保存…' : s === '结果未知' ? '正在核查…' : '确认并保存'}</button>`);
+        }
+        if (current === 'settings') {
+          title = '设置';
+          body = `<h1>设置</h1><h2>外观</h2>${field('主题','<select data-theme-control><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>')}<h2>AI 助手</h2><div class="rf-panel">${row('AI 模式',`<span>${s === 'AI 已关闭' ? '无 AI' : '完整 AI'}</span>`)}${row('Provider 与授权',action('查看','authorization'))}${row('API Key',action(s === '缺凭据' ? '待配置' : '管理','credentials'))}</div><p class="rf-muted rf-small">关闭 AI 后，原生记录与本地历史仍可使用。</p><div class="rf-stack">${action('切换为无 AI','disable-ai','rf-secondary')}${action('会话历史','history','rf-secondary')}${action('数据与备份','backup','rf-secondary')}</div>`;
+        }
+        if (current === 'authorization') {
+          title = s === '未授权' ? '启用 AI' : '配置凭据';
+          body = '<h1>由你决定启用 AI</h1><h2>DeepSeek</h2><p class="rf-muted">接收方：DeepSeek API<br>api.deepseek.com</p><p>你主动发起任务时，按需发送正常可见记录和必要历史，用于处理当前请求。</p><p>不会默认上传整库，也不会在后台扫描。关闭后停止新的请求，已发送的数据无法收回。</p>';
+          if (s === '未授权') body += actions(action('暂不启用','home','rf-secondary')+action('同意并启用','grant-ai','rf-primary'));
+          else body += `${field('API Key','<input type="password" placeholder="在设备中配置，审阅稿不接收真实 Key" autocomplete="off" autocapitalize="none" spellcheck="false">')}<p class="rf-muted rf-small">请勿在此设计稿中输入真实 Key。正式 App 使用 Keystore 保护凭据，不写入聊天或备份。</p>${s === '凭据不可用' ? notice('凭据不可用','请重新配置凭据。原生记录与历史仍可使用。') : ''}${action('保存凭据','save-credential','rf-primary')}`;
+        }
+        if (current === 'history') {
+          title = '会话历史';
+          body = s === '空白' ? '<h1>还没有会话</h1><p class="rf-muted">启用 AI 后，由你主动发起第一次对话。</p>' : `<h1>会话历史</h1>${record('今天的记录','','10月24日 12:35 · 有一份待确认提案','ai')}${record('课程项目整理','','10月23日 20:10 · 已中断','ai')}${action('删除当前会话','delete-session','rf-secondary')}`;
+          if (s === '删除确认') body += `<div class="rf-sheet">${tag('删除会话')}<p>将停止当前请求，删除可见聊天及未确认提案。已保存的收支和笔记会保留。</p><p class="rf-muted rf-small">已确认提交所需的必要核查依据继续保留。</p>${actions(action('取消','cancel-session-delete','rf-secondary')+action('删除会话','confirm-session-delete','rf-primary'))}</div>`;
+          if (s === '待核查提交') body += notice('请先核查提交结果','当前有待核查的已确认提交，暂不能安全删除此会话。',action('核查提交','unknown-proposal','rf-secondary'));
+        }
+        if (current === 'backup') {
+          title = '数据与备份'; body = '<h1>数据与备份</h1>';
+          if (s === '正常') body += `<div class="rf-stack">${action('导出完整备份','export-confirm','rf-primary')}${action('从备份恢复','restore-check','rf-secondary')}${action('已删除笔记','deleted','rf-secondary')}</div><h2>完整保留记录的关系</h2><p class="rf-muted">备份包含收支、笔记、已删除笔记、关联和 AI 对话，不包含 API Key 或有效授权。</p>`;
+          if (s === '导出确认') body += `${tag('备份 ZIP 未加密')}<p>包含私人笔记、已删除记录、隐藏关系及 AI 对话，请保存在可信位置。</p><p class="rf-muted">有未完成草稿时，须按最终备份协议先处理，不能静默当作正式记录。</p>${action('选择导出位置','export-start','rf-primary')}`;
+          if (s === '导出中') body += '<p role="status">正在导出并校验备份…</p><p class="rf-muted">完整写入并回读校验后才会提示成功。</p>' + action('取消导出','cancel-export','rf-secondary');
+          if (s === '导出失败') body += notice('备份未完成','文件写入或校验失败。原数据未改变，不应使用未完成的备份。',action('重新导出','export-confirm','rf-primary'));
+          if (s === '校验中') body += '<p role="status">正在校验所选备份…</p><p class="rf-muted">校验完成并经你确认后才会替换当前数据。</p>' + action('取消校验','cancel-restore','rf-secondary');
+          if (s === '恢复确认') body += `${tag('将整体替换当前数据')}<h2>已验证的候选备份</h2><div class="rf-panel">${row('收支','<span>12 条</span>')}${row('正常笔记','<span>5 篇</span>')}${row('已删除笔记','<span>1 篇</span>')}${row('AI 会话','<span>2 个</span>')}</div><p>取消不会改变当前数据。确认后按恢复协议切换到这份备份，不能合并恢复。</p>${actions(action('取消','cancel-restore','rf-secondary')+action('确认整体替换','restore-start','rf-primary'))}`;
+          if (s === '恢复中') body += notice('正在恢复数据','当前处于不可中断的切换阶段，请等待结果。返回与重复确认暂不可用。');
+          if (s === '恢复失败') body += notice('恢复未完成','此示例展示已安全回到完整原数据的状态。请重新选择并校验备份。',action('重新选择备份','restore-check','rf-primary'));
+          if (s === '恢复后') body += `${tag('恢复结果已核查',true)}<p>历史记录可以阅读，AI 需要重新授权并配置凭据。</p><p class="rf-muted">旧请求不会继续，旧待处理提交不会自动执行，提案须重新审核。</p>${action('查看记录','home','rf-primary')}`;
+        }
+        if (current === 'deleted') {
+          title = '已删除笔记';
+          if (s === '空白') body = '<h1>没有已删除的笔记</h1><p class="rf-muted">删除的笔记会保留在这里，供你恢复。</p>';
+          else if (s === '正常') body = `<h1>已删除笔记</h1>${record('课程项目讨论','','原日期 10月24日 · 删除于今天 13:10','deleted-preview')}`;
+          else body = `<p class="rf-muted rf-small">原日期：10月24日 12:20<br>删除时间：10月24日 13:10</p>${tag('只读预览')}<p class="rf-note">${noteBody}</p><p class="rf-muted">恢复后保留原发生时间与原关联。</p>${s === '恢复失败' ? notice('恢复失败','笔记仍在已删除列表，正文和原关联未改变。') : ''}<button type="button" class="rf-primary" data-action="restore-note" ${s === '恢复中' ? 'disabled' : ''}>${s === '恢复中' ? '正在恢复…' : '恢复笔记'}</button>`;
+        }
+        screen.innerHTML = `${header(title,right)}<main class="rf-body">${body}</main>${footer ? `<div class="rf-footer">${footer}</div>` : ''}`;
+        const locked = ['保存中','结果未知','提交中','删除中','恢复中'].includes(s);
+        if (locked) {
+          screen.querySelectorAll('button,input,textarea,select').forEach(el => { el.disabled = true; });
+        }
+        if (assistantVisible && ['timeline','detail','note','editor','links','finance'].includes(current) && !locked && !(current === 'note' && s !== '正常')) {
+          screen.insertAdjacentHTML('beforeend','<button type="button" class="rf-assistant" aria-label="打开 AI 助手，可拖动贴边" data-action="ai"><span class="rf-eye"></span><span class="rf-eye"></span></button>');
+          wireDrag(screen.querySelector('.rf-assistant'));
+        }
+        const themeControl = screen.querySelector('[data-theme-control]');
+        if (themeControl) themeControl.value = stage.dataset.theme;
+      }
+      let dragSuppress = false;
+      function wireDrag(button) {
+        let start = null;
+        button.addEventListener('pointerdown',e => {
+          const a = button.getBoundingClientRect(), b = stage.getBoundingClientRect();
+          start = {x:e.clientX,y:e.clientY,left:a.left-b.left,top:a.top-b.top,moved:false};
+          button.setPointerCapture(e.pointerId);
+        });
+        button.addEventListener('pointermove',e => {
+          if (!start) return;
+          const dx = e.clientX-start.x, dy = e.clientY-start.y;
+          if (Math.abs(dx)+Math.abs(dy)>6) start.moved = true;
+          if (!start.moved) return;
+          button.style.left = Math.max(8,Math.min(stage.clientWidth-60,start.left+dx))+'px';
+          button.style.top = Math.max(100,Math.min(stage.clientHeight-170,start.top+dy))+'px';
+          button.style.right = 'auto'; button.style.bottom = 'auto';
+        });
+        button.addEventListener('pointerup',() => {
+          if (start && start.moved) {
+            dragSuppress = true;
+            button.style.left = button.offsetLeft < stage.clientWidth/2 ? '8px' : (stage.clientWidth-60)+'px';
+            feedback.textContent = '角色贴边位置演示，未写入设备设置。';
+          }
+          start = null;
+        });
+        button.addEventListener('pointercancel',() => { start = null; });
+      }
+      function setState(value) { selectedState = value; sync(); }
+      root.addEventListener('click',e => {
+        const b = e.target.closest('button');
+        if (!b || !root.contains(b) || b.disabled) return;
+        if (dragSuppress) { dragSuppress = false; return; }
+        if (b.dataset.filter) { filter = b.dataset.filter; render(); return; }
+        if (b.dataset.direction) {
+          financeBuffer.direction=b.dataset.direction; financeDirty=true;
+          b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed',String(x === b)));
+          return;
+        }
+        const a = b.dataset.action;
+        if (pages[a]) { nav(a); return; }
+        const routes = {
+          credentials:['authorization','凭据配置'], 'deleted-preview':['deleted','只读预览'],
+          'preview-linked-note':['note','关联只读预览'],
+          'unknown-proposal':['proposal','结果未知']
+        };
+        if (routes[a]) { nav(...routes[a]); return; }
+        if (a === 'home' || a === 'back') {
+          if (current === 'finance' && financeDirty) { setState('离开确认'); return; }
+          if (current === 'editor' && selectedState !== '已保存') { setState('离开确认'); return; }
+          if (current === 'links' && linkDirty) { setState('离开确认'); return; }
+          if (a === 'home') nav('timeline');
+          else { const old = navStack.pop(); if (old) { [current,selectedState]=old; sync(); } else nav('timeline'); }
+          return;
+        }
+        if (a === 'date') { feedback.textContent='日期选择候选：原生日期选择器，选择后定位连续时间线。'; return; }
+        if (a === 'retry') { setState(pages[current][1][0]); return; }
+        if (a === 'save-finance') {
+          if (!/^\d+(?:\.\d{1,2})?$/.test(financeBuffer.amount)) { setState('校验失败'); return; }
+          const [whole, fraction = ''] = financeBuffer.amount.split('.');
+          const minor = BigInt(whole) * 100n + BigInt(fraction.padEnd(2,'0'));
+          if (minor <= 0n || minor > 9223372036854775807n) { setState('校验失败'); return; }
+          financeDirty=false; feedback.textContent='仅演示：保存后进入同一记录详情，未保存真实数据。'; nav('detail'); return;
+        }
+        if (a === 'continue-finance') { setState('正常'); return; }
+        if (a === 'leave-with-draft') { financeDirty=false; feedback.textContent='仅演示草稿已保留后的返回，未写入设备。'; nav('timeline'); return; }
+        if (a === 'leave-without-draft') { financeDirty=false; nav('timeline'); return; }
+        if (a === 'continue-draft') { setState('正常'); return; }
+        if (a === 'discard-draft') { feedback.textContent='仅演示：显式放弃草稿，未删除真实数据。'; setState('正常'); return; }
+        if (a === 'delete-confirm') { setState('删除确认'); return; }
+        if (a === 'cancel-delete') { setState('正常'); return; }
+        if (a === 'delete-note') { setState('已删除'); feedback.textContent='仅演示删除后的界面，未删除真实笔记。'; return; }
+        if (a === 'retry-note') { if (!noteBuffer.trim()) {setState('清空正文');return;} setState('已保存'); return; }
+        if (a === 'continue-note') { setState('尚未保存'); return; }
+        if (a === 'complete-note') {
+          if (selectedState !== '已保存') { setState('离开确认'); return; }
+          nav('note'); return;
+        }
+        if (a === 'latest-note') { feedback.textContent='仅演示：本地文本仍保留，最新内容须从只读视图核对后重新确认。'; return; }
+        if (a === 'discard-note') { noteBuffer=noteBody; nav('note'); return; }
+        if (a === 'save-links') { linkDirty=false; feedback.textContent='仅演示关联保存后的详情，未修改真实关系。'; nav('detail'); return; }
+        if (a === 'continue-links') { setState('正常'); return; }
+        if (a === 'discard-links') { linkDirty=false;linkSelection=[true,false];nav('detail');return; }
+        if (a === 'stop-run') { setState('已中断'); return; }
+        if (a === 'send-message') { setState('处理中'); return; }
+        if (a === 'hide-assistant') { assistantVisible=false; nav('timeline'); return; }
+        if (a === 'show-assistant') { assistantVisible=true; render(); return; }
+        if (a === 'edit-proposal') { setState('编辑提案'); return; }
+        if (['keep-draft','discard-native-draft'].includes(a)) { setState('待确认'); return; }
+        if (a === 'revise-proposal') {proposalRevision++;setState('待确认');return;}
+        if (a === 'confirm-proposal') { setState('已保存'); feedback.textContent='仅演示 Applied 后的界面，未提交真实业务。'; return; }
+        if (a === 'disable-ai') { setState('AI 已关闭'); return; }
+        if (a === 'grant-ai') { setState('凭据配置'); feedback.textContent='仅演示授权后的配置页，未授予真实 Provider 权限。'; return; }
+        if (a === 'save-credential') { feedback.textContent='审阅稿不保存凭据。请勿输入真实 Key。'; return; }
+        if (a === 'delete-session') { setState('删除确认'); return; }
+        if (a === 'cancel-session-delete') { setState('正常'); return; }
+        if (a === 'confirm-session-delete') { setState('空白'); feedback.textContent='仅演示删除后的会话列表，未删除真实历史。'; return; }
+        const states = {'export-confirm':'导出确认','export-start':'导出中','cancel-export':'正常','restore-check':'校验中','restore-start':'恢复中','cancel-restore':'正常'};
+        if (states[a]) { setState(states[a]); return; }
+        if (a === 'restore-note') { feedback.textContent='仅演示恢复后的同一笔记，未修改真实数据。'; nav('note'); return; }
+      });
+      root.addEventListener('input',e => {
+        if (e.target.dataset.financeField) { financeBuffer[e.target.dataset.financeField]=e.target.value; financeDirty=true; }
+        if (e.target.hasAttribute('data-proposal-field')) proposalBuffer=e.target.value;
+        if (current === 'editor' && e.target.tagName === 'TEXTAREA') {
+          noteBuffer=e.target.value;
+          selectedState='尚未保存'; stateSelect.value=selectedState;
+          const t=screen.querySelector('.rf-tag'); if (t) {t.textContent='尚未保存';t.classList.remove('rf-saved');}
+        }
+      });
+      root.addEventListener('change',e => {
+        if (e.target.hasAttribute('data-link-index')) {linkSelection[Number(e.target.dataset.linkIndex)]=e.target.checked;linkDirty=true;}
+        if (e.target.dataset.financeField) {financeBuffer[e.target.dataset.financeField]=e.target.value;financeDirty=true;}
+        if (e.target.matches('[data-theme-control]')) { const value=e.target.value==='system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : e.target.value; stage.dataset.theme=value; root.querySelector('#rf-theme').value=value; }
+      });
+      Object.entries(pages).forEach(([value,[label]]) => pageSelect.add(new Option(label,value)));
+      pageSelect.addEventListener('change',() => { current=pageSelect.value; selectedState=pages[current][1][0]; navStack=[]; sync(); });
+      stateSelect.addEventListener('change',() => { selectedState=stateSelect.value; render(); });
+      root.querySelector('#rf-theme').addEventListener('change',e => {stage.dataset.theme=e.target.value;render();});
+      root.querySelector('#rf-scale').addEventListener('change',e => {stage.dataset.scale=e.target.value;});
+      root.querySelector('#rf-width').addEventListener('change',e => {stage.style.setProperty('--rf-preview-width',e.target.value+'px');});
+      sync();
+    })();
+  </script>
+</div>

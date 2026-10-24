@@ -1,0 +1,236 @@
+{
+  "version": "F0-C3",
+  "status": "design-accepted-see-plan-28.2",
+  "date": "2026-10-24",
+  "colorScheme": {
+    "light": {
+      "primary": "#171717",
+      "onPrimary": "#FFFFFF",
+      "primaryContainer": "#E5E5DE",
+      "onPrimaryContainer": "#1B1B17",
+      "inversePrimary": "#E4E4DB",
+      "secondary": "#56564F",
+      "onSecondary": "#FFFFFF",
+      "secondaryContainer": "#E5E5DA",
+      "onSecondaryContainer": "#1B1B14",
+      "tertiary": "#BD3B2C",
+      "onTertiary": "#FFFFFF",
+      "tertiaryContainer": "#FFDAD3",
+      "onTertiaryContainer": "#3C0800",
+      "background": "#F7F7F4",
+      "onBackground": "#171717",
+      "surface": "#F7F7F4",
+      "onSurface": "#171717",
+      "surfaceVariant": "#E5E5DE",
+      "onSurfaceVariant": "#474741",
+      "surfaceTint": "#171717",
+      "inverseSurface": "#30302B",
+      "inverseOnSurface": "#F2F2E9",
+      "error": "#B3261E",
+      "onError": "#FFFFFF",
+      "errorContainer": "#F9DEDC",
+      "onErrorContainer": "#410E0B",
+      "outline": "#74746C",
+      "outlineVariant": "#C7C7BD",
+      "scrim": "#000000",
+      "surfaceBright": "#FDFDF8",
+      "surfaceDim": "#DADAD3",
+      "surfaceContainerLowest": "#FFFFFF",
+      "surfaceContainerLow": "#F1F1EB",
+      "surfaceContainer": "#EBEBE4",
+      "surfaceContainerHigh": "#E5E5DE",
+      "surfaceContainerHighest": "#DFDFD7",
+      "primaryFixed": "#E5E5DE",
+      "primaryFixedDim": "#C9C9C0",
+      "onPrimaryFixed": "#171714",
+      "onPrimaryFixedVariant": "#47473F",
+      "secondaryFixed": "#E5E5DA",
+      "secondaryFixedDim": "#C9C9BD",
+      "onSecondaryFixed": "#1B1B14",
+      "onSecondaryFixedVariant": "#47473E",
+      "tertiaryFixed": "#FFDAD3",
+      "tertiaryFixedDim": "#FFB4A5",
+      "onTertiaryFixed": "#3C0800",
+      "onTertiaryFixedVariant": "#7C281B"
+    },
+    "dark": {
+      "primary": "#F3F3EC",
+      "onPrimary": "#171717",
+      "primaryContainer": "#3D3D36",
+      "onPrimaryContainer": "#E6E6DD",
+      "inversePrimary": "#171717",
+      "secondary": "#C8C8BB",
+      "onSecondary": "#2D2D24",
+      "secondaryContainer": "#434339",
+      "onSecondaryContainer": "#E5E5D8",
+      "tertiary": "#FF9C89",
+      "onTertiary": "#5E1508",
+      "tertiaryContainer": "#7D2A1C",
+      "onTertiaryContainer": "#FFDAD3",
+      "background": "#121210",
+      "onBackground": "#F3F3EC",
+      "surface": "#121210",
+      "onSurface": "#F3F3EC",
+      "surfaceVariant": "#47473F",
+      "onSurfaceVariant": "#C8C8BC",
+      "surfaceTint": "#F3F3EC",
+      "inverseSurface": "#E5E5DC",
+      "inverseOnSurface": "#30302B",
+      "error": "#FFB4AB",
+      "onError": "#690005",
+      "errorContainer": "#93000A",
+      "onErrorContainer": "#FFDAD6",
+      "outline": "#949488",
+      "outlineVariant": "#47473E",
+      "scrim": "#000000",
+      "surfaceBright": "#393931",
+      "surfaceDim": "#121210",
+      "surfaceContainerLowest": "#0D0D0B",
+      "surfaceContainerLow": "#1D1D1A",
+      "surfaceContainer": "#23231F",
+      "surfaceContainerHigh": "#2D2D27",
+      "surfaceContainerHighest": "#383831",
+      "primaryFixed": "#E5E5DE",
+      "primaryFixedDim": "#C9C9C0",
+      "onPrimaryFixed": "#171714",
+      "onPrimaryFixedVariant": "#47473F",
+      "secondaryFixed": "#E5E5DA",
+      "secondaryFixedDim": "#C9C9BD",
+      "onSecondaryFixed": "#1B1B14",
+      "onSecondaryFixedVariant": "#47473E",
+      "tertiaryFixed": "#FFDAD3",
+      "tertiaryFixedDim": "#FFB4A5",
+      "onTertiaryFixed": "#3C0800",
+      "onTertiaryFixedVariant": "#7C281B"
+    }
+  },
+  "record": {
+    "light": {
+      "content": "#FFFFFF",
+      "muted": "#5F5F58"
+    },
+    "dark": {
+      "content": "#1D1D1A",
+      "muted": "#BCBCB1"
+    }
+  },
+  "typography": {
+    "brand": {
+      "size": 28,
+      "line": 34,
+      "weight": 750
+    },
+    "homeTitle": {
+      "size": 36,
+      "line": 44,
+      "weight": 750
+    },
+    "homeTitleCompact": {
+      "size": 28,
+      "line": 36,
+      "weight": 750
+    },
+    "moneyLarge": {
+      "size": 44,
+      "line": 52,
+      "weight": 650
+    },
+    "moneyRow": {
+      "size": 26,
+      "line": 32,
+      "weight": 650
+    },
+    "headline": {
+      "size": 24,
+      "line": 32,
+      "weight": 700
+    },
+    "title": {
+      "size": 20,
+      "line": 28,
+      "weight": 650
+    },
+    "body": {
+      "size": 16,
+      "line": 24,
+      "weight": 400
+    },
+    "support": {
+      "size": 14,
+      "line": 20,
+      "weight": 400
+    },
+    "label": {
+      "size": 14,
+      "line": 20,
+      "weight": 600
+    },
+    "micro": {
+      "size": 12,
+      "line": 16,
+      "weight": 500
+    }
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    32,
+    40,
+    48
+  ],
+  "shape": {
+    "none": 0,
+    "small": 4,
+    "button": 6,
+    "input": 8,
+    "receipt": 8,
+    "dialog": 12,
+    "sheet": 20,
+    "capsule": "full"
+  },
+  "elevation": {
+    "content": 0,
+    "action": 1,
+    "dialog": 6,
+    "sheet": 6
+  },
+  "motion": {
+    "press": 100,
+    "effects": 120,
+    "state": 160,
+    "standard": 220,
+    "container": 280,
+    "easing": [
+      0.2,
+      0,
+      0,
+      1
+    ],
+    "spatialSpring": {
+      "dampingRatio": 0.9,
+      "stiffness": 500
+    },
+    "reducedMotion": "instant spatial changes; no loops; essential text retained"
+  },
+  "accessibility": {
+    "minTargetDp": 48,
+    "textContrast": 4.5,
+    "largeTextContrast": 3,
+    "nonTextContrast": 3,
+    "fontScales": [
+      1,
+      1.3,
+      2
+    ],
+    "windowDp": [
+      320,
+      390,
+      600,
+      840
+    ]
+  }
+}

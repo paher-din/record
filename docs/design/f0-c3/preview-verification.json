@@ -1,0 +1,81 @@
+{
+  "version": "F0-C3",
+  "date": "2026-10-24",
+  "scope": "Browser synthetic review only, not Android or business acceptance",
+  "acceptanceFollowup": {
+    "status": "design accepted; see Plan 28.2",
+    "changesAfterBrowserRun": "Only review badge text and token status metadata changed; no layout, interaction or color values changed.",
+    "verification": "Static verification rerun and source hashes refreshed. Existing browser results retained without an unnecessary full rerun."
+  },
+  "command": "npx --yes --package @playwright/cli playwright-cli -s=record-f0-c3 run-code --filename docs/design/f0-c3/verify-preview.js",
+  "initial": {
+    "failures": 44,
+    "flowPassed": 11,
+    "notes": "Fixed actual target sizes, field overflow and large-font layout. Excluded ancestor-hidden controls from visibility inspection. Kept screenshots and console history in local ignored evidence."
+  },
+  "final": {
+    "pages": 12,
+    "scenarios": 85,
+    "rendered": 170,
+    "adaptive": 96,
+    "flow": [
+      {
+        "name": "finance input survives draft leave/return",
+        "pass": true
+      },
+      {
+        "name": "note buffer survives conflict/theme",
+        "pass": true
+      },
+      {
+        "name": "link preview preserves selection",
+        "pass": true
+      },
+      {
+        "name": "clarification uses dialog",
+        "pass": true
+      },
+      {
+        "name": "question does not create workspace chat bubble",
+        "pass": true
+      },
+      {
+        "name": "dismiss preserves original input",
+        "pass": true
+      },
+      {
+        "name": "dismissed question does not reprompt on render",
+        "pass": true
+      },
+      {
+        "name": "choice continues without second confirmation",
+        "pass": true
+      },
+      {
+        "name": "agent has no per-action proposal confirmation",
+        "pass": true
+      },
+      {
+        "name": "destructive restore remains explicit",
+        "pass": true
+      },
+      {
+        "name": "reduced motion stops loop",
+        "pass": true
+      }
+    ],
+    "failures": [],
+    "browserErrors": [],
+    "externalRequests": [],
+    "screenshots": [
+      "record2/build/f0-c3/home-light.png",
+      "record2/build/f0-c3/home-dark.png",
+      "record2/build/f0-c3/finance.png",
+      "record2/build/f0-c3/note-conflict-large.png",
+      "record2/build/f0-c3/authorization.png",
+      "record2/build/f0-c3/restore.png",
+      "record2/build/f0-c3/clarification.png",
+      "record2/build/f0-c3/settings-dark.png"
+    ]
+  }
+}

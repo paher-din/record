@@ -16,7 +16,7 @@ Read [root rules](../AGENTS.md), then the [single R2 Engineering Policy](enginee
 | B3 bidirectional links / hidden relations / versions | [V1 Plan §26](specs/record2/v1/plan.md#26-b3双向关联隐藏关系与版本并发issue-6), including issue #6 scope, selectors, process and failure evidence |
 | Provider authorization / BYOK / Keystore | [V1 Plan §23](specs/record2/v1/plan.md#23-e0-授权凭据与发送接缝), including the controlled receiver identity, initialization ownership, authorization state matrix, actual Keystore/Room/device evidence and remaining D0/D1/F2 responsibilities |
 | Product and acceptance provenance/C1 identity | [Self-contained decision baseline](product/record2-v1-decision-baseline.md) |
-| UI | Spec §5.4 / Plan F0–F2, the owner's relevant design approval |
+| UI | Spec §5.4 / Plan F0–F2；[F0 授权/审阅状态 §28](specs/record2/v1/plan.md#28-f0设计指导与候选审阅issue-15)、[F0-C3 六组完整审阅包](design/record2-f0-c3-review.md)、[执行契约差异](design/record2-f0-c3-contract-delta.md)，以负责人对应组批准为准；旧 C1/C2 保留历史 |
 | Collaboration, task/risk levels, permissions, verification | Engineering Policy; per-task commands/results in the relevant Plan/Verification |
 
 Approval belongs to Spec metadata/Plan approval record, not a duplicated router table. No product task or Spec is activated by adopting governance. Multiple independent Majors are coordinated by write/contract/resource ownership; the router's current focus is not a global lock.

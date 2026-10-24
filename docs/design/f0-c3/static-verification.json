@@ -1,0 +1,322 @@
+{
+  "version": "F0-C3",
+  "status": "PASS",
+  "colorRolesPerTheme": 48,
+  "contrastPairs": [
+    {
+      "theme": "light",
+      "foreground": "onPrimary",
+      "background": "primary",
+      "ratio": 17.928,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onPrimaryContainer",
+      "background": "primaryContainer",
+      "ratio": 13.649,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onSecondary",
+      "background": "secondary",
+      "ratio": 7.395,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onSecondaryContainer",
+      "background": "secondaryContainer",
+      "ratio": 13.64,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onTertiary",
+      "background": "tertiary",
+      "ratio": 5.489,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onTertiaryContainer",
+      "background": "tertiaryContainer",
+      "ratio": 13.222,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onError",
+      "background": "error",
+      "ratio": 6.536,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onErrorContainer",
+      "background": "errorContainer",
+      "ratio": 12.775,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onSurface",
+      "background": "surface",
+      "ratio": 16.703,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onSurfaceVariant",
+      "background": "surfaceVariant",
+      "ratio": 7.39,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "inverseOnSurface",
+      "background": "inverseSurface",
+      "ratio": 11.781,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onPrimaryFixedVariant",
+      "background": "primaryFixedDim",
+      "ratio": 5.622,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onSecondaryFixedVariant",
+      "background": "secondaryFixedDim",
+      "ratio": 5.616,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "onTertiaryFixedVariant",
+      "background": "tertiaryFixedDim",
+      "ratio": 5.663,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "record.muted",
+      "background": "surface",
+      "ratio": 5.994,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "record.muted",
+      "background": "surfaceContainerLowest",
+      "ratio": 6.433,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "record.muted",
+      "background": "surfaceContainerHighest",
+      "ratio": 4.802,
+      "target": 4.5
+    },
+    {
+      "theme": "light",
+      "foreground": "outline",
+      "background": "surface",
+      "ratio": 4.39,
+      "target": 3
+    },
+    {
+      "theme": "dark",
+      "foreground": "onPrimary",
+      "background": "primary",
+      "ratio": 16.086,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onPrimaryContainer",
+      "background": "primaryContainer",
+      "ratio": 8.716,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onSecondary",
+      "background": "secondary",
+      "ratio": 8.222,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onSecondaryContainer",
+      "background": "secondaryContainer",
+      "ratio": 7.87,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onTertiary",
+      "background": "tertiary",
+      "ratio": 6.535,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onTertiaryContainer",
+      "background": "tertiaryContainer",
+      "ratio": 7.307,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onError",
+      "background": "error",
+      "ratio": 7.717,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onErrorContainer",
+      "background": "errorContainer",
+      "ratio": 7.239,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onSurface",
+      "background": "surface",
+      "ratio": 16.828,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onSurfaceVariant",
+      "background": "surfaceVariant",
+      "ratio": 5.553,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "inverseOnSurface",
+      "background": "inverseSurface",
+      "ratio": 10.467,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onPrimaryFixedVariant",
+      "background": "primaryFixedDim",
+      "ratio": 5.622,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onSecondaryFixedVariant",
+      "background": "secondaryFixedDim",
+      "ratio": 5.616,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "onTertiaryFixedVariant",
+      "background": "tertiaryFixedDim",
+      "ratio": 5.663,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "record.muted",
+      "background": "surface",
+      "ratio": 9.794,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "record.muted",
+      "background": "surfaceContainerLowest",
+      "ratio": 10.159,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "record.muted",
+      "background": "surfaceContainerHighest",
+      "ratio": 6.167,
+      "target": 4.5
+    },
+    {
+      "theme": "dark",
+      "foreground": "outline",
+      "background": "surface",
+      "ratio": 6.118,
+      "target": 3
+    }
+  ],
+  "localLinks": 43,
+  "icons": 19,
+  "images": [
+    {
+      "file": "c3-finance.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "d7a1a0bb94bf44daee5358976aba2a5f2cd1c7af492ccb36bb88db7e4610f01f"
+    },
+    {
+      "file": "c3-note.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "4f7ee2c880471056e179ba332e5c276d3d8e8f66188b70f3a8f2e18d299db08f"
+    },
+    {
+      "file": "c3-links.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "d09d2ef57d3106c3b60c08fd94a3ea815223e91b5059b20098ad0736283b4555"
+    },
+    {
+      "file": "c3-settings.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "c69a34a77f1b16202108bf017f79617395bdbce6798461602d783c26f133af88"
+    },
+    {
+      "file": "c3-authorization.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "dccb9b009953a4051ba481cab847b79e4a09e417fc2ec44843fb19e26fdddffa"
+    },
+    {
+      "file": "c3-restore.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "beeddacccf4bad154e2ac03677611ad7c9969383a2f05cefb1eb7ff01d4d00fd"
+    },
+    {
+      "file": "c3-home-dark.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "dd51690ece1d2110514029e2c1f71e9bab802e31281c64ddb3120fe07b7fce8c"
+    },
+    {
+      "file": "c3-links-v2.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "918db5d6937624129c2b3b1db162ebac41ab7cc57184ea304d33590ae647716d"
+    },
+    {
+      "file": "c3-restore-v2.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "19e658d7bee507e86c35ce755c0c1b2a4ef83e4571419d45f39d20be37b87d93"
+    }
+  ],
+  "sourceHashes": {
+    "docs/design/record2-f0-c3-preview.html": "53e3416cc080da13dc40f9434f03528c4b52a58fc08ae229afcafe6d3962bf96",
+    "docs/design/f0-c3/design-tokens.json": "fa3f6c430e5e782606dd2b791ad56997650f1de22e5549d055040ae55e370ca3",
+    "docs/design/f0-c3/verify-preview.js": "699091905bafb23e2ea15c88809b4783f888ea49472dc6e4e019bba047e5d17e"
+  }
+}
