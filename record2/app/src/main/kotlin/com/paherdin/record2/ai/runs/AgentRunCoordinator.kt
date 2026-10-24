@@ -18,6 +18,14 @@ import com.paherdin.record2.ai.security.AiSecurityService
 import com.paherdin.record2.ai.security.AiSendPermit
 import com.paherdin.record2.ai.security.ProviderReceiver
 import com.paherdin.record2.ai.security.RecordProviderReceivers
+import com.paherdin.record2.ai.tools.GuardedHttpClientFactory
+import com.paherdin.record2.ai.tools.RecordToolContext
+import com.paherdin.record2.ai.tools.RecordToolDeps
+import com.paherdin.record2.ai.tools.RecordToolException
+import com.paherdin.record2.ai.tools.RecordToolFailure
+import com.paherdin.record2.ai.tools.RecordToolRegistry
+import com.paherdin.record2.records.FinanceError
+import com.paherdin.record2.records.FinanceException
 import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.AgentHistoryService
@@ -31,6 +39,7 @@ import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.SafeRunErrorCode
 import java.time.Clock
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
@@ -88,6 +97,8 @@ internal class AgentRunCoordinator(
     private val maxAgentIterations: Int = AgentRunDefaults.MAX_AGENT_ITERATIONS,
     private val systemPrompt: String = DeepSeekProtocol.DEFAULT_SYSTEM_PROMPT,
     private val toolRegistry: ToolRegistry = ToolRegistry.EMPTY,
+    /** D1 record tools; when present the per-run registry and the real D1 system prompt take over. */
+    private val recordTools: RecordToolDeps? = null,
     private val httpClientFactory: KoogHttpClient.Factory? = null,
     private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -133,21 +144,41 @@ internal class AgentRunCoordinator(
         }
         var reply: String? = null
         var outcome: RunOutcome? = null
+        // D1: one tool context per run — entry guards, hard budgets and native handoff evidence.
+        // The system prompt is rebuilt per run so the model sees the current local time and the
+        // seeded catalog names; relative time is resolved by the model, tools only take absolutes.
+        val toolContext = recordTools?.let { RecordToolContext(it, permit, start, clock) }
+        val runSystemPrompt = if (recordTools != null) {
+            RecordToolRegistry.systemPrompt(recordTools.finance.initialize(), clock, ZoneId.systemDefault())
+        } else {
+            systemPrompt
+        }
+        val runToolRegistry = toolContext?.let(RecordToolRegistry::forRun) ?: toolRegistry
         try {
             // The plaintext exists only inside the E0 callback: build the client there, clear the
             // array, then run the agent. The client keeps its own copy for the network calls the
-            // same way D0's seam does; mid-run revocation is enforced by the completion
-            // transaction's epoch revalidation, and network cancellation stays with E2.
+            // same way D0's seam does; mid-run revocation is enforced at every request by the
+            // guarded factory plus the completion transaction's epoch revalidation, and network
+            // cancellation stays with E2.
             val client = security.useCredential(permit) { secret ->
+                val baseFactory = httpClientFactory ?: DefaultHttpFactory
                 DeepSeekProtocol.client(
                     apiKey = String(secret),
-                    httpClientFactory = httpClientFactory ?: DefaultHttpFactory,
+                    httpClientFactory = if (toolContext != null) {
+                        GuardedHttpClientFactory(baseFactory, toolContext)
+                    } else {
+                        baseFactory
+                    },
                 )
             }
             val executor = MultiLLMPromptExecutor(LLMProvider.DeepSeek to client)
-            reply = agent(start, executor).run(userText)
+            reply = agent(start, executor, runSystemPrompt, runToolRegistry).run(userText)
             if (reply.isBlank()) fail(AgentRunError.ProviderFailure)
-            val completedOutcome = RunOutcome(resultKind = MessageResultKind.Answer, body = reply)
+            // Classification is deterministic from tool state, never from the model's own claim:
+            // a proposal this run wrote and that is still editable is ProposalReady; unresolved
+            // prepare issues are ClarificationNeeded; tools themselves never commit anything.
+            val completedOutcome = toolContext?.classifyOutcome(reply)
+                ?: RunOutcome(resultKind = MessageResultKind.Answer, body = reply)
             outcome = completedOutcome
             val completion = history.completeRun(
                 runId = start.runId,
@@ -217,11 +248,15 @@ internal class AgentRunCoordinator(
         }
     }
 
-    private fun agent(start: com.paherdin.record2.sessions.RunStartReceipt, executor: PromptExecutor): AIAgent<String, String> {
+    private fun agent(
+        start: com.paherdin.record2.sessions.RunStartReceipt,
+        executor: PromptExecutor,
+        runSystemPrompt: String,
+        runToolRegistry: ToolRegistry,
+    ): AIAgent<String, String> {
         val config = AIAgentConfig(
-            prompt = prompt("record2-e1", params = DeepSeekProtocol.params(thinking = false)) {
-                // D1 owns the real system prompt; the D0 seam default keeps the protocol unchanged.
-                system(systemPrompt)
+            prompt = prompt("record2-agent", params = DeepSeekProtocol.params(thinking = false)) {
+                system(runSystemPrompt)
             },
             model = DeepSeekProtocol.Flash,
             maxAgentIterations = maxAgentIterations,
@@ -229,7 +264,7 @@ internal class AgentRunCoordinator(
         return AIAgent(
             promptExecutor = executor,
             agentConfig = config,
-            toolRegistry = toolRegistry,
+            toolRegistry = runToolRegistry,
         ) {
             install(ChatMemory) {
                 // The provider owns the system message and window: Koog's merge replaces the
@@ -238,7 +273,7 @@ internal class AgentRunCoordinator(
                     history = history,
                     sessionId = start.sessionId,
                     boundarySequence = start.boundarySequence,
-                    systemPrompt = systemPrompt,
+                    systemPrompt = runSystemPrompt,
                     window = historyWindow,
                 )
             }
@@ -264,7 +299,17 @@ internal class AgentRunCoordinator(
 
     private fun safeStartError(error: Exception): AgentRunError = safeRunError(error)
 
-    private fun safeRunError(error: Exception): AgentRunError = when (error) {
+    private fun safeRunError(error: Exception): AgentRunError {
+        // The guarded HTTP client throws inside the LLM client, which may wrap the cause; the tool
+        // failure must survive the wrapping so the run fails with its real code.
+        val toolError = generateSequence<Throwable>(error) { it.cause }.filterIsInstance<RecordToolException>().firstOrNull()
+        if (toolError != null) return toolRunError(toolError)
+        return when (error) {
+        is FinanceException -> when (error.code) {
+            FinanceError.GenerationMismatch -> AgentRunError.RunInvalidated
+            FinanceError.RecoveryRequired -> AgentRunError.Internal
+            else -> AgentRunError.Internal
+        }
         is AiSecurityException -> safeAuthorization(error)
         is com.paherdin.record2.sessions.AgentHistoryException ->
             when (error.code) {
@@ -284,6 +329,16 @@ internal class AgentRunCoordinator(
         is kotlinx.serialization.SerializationException -> AgentRunError.ProviderFailure
         is java.io.IOException -> AgentRunError.RecoverableIO
         else -> AgentRunError.ProviderFailure
+        }
+    }
+
+    private fun toolRunError(error: RecordToolException): AgentRunError = when (error.code) {
+        RecordToolFailure.BudgetExceeded -> AgentRunError.BudgetExceeded
+        RecordToolFailure.AuthorizationRevoked -> AgentRunError.AuthorizationRequired
+        RecordToolFailure.RunInvalidated, RecordToolFailure.GenerationMoved -> AgentRunError.RunInvalidated
+        RecordToolFailure.RecoverableIO -> AgentRunError.RecoverableIO
+        RecordToolFailure.StorageFull -> AgentRunError.StorageFull
+        RecordToolFailure.RecoveryRequired -> AgentRunError.Internal
     }
 
     private fun safeErrorCode(error: Exception): SafeRunErrorCode = when (safeRunError(error)) {

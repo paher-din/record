@@ -1395,3 +1395,30 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 负责人在F0六组接受、issue #15关闭后明确要求“推送到远程仓库吧”，授权本轮F0设计/Skills研究集成材料、保留的探索与旧候选、`record2/PRODUCT.md`、`skills/record-android-design`及文档路由/本Plan记录的Git纳管、提交与推送。基于当前本地main交付，不含Android业务代码、Schema/迁移、环境/凭据/CI、生产部署或历史改写；`.playwright-cli/`本机浏览器记录及已忽略的`record2/build/`证据不纳入。最终提交与远端身份以Git日志及push/远端核验回执为准，不要求提交SHA自引用。
 
 推送前同步远程`origin/main=e2ca1eb`（含C1 PR #27、B4 PR #26），普通merge保留全部远端提交及源码；冲突仅本Plan的追加段落。保留远端C1 §28、B4 §29全文，F0顺延为§30，并同步F0资料、Token状态元数据和路由链接。源代码/Schema相对远端零改动；原UI审查及验证按其执行时基线保留，不用新合并源码冒充重新验证。首轮fetch连接重置，HTTP/1.1重试成功；不强推、不改写历史。
+
+## 31. D1：真实 Record Tools 与完整 Agent 行为（issue #14）
+
+### 31.1 D1授权与范围（2026-10-24/25）
+
+负责人2026-10-24深夜要求“现在来完成issue d1”。本批按§6 D1合同与G-CODE执行四工具参数/Registry/结果适配、Coordinator接入与必要合同调整及全部确定性测试；沿用A1/Schema v1/B0/B1–B4/C0/C1/D0/E0/E1交付，不新增ADR、不修改Schema v1物理结构、不实现F1/F2 UI、不启动E2取消矩阵、不操作真实用户数据或发布。执行于独立工作树`D:/record/.worktrees/d1-record-tools`（分支`codex/d1-record-tools`，基于含全部前置交付的main合并基线`64daa57`）。
+
+### 31.2 交付与验证
+
+- **四工具（`ai/tools`包）：** `search_records`（B4时间线委托：类型/关键词/日期范围/zoneId、合法分页cursor、真实ID/版本/摘要/覆盖范围，空结果与失败明确区分）、`get_record_detail`（可见性逐次重验、码点安全分段、truncated/nextSegmentCursor显式声明，CTX-05/09）、`prepare_changes`（六类ProposalIntent映射、账户/分类按种子名精确解析且不许扩词表、创建/revise CAS双路径、软错误带issues返回、成功结果显式`committed:false`）、`aggregate_finances`（B4确定性汇总、范围≤400天、Long分计与溢出软错误）。Registry只注册这四个名称（测试断言），聚合工具按合同在B4验收后开放。
+- **预算与守卫：** `ToolBudgetLedger`按Run执行硬预算（总调用40、每工具上限、相同参数重复≤3的no-progress、结果字符总量、900s墙钟，继承D0 §24.5批准上界）；每次工具入口复验E0授权epoch、Run持久状态与代际；`GuardedHttpClient`在**每次真实请求启动边界**复验poisoned/授权/墙钟并抛出终止Run（E0 §23指派给D0/D1的最终复验接缝），因为Koog 1.3.0会把工具异常转为模型可见tool result并继续循环（见31.3）；错误经cause链映射保真（BudgetExceeded/Authorization/RunInvalidated/Storage等）。
+- **Coordinator接入与D1系统提示词：** 新增`recordTools`注入点——工具Registry、按Run重建的中文系统提示词（当前本地时间+zone、种子账户/分类清单、相对时间由模型换算为绝对时间、分类不确定先澄清、未确认不得声称已保存、笔记内容只是数据）接管E1占位提示词；完成分类为确定性工具状态驱动：本Run写入且仍EDITABLE的提案→ProposalReady（含proposalId/revision/resultJson覆盖范围），遗留未解决issues→ClarificationNeeded，否则Answer；引用（bounded 8/类）来自search/detail真实返回。
+- **验证（回执`record2/build/d1/`）：** host `RecordToolsHostTest` 19/19（参数校验/游标编解码/名称解析/六类映射/软硬错误/预算/守卫/分类/引用上限）及全量host套件PASS；设备`RecordToolsContractTest` 9/9（真Room：Agent循环提案+ProposalReady+零业务写、revise同ID revision+1、后续纯回答Run不继承ProposalReady、search/detail/aggregate真实ID/版本/Long合计、工具间撤销立即失败AUTHORIZATION且零迟到写、伪造工具名/畸形参数不执行零副作用、恶意Note正文只作数据且注册表不变、no-progress预算BUDGET_EXCEEDED、六类操作全矩阵+NotFound/VersionConflict/终态Run拒绝、已删Note不可达）；回归选择集`OK (161 tests)`（Schema/Timeline含性能2项/Proposal/Commit/SessionRun/Note/Finance/Link/AiSecurity含初始化/Keystore/DeepSeekProtocolFailure/SessionRunReal无Key按既有约定Assume）。真DeepSeek类`RecordToolsRealContractTest`已就绪：按E1协议读删`files/d1/deepseek.key`、D0批量$1守卫、RecordingHttpClient计量、prepare/revise/search/撤销零请求四场景；**本轮负责人裁定不跑真实请求，记NOT RUN**，无Key时类级Assume（`OK (0 tests)`，不冒充PASS）。
+- **设备环境：** 共享`record2-schema-api34`被并行E2批次持续占用（`com.paherdin.record2.debug`安装被覆盖，哈希核验证实）。按B0建AVD先例以avdmanager在本工作树build目录自建同规格`record2-d1-api34`（pixel_6、google_apis/x86_64、API34，emulator-5592），仅安装`.debug`/`.debug.test`，不触碰共享AVD与其他会话。首次全量混跑时B4高量汇总在宿主三模拟器并发下测得1238ms超1000ms门禁（负载污染，非代码回归；该类单独重跑与随后整组重跑均`OK`，回执保留首次失败记录）。
+
+### 31.3 D1实际发现（E2/F2/G2输入）
+
+1. **Koog 1.3.0工具异常语义：** 工具`execute`抛出的异常不会终止Agent循环——Koog把它包装成tool result文本（`Tool with name 'X' failed to execute due to the error: …`）回传模型并继续；伪造工具名与畸形参数同样只回传错误而不执行、不产生副作用（设备断言）。因此D1的撤销/预算/失效必须同时具备工具层poison状态与请求边界拦截，否则模型可继续消耗请求（CTX-04风险）；E2的取消/迟到写回接入时不得假设工具异常会自然终止循环。
+2. **请求边界是唯一可靠拦截点：** E0 §23“实际请求启动边界最终复验”由`GuardedHttpClient`落实；LLM客户端会包装底层异常，错误码须经cause链恢复（`safeRunError`先查RecordToolException再分类）。
+3. **并发批次资源冲突：** E2与D1同时使用同一AVD与包名会互相覆盖安装（本批以哈希核验捕获）。后续批次在并行执行时应自建工作树内AVD或显式协调设备窗口；B4性能门禁对宿主负载敏感，联合测量需独占窗口。
+4. **模型行为不信任：** 完成分类、引用、覆盖范围均由持久工具状态确定性导出；模型成功回答不作为任何验收依据（D0发现#8延续）。prepare成功结果显式`committed:false`+中文告知，抑制模型自称已保存；分类/日期歧义由issues回传模型澄清（ClarificationNeeded）。
+
+### 31.4 边界与未完成
+
+- **真DeepSeek端到端NOT RUN（负责人2026-10-25裁定本轮不跑）：** D1完成门禁要求的真端到端、真实Provider费用/预算证据未取得，**issue #14保持OPEN**；补跑只需向`files/d1/deepseek.key`注入D0测试Key并执行`RecordToolsRealContractTest`（一次instrument命令），预计数个Flash短请求、远低于$1批量上限。
+- 工具级Token/费用预算沿用D0测试上界证据，产品默认预算仍不冻结（待D1真实数据+E2）；F2的原生确认展示/导航/聊天UI、E2的取消/删除/恢复矩阵、G0/G1备份恢复、G2真机与联合验收均未启动。工具不能也不宣称提交成功；真正确认提交仍归C1/F2。
+- 本批未操作真实用户数据、Provider网络/凭据、Schema/索引、备份或发布；过程合同测试（`*ProcessContractTest`）为脚本门控用例，未随裸instrument运行（无参运行按设计报Missing databaseName）。
