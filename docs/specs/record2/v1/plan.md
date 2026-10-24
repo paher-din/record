@@ -1449,3 +1449,16 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - **T0 Rev2 PASS（仅文档）：** 2026-10-25静态检查，修改3份文件（G0设计/ADR 0019/本Plan）；设计/ADR/Plan新增与受影响28个本地链接/锚点全部解析通过；新文档UTF-8无BOM/LF/无行尾空白/围栏成对；内容断言覆盖Rev2四项、§10.4A/B、`GATE_DRAIN_TIMEOUT_MS`/`MAX_EXPORT_WAL_GROWTH_BYTES`/`EXPORT_FREE_RESERVE_BYTES`/`OPEN_READONLY`/`BEGIN DEFERRED`/receipt可检测性表/owner重读。`git diff --check`退出0（仅既有CRLF提示）；`record2/`、`record1/`、Gradle根、Schema源码/生成JSON无tracked diff，Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。未构建/安装Android、未打开数据库、未操作设备/SAF/Provider/网络；G1/G2 NOT RUN。设计自查，无独立Agent审查。
 - **Rev2提交/PR：** 设计提交`e44e9ee9869d992d3c53487cc209be2107a2f6b5`，已推送`codex/g0-backup-restore`并更新[PR #28](https://github.com/paher-din/record/pull/28)；PR head以GitHub当前引用为准。
 - **状态：** 等待负责人对G0-D1～D14及Rev2细化再次明确批准。issue #18保持OPEN；G1/G2 NOT RUN；不合并main、不关闭issue。
+
+### 31.6 PR #28 第二轮审阅修订（Rev2.1，2026-10-25）
+
+负责人第二轮审阅对Rev2给出“有条件通过”：已确认门禁零写入、receipt可检测性、时间对齐和只读导出快照的修订；要求在合并前补两处P1小修订。本轮只改设计文档，不启动G1、不进行数据库/设备测试、不改Schema/Android源码。
+
+| 审阅项 | Rev2.1修订 | 测试契约 |
+|---|---|---|
+| P1 空数据段压缩规则 | §3.1/§6/§7.2明确空段（0行/0字节）必须`STORED`、compressed/uncompressed/CRC均为0，禁止`DEFLATE`空块（标准实现常为2字节）；只有非空段才走DEFLATE/STORED策略。导入端空段非STORED或compressed>0拒绝 | §10.1空段/ZIP压缩行；§10.3 `emptySegmentsUseStoredZeroBytesAndRoundTrip`：新安装多空段导出→导入→再导出；DEFLATE空块/压缩字节不符拒绝且O不变 |
+| P1 authEpoch上限 | §4.3/§8.2/§8.3：目标`ai_control.authEpoch`必须为`0..Long.MAX_VALUE-2`才恢复到`old+1`（≤MAX-1）；旧值为MAX-1/MAX/负值在事务前拒绝（TargetInvalid），禁止恢复写入MAX。旧行缺失→1。既有E0 MAX边界不重设计 | §10.2预检/authEpoch边界行；§10.4A `restoreRefusesAuthEpochAtMaxMinusOneBeforeAnyWrite`与`restoreAuthEpochMaxMinusTwoWritesMaxMinusOneOnly` |
+
+- **范围：** 修改[G0设计](../../../architecture/record2-g0-backup-restore-design.md)、[ADR 0019](../../../architecture/decisions/0019-record2-logical-backup-restore-protocol.md)与本节；G0-D1～D14/总体架构不变；ADR仍为Proposed。无Schema/源码/构建/环境/凭据/CI修改，无数据库/设备/SAF/Provider操作。
+- **T0 Rev2.1 PASS（仅文档）：** 2026-10-25静态检查，修改3份文件（G0设计/ADR 0019/本Plan）；设计/ADR/Plan新增与受影响30个本地链接/锚点全部解析通过；新文档UTF-8无BOM/LF/无行尾空白/围栏成对；内容断言覆盖空段`STORED`/0/0、禁止`DEFLATE`空块、空段往返测试、`authEpoch`上限拒绝及`MAX`不写入测试。`git diff --check`退出0（仅既有CRLF提示）；`record2/`、`record1/`、Gradle根、Schema源码/生成JSON无tracked diff，Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。未构建/安装Android、未打开数据库、未操作设备/SAF/Provider/网络；G1/G2 NOT RUN。设计自查，无独立Agent审查。
+- **状态：** 两处P1修订提交并更新PR #28后，等待负责人最终批准/合并。issue #18保持OPEN；G1/G2 NOT RUN；G1的真实Room/SAF/故障/性能验收仍必须单独完成。
