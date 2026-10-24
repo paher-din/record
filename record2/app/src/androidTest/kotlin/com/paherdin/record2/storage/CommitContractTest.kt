@@ -825,6 +825,38 @@ class CommitContractTest {
         error
     }
 
+    @Test
+    fun mismatchedConfirmationCancelledAtTheReturnBoundaryStaysAMismatch() = runBlocking {
+        val view = proposals.prepare(context, goldenIntents)
+        val commits = service(CommitGolden.ids())
+        commits.confirm(command(view))
+        val settled = snapshot()
+        for (foreign in listOf(command(view, revision = 2), command(view, digest = sha256("other")))) {
+            val dispatcher = HeldDispatcher()
+            val scope = CoroutineScope(dispatcher + Job())
+            val classified = CompletableDeferred<Throwable>()
+            val deferred = scope.async {
+                try {
+                    commits.confirm(foreign)
+                    classified.complete(IllegalStateException("unexpected success"))
+                } catch (error: CommitReceiptLossException) {
+                    classified.complete(error)
+                } catch (error: CommitException) {
+                    classified.complete(error)
+                } catch (error: CancellationException) {
+                    classified.complete(error)
+                } catch (error: Throwable) {
+                    classified.complete(error)
+                }
+            }
+            dispatcher.drain()
+            deferred.cancel()
+            val error = resumeAndObserve(deferred, dispatcher, classified)
+            if (error !is CommitException || error.code != CommitError.ConfirmationMismatch) error("classified as: " + error)
+            assertEquals(settled, snapshot())
+        }
+    }
+
     private fun seededTransactionCount() = snapshot().getValue("record_transaction").size
 
     private fun restoreOperation(row: List<Any?>) = sql(

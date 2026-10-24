@@ -27,8 +27,8 @@ import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
@@ -382,24 +382,48 @@ internal class RoomCommitService(
      * unchanged means a plain cancellation, and an unreadable database means the outcome
      * cannot be determined.
      */
-    private fun reconcileConfirmation(command: ConfirmationCommand, cause: CancellationException): Nothing {
-        val committed: Boolean? = blockingRead {
-            validate(command)
-            proposals.operationForProposal(command.proposalId) != null
+    /** What the durable operation state says about a cancelled attempt. */
+    private enum class Verdict { COMMITTED, ROLLED_BACK, MISMATCH, UNREADABLE }
+
+    private suspend fun reconcileConfirmation(command: ConfirmationCommand, cause: CancellationException): Nothing {
+        val verdict = withContext(NonCancellable) {
+            // Inner IO hop without an outer dispatcher switch: the outer undispatched completion
+            // delivers the answer into the cancelled frame atomically, so neither the value is
+            // discarded nor the caller thread blocked.
+            withContext(Dispatchers.IO) {
+                try {
+                    validate(command)
+                    val row = proposals.operationForProposal(command.proposalId)
+                        ?: return@withContext Verdict.ROLLED_BACK
+                    val frozen = row.frozen()
+                    if (row.confirmedRevision == command.displayedRevision && frozen.displayedDigest == command.displayedPayloadDigest) Verdict.COMMITTED else Verdict.MISMATCH
+                } catch (error: SQLiteException) {
+                    Verdict.UNREADABLE
+                }
+            }
         }
-        when (committed) {
-            null -> throw CommitException(CommitError.OutcomeUnknown, cause)
-            true -> throw CommitReceiptLossException(cause)
-            false -> throw cause
+        when (verdict) {
+            Verdict.COMMITTED -> throw CommitReceiptLossException(cause)
+            Verdict.ROLLED_BACK -> throw cause
+            // The persisted operation belongs to a different display; this command's answer is
+            // the deterministic mismatch it would have received without the cancellation.
+            Verdict.MISMATCH -> throw CommitException(CommitError.ConfirmationMismatch, cause)
+            Verdict.UNREADABLE -> throw CommitException(CommitError.OutcomeUnknown, cause)
         }
     }
 
-    private fun reconcileExecution(operationId: String, cause: CancellationException): Nothing {
-        val committed: Boolean? = blockingRead {
-            identity(operationId)
-            when (proposals.operation(operationId)?.status()) {
-                CommitStatus.Pending, null -> false
-                else -> true
+    private suspend fun reconcileExecution(operationId: String, cause: CancellationException): Nothing {
+        val committed = withContext(NonCancellable) {
+            withContext(Dispatchers.IO) {
+                try {
+                    identity(operationId)
+                    when (proposals.operation(operationId)?.status()) {
+                        CommitStatus.Pending, null -> false
+                        else -> true
+                    }
+                } catch (error: SQLiteException) {
+                    null
+                }
             }
         }
         when (committed) {
@@ -407,14 +431,6 @@ internal class RoomCommitService(
             true -> throw CommitReceiptLossException(cause)
             false -> throw cause
         }
-    }
-
-    /** One indexed identity read on Dispatchers.IO, returned synchronously; null = undeterminable. */
-    private fun blockingRead(read: () -> Boolean): Boolean? = try {
-        runBlocking(Dispatchers.IO) { runCatching(read).getOrNull() }
-    } catch (error: CancellationException) {
-        // The enclosing frame is already cancelled; keep the caller's cancellation semantics.
-        throw error
     }
 
     private fun displayed(row: ChangeProposalEntity, command: ConfirmationCommand): String {

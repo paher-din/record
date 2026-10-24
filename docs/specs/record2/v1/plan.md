@@ -1324,3 +1324,13 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - **同步main：** 普通merge `origin/main`=`a3f46e3`（含B4 §29及Timeline交付）；冲突仅plan.md一处，按§28在前、§29在后保留双方全部记录；Kotlin无冲突（本批未触碰RecordDao/Timeline文件）。
 - **集成后全量重验（最终APK debug`1375e328…`、release-unsigned`b03ba40c…`、androidTest`6ec51034…`，安装回拉一致）：** 构建任务组PASS（1m54s，129项中23执行）；host Debug/Release各98项（本批76+B4集成22）fail/error/skip=0；设备`CommitContractTest` 18/18 `OK (18 tests)`（16项既有+2项新增竞态）；进程矩阵15/15 PASS（A_MID/A_AFTER/B_MID/B_AFTER+B_W_1..11，build/c1/process-338b3620…/）；扩展共享回归（Schema 10+C0 Proposal 18+B2 Note 13+B4 Timeline 10）`OK (51 tests)`。
 - **范围保护：** 设备库新增仅c1-contract（累计125）与c1-process（累计39）文件；b4-contract的+10为本轮共享回归自建；record2.db仍为0。未wipe/uninstall/清包/删文件；AVD仍在运行留负责人决定。
+
+### 28.9 2026-10-24 第三轮PR #27审阅修复（取消恢复的线程与身份语义）
+
+负责人第三轮审阅：前两轮4项全部通过、main集成冲突已解决（GitHub mergeable=clean）；新增1项P1（`runBlocking`恢复读取会同步阻塞调用线程——若取消恢复发生在主线程协程即卡顿/ANR风险）与1项P2（确认取消恢复只看"operation存在"，未核对与本次命令的revision/摘要匹配，异display确认的取消会被误报为本次确认已提交）。§28.1–28.8事实保留不变。
+
+- **P1 纯挂起恢复（修复）：** 取消恢复改为`withContext(NonCancellable) { withContext(Dispatchers.IO) { 查询 } }`嵌套形态——外层不切换dispatcher（unispatched/ATOMIC完成，值不会被已取消原Job的cancellable resume丢弃），内层IO承载阻塞查询且不占用调用线程。上一轮单层`withContext(NonCancellable + Dispatchers.IO)`失败与`runBlocking`可用但阻塞的机理由此统一解释：单层形态在外层发生dispatcher切换、完成回跳走`resumeCancellableWith`被已取消Job替换为取消；`runBlocking`同步返回绕过了该机制但以阻塞调用线程为代价；嵌套形态两者兼得。Transaction A/B本体不变、仍完全可取消。
+- **P2 恢复身份匹配（修复）：** `reconcileConfirmation`现按与`verify`相同的口径核对：读`operationForProposal`行并执行完整`frozen()`完整性校验（损坏→RecoveryRequired原样上抛），`confirmedRevision == command.displayedRevision`且冻结文档`displayedDigest == command.displayedPayloadDigest`才判"本次已提交"（回执丢失）；不匹配判`ConfirmationMismatch`——即该命令在无取消时本应得到的确定性答复；行不存在仍判普通取消；SQLite不可读判OutcomeUnknown。`reconcileExecution`同样换为嵌套挂起形态（身份即operationId，无display匹配问题）。
+- **新增回归：** `mismatchedConfirmationCancelledAtTheReturnBoundaryStaysAMismatch`——既有revision1/摘要A的operation后，分别以revision2与异摘要命令在返回边界取消，调用点分类均为`ConfirmationMismatch`而非回执丢失，快照零变化。既有两处已提交竞态测试不变并通过，证明嵌套形态对COMMITTED/ROLLED_BACK两分支保持§28.8语义。
+- **重验（最终APK debug`eb43f6d0…`、release-unsigned`1b7475ad…`、androidTest`51f2ae93…`，安装回拉一致，build/c1/apk-hashes-round3.txt）：** 构建任务组PASS；host Debug/Release各98项fail/error/skip=0；设备`CommitContractTest` 19/19 `OK (19 tests)`（18项既有+1项新增）；进程矩阵15/15 PASS（build/c1/process-d3c7ba1a…/）；扩展共享回归（Schema+C0+B2 Note+B4 Timeline）`OK (51 tests)`。
+- **未变边界：** Schema v1、事务框架、强停矩阵范围均未改动；主线程响应性由纯挂起实现保证，未新增专项UI响应测试（如实登记，非本批验收面）。
