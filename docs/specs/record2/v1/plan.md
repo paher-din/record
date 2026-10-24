@@ -848,3 +848,46 @@ B2实现与审查修正已保存为`7fefba2`。推送前远端main新增E0的PR 
 - “撤销准确说明已发送内容不能收回”、授权告知文案、设置/历史/删除UI及任何未确认交互仍属F0/F2；E0不写页面或产品文案。
 - **推送授权与PR：** 2026-10-24负责人明确要求“推送pr”，覆盖本E0分支的必要Git提交、分支推送及创建PR；实际实现提交为`b464ca2671914b1b3dc8d1e5c215c502a7f79544`，PR [#21](https://github.com/paher-din/record/pull/21)基于main `1cd1d2804a006e97c79e3b32b4b466712d405315`，未合并/未关闭issue。审查修复（初始化所有权、轮换排序、孤儿控制行兜底、联合/并发/孤儿测试）及本记录修订随同一PR提交，提交身份由Git/PR日志证明。主工作树既有未提交修改保持原样；本PR不包含B1 §21.4，该段仍在工作树未提交。
 - 并行B2任务已在主工作树使用Plan §22；E0使用§23以避免编号冲突。本批未合并/重跑B2，也未读取或修改其未提交源码；集成时由负责人按任务owner协调共享文档与同一AVD的串行，不把E0证据挪给B2或反之。
+
+## 26. B3：双向关联、隐藏关系与版本并发（issue #6）
+
+2026-10-24负责人要求“完成issue b3”，对应[GitHub #6](https://github.com/paher-din/record/issues/6)；已读取issue全文并与§4 B3合同一致。B2 #5已收口，沿用B1/§21与Schema v1/§20，不新增ADR、Spec或Schema设计。本批在独立工作树`D:/record/.worktrees/b3-record-links`（分支`codex/b3-record-links`，基线`937552f`）实施；主工作树开始时无未提交改动并保持只读。主工作树及并行worktree中§24由D0、§25由C0占用，本任务使用§26，不修改其他任务章节。
+
+源码限定record2的records关系合同/选择状态、storage关系事务/必要DAO查询、对应host/Android测试和host进程runner。沿用Schema v1、现有依赖和全部旧保护，不新增或修改实体、表、索引、外键、构建/Manifest/普通Host。不实现F0/F1最终页面、C1/Tools、Agent、备份或ZIP；不操作真实用户数据、凭据、网络或发布；不把B3服务交付记为C1的LINK/UNLINK完成。
+
+### 26.1 B3运行合同（2026-10-24）
+
+- host：`LinkSelectionEditorTest` 6项；完整`check`包含既有Money/FinanceTime/NoteEditor及E0安全host回归。
+- 真实磁盘：`com.paherdin.record2.storage.LinkServiceContractTest` 12项；回归`NoteServiceContractTest` 13项+`RecordSchemaContractTest` 10项，共35项。每项新建`b3-contract-<UUID>.db`，固定Clock=`2026-10-24T12:00:00Z`，跨日发生时刻为2026-10-22/23/24；独立`SchemaDiskObserver`比较全14表，不以服务DTO或编译代替磁盘事实。
+- 进程：`LinkProcessContractTest#prepare`/`#verifyAfterHostRestart`，由[runner](../../../../record2/tools/verify-b3-process.py)驱动。LINK/REMOVE × BEFORE/AFTER共4场景：LINK在第一次`LINK_WRITTEN`后门控，AFTER在`LINKS_COMMITTED`后门控；每场景两次真实force-stop→旧PID消失→正式MainActivity新PID且前台→同库verify。BEFORE断言完整基线在两次重启后不变；AFTER断言完整关系集合/两端版本/businessRevision并验证旧版本重试必须冲突。使用D盘专用`record2-b2-api34`/`emulator-5584`/API34 x86_64；仅安装/更新R2 `.debug`/`.debug.test`及新`b3-process-<UUID>.db`，不wipe/uninstall/清库或操作其他设备。
+- 构建：自身wrapper显式`-p D:/record/.worktrees/b3-record-links/record2 check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`，沿用JDK17.0.20+8及现有Gradle/AGP/Kotlin/Room/KSP；证据归`record2/build/b3/`。
+
+### 26.2 实现交付
+
+- [LinkService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/LinkService.kt)提供UI/未来Tools共用的双向读取、选择基线和增量`apply`合同；`LinkNoteRef`携带Note的预期业务version，不另造关系version。`TransactionLinks`/`NoteLinks`只返回正常可见Note及可见计数，隐藏关系不在普通列表/计数/候选中出现。
+- [RoomLinkService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomLinkService.kt)在同一短Room事务内核对代际、Transaction expectedVersion、重复/交叠ID、Note存在/正常可见/version；以事务内链接集合计算真实增量：已满足的add/未存在的remove为零变化，不递增；每个实际受影响Note与Transaction各+1一次，businessRevision+1一次。隐藏Note不参与remove；任一候选失效整批失败；失败/取消回滚全部端点和关系；提交后回执故障报OutcomeUnknown，不伪造部分成功。
+- [RecordDao](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RecordDao.kt)只新增按Transaction/Note的可见双向查询、可见计数、未链接候选、链接集合及条件`version+1`；没有无条件覆盖、整组替换或Schema改动。
+- [LinkSelectionEditor](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/LinkSelectionEditor.kt)以读基线保存Note版本和已选集合，“完成”只提交add/remove增量并调用同一服务，绝不用局部可见selected全覆盖；取消不发写；未变化完成经服务验证但零写；失效端点失败保留当前勾选并阻塞到显式`reloadDiscardingSelection`；成功后以服务返回的完整可见关系回写状态，不保留陈旧选择。
+- 选择基线返回完整可见未链接候选，不静默截断；候选分页/搜索及查询预算仍由B4/F1收口。不新增/修改最终页面、导航、文案、AI工具、Proposal、ZIP或备份；`note`软删除只推进Note版本，不推进Transaction版本，恢复后原关系仍可见。
+
+### 26.3 实际验证与证据（2026-10-24）
+
+- **构建/host PASS：** [最终构建日志](../../../../record2/build/b3/build-final4.log)为2分17秒，129项actionable中33执行/96 up-to-date；`verifyBuildIsolation`通过。Debug/Release各29项host（`LinkSelectionEditorTest`各6项及既有金额/日期/Note/E0安全回归），共58项，fail/error/skip均0。lint 0错误/6项既有类别警告，未关闭检查；Gradle9弃用提示保留。
+- **真实Room T2/T3 PASS：** [最终设备回执](../../../../record2/build/b3/instrumentation-final3.txt)为`OK (35 tests)`、35个完成状态0、无失败/skip，10.922秒。B3 12项覆盖：跨日T1–N1/T1–N2/T2–N1双向同库；取消/未变化完成零写；解除一条保留其他；删除Note后列表/计数/候选隐藏、恢复原关系；另页改关系后旧选择整批拒绝；隐藏关系在陈旧选择和成功增量下均不被误删；选择期间删目标零写；混合批次任一失效整批零写；两端并发单一CAS赢家；每个链接写后StorageFull持续失败/真实协程取消回滚；版本、businessRevision溢出及重复配对拒绝。回归为Note 13项+Schema 10项。
+- **真实进程终止 PASS：** [runner](../../../../record2/tools/verify-b3-process.py)最终证据目录`process-ea4d94369ec540eeb9ec532e05abd170/`覆盖LINK/REMOVE × BEFORE/AFTER 4场景，每场景两次真实强停/重启，全部`OK (1 test)`。BEFORE在第一次链接写后中断事务：两次重启后全14表均等于原基线；AFTER在提交后回执前中断：完整关系集合、端点版本、businessRevision及双向结果与独立预期一致；旧Transaction版本及“当前Transaction版本+旧Note版本”两类重试均返回VersionConflict且不再写，分别证明两端CAS。提交前重试成功路径由合同测试的失败后重试证明；未用Activity重建或close/reopen代替进程终止。
+- **制品/设备 PASS：** 最终Debug/Release/AndroidTest APK SHA-256分别为`5b3c980506a75d1b1ef2e8416fc35f13d4826be705d3fddba8836501c2243b95`、`d9ed581c5f814e82ec45edeb5067233f19c208c42079747c0456d08c3f925d2e`、`e6073000610d9425ccf750117c736a78dea0fa770d54763c199e3a262279b663`；安装后设备`.debug`/`.debug.test`摘要与构建产物一致，35项合同/8次进程verify均对应这些制品。仅`record2-b2-api34`/`emulator-5584`/API34 x86_64，fingerprint保持`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`；AVD登记与设备目录在D盘`record2/build/b2/avds/`，C盘无该AVD登记。新的`b3-contract`/`b3-process`合成库及`-wal/-shm`保留，普通`record2.db`不存在；测试后只关闭本轮启动的AVD，不删库/清包/操作原emulator-5580。
+- **Schema/范围保护 PASS：** Schema v1生成JSON Git diff为空；LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`（本worktree因`core.autocrlf=true`写为CRLF，原始字节摘要`2ceae1158ebd55a15a295ee4242fe2f3f05bfe79a3a188f79139e17b50b9b0c1`，不代表内容变化）。14表/117字段/20索引/13外键、构建/依赖/Manifest/MainActivity/R1/B1/B2/E0业务源码未改；无真实用户数据/Key/网络调用/迁移/ZIP恢复。实现仅1份修改+8份新增文件，另有本Plan与路由两份文档。
+- **失败与修订保留：** 首轮35项类设备执行中4项因测试把Note创建推进的businessRevision误当固定初始值而失败，修正测试基线后12项B3全过，未改生产逻辑；首份`instrumentation-initial.txt`保留。首轮进程矩阵在LINK_BEFORE第二次重启失败，根因是verify首次执行了成功重试、第二次仍按原基线断言（并非回滚失败）；改为BEFORE只读基线、AFTER验证完整提交并拒绝旧版本重试后，4场景×2重启全部通过，原`process-0b070d…/`证据保留。独立Standards/Spec审查指出候选静默截断、成功后状态未回写、无变化也触发提交检查点、成功后仍可reload及缺失混合/隐藏成功/进程证据；已逐项修正或补测，修复后独立复核确认7项关闭且未发现新事务/CAS/可见性缺陷，并补充Note侧CAS、可区分updatedAt及结果身份校验。自查含独立子代理审查，未用Agent自报代替实际回执。
+- **证据位置：** [本机B3目录](../../../../record2/build/b3/)含build-initial/fixed/review-fixes/final2/final3/final4、instrumentation-initial/fixed/final2/final3、process-run/fixed/final及process场景目录、final-verification.json；该目录被忽略，不承诺跨机存在。正式Kotlin测试和Python runner可纳管重建。
+- **最终T0 PASS：** 变更限定本批1份修改+8份新增源码/测试/runner及Plan/路由两处文档；§26新增相对链接和路由锚点全部有效，UTF-8/围栏/空白及常见凭据模式检查通过，`git diff --check`退出0（仅既有CRLF提示）。冻结Spec §4–7/架构、R1/B1/B2/E0业务源码、Schema/构建/依赖/Manifest/普通Host未变；主工作树全程无改动。本机证据继续被Git忽略。
+
+### 26.4 未执行边界与下游责任
+
+- 未接C1/Tools的LINK/UNLINK、Proposal/A-B、Agent、AI确认或任何最终UI/导航/文案；B3只完成正式关系服务、非视觉选择状态及必要T2/T3证据。F0/F1的批量选择页面、IME/旋转/跨页展示与视觉交互仍待负责人设计批准和实现。
+- TP-05只在B3服务层证明“另一原生页改关系后，旧读基线的选择因Transaction/端点version CAS整批拒绝”；C1仍须把LINK/UNLINK纳入Proposal revision/Operation幂等与用户确认路径，证明旧提案不能覆盖新关系。TP-05整体状态不因B3提前记PASS。
+- 隐藏关系、跨日双向、删除/恢复和失败原子性已用真实Room证明；完整B-AC4/B-AC9/SD-P2需F1页面与C1/G1–G2联合验收，当前不记为最终产品PASS。进程矩阵使用合成Note/Transaction与固定Clock，不覆盖真实用户数据/迁移/ZIP/备份。
+- 未执行Schema/迁移、真实凭据/Provider/网络、发布/签名/CI/环境修改；提交与分支推送授权见§26.5，未修改或关闭远端issue #6。
+
+### 26.5 提交与推送授权（2026-10-24）
+
+负责人明确“推送吧”，授权将本轮B3的11个任务文件提交并推送分支`codex/b3-record-links`。仅本任务实现、测试/runner、Plan §26与[文档路由](../../index.md)进入提交；主工作树、其他worktree、被忽略的构建证据/合成库/AVD、Schema及远端issue #6状态不变。实际提交身份与远端引用由Git日志、推送回执及远端分支核查证明，不在文档中预填提交SHA；未合并main、未创建/合并PR、未关闭issue #6。
