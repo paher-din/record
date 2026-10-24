@@ -1502,4 +1502,4 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 2. **写入门禁层级：** gate接入现有Room服务的写事务边界，并覆盖当前所有生产写服务；未来新增写入口（E2/D1/F2等）必须复用`ProcessDataOperationGate.gate`，本批不提供SQLite authorizer级强制。`RestoreMemoryBarrier`只提供内存失效钩子，真实Run/工具协程取消由E2/F2接线并另测。
 3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
 
-- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；本批审阅HEAD为`558453a3500c54658dd242c522c8ffafc0239d81`。未合并main、未关闭issue #19；后续负责人审阅以GitHub当前引用为准。
+- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、文档证据至`1a6be42`，最终head以GitHub当前引用为准。未合并main、未关闭issue #19。
