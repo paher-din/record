@@ -3,6 +3,8 @@ package com.paherdin.record2.storage
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
+import com.paherdin.record2.backup.DataOperationGate
+import com.paherdin.record2.backup.ProcessDataOperationGate
 import com.paherdin.record2.records.*
 import java.time.Clock
 import java.util.UUID
@@ -19,6 +21,7 @@ internal class RoomLinkService(
     private val clock: Clock = Clock.systemUTC(),
     private val checkpoint: (LinkCheckpoint, Int) -> Unit = { _, _ -> },
 ) : LinkService {
+    internal var dataOperationGate: DataOperationGate = ProcessDataOperationGate.gate
     private val dao = database.records()
 
     override suspend fun transactionLinks(generation: String, transactionId: String): TransactionLinks = io {
@@ -58,7 +61,7 @@ internal class RoomLinkService(
     ): LinkBatchResult {
         val result = try {
             io {
-                database.withTransaction {
+                write {
                     val state = state(generation)
                     val transaction = transactionRow(transactionId)
                     if (transactionExpectedVersion < 1) fail(LinkError.Validation)
@@ -108,6 +111,9 @@ internal class RoomLinkService(
         }
         return result
     }
+
+    private suspend fun <T> write(block: suspend () -> T): T =
+        database.withTransaction { dataOperationGate.withWrite { block() } }
 
     private fun validateRefs(add: List<LinkNoteRef>, remove: List<LinkNoteRef>) {
         val addIds = add.map { it.id }

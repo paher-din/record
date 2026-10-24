@@ -3,6 +3,8 @@ package com.paherdin.record2.storage
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
+import com.paherdin.record2.backup.DataOperationGate
+import com.paherdin.record2.backup.ProcessDataOperationGate
 import com.paherdin.record2.records.*
 import java.time.Clock
 import java.time.Instant
@@ -31,11 +33,12 @@ internal class RoomFinanceService(
     private val processOwnerId: String = UUID.randomUUID().toString(),
     private val checkpoint: (FinanceCheckpoint) -> Unit = {},
 ) : FinanceService {
+    internal var dataOperationGate: DataOperationGate = ProcessDataOperationGate.gate
     private val dao = database.records()
     private val json = Json { encodeDefaults = true }
 
     override suspend fun initialize(): FinanceCatalog = io {
-        database.withTransaction {
+        write {
             var state = dao.dataState()
             if (state == null) {
                 // Missing identity on a populated database is corruption, not first launch.
@@ -68,7 +71,7 @@ internal class RoomFinanceService(
     }
 
     override suspend fun renameAccount(generation: String, expectedVersion: Long, name: String): FinanceAccount = io {
-        database.withTransaction {
+        write {
             val state = state(generation)
             if (name.isBlank()) fail(FinanceError.Validation)
             val account = checkedAccount()
@@ -82,14 +85,14 @@ internal class RoomFinanceService(
     }
 
     override suspend fun beginNewDraft(generation: String, input: FinanceInput): FinanceDraft = io {
-        database.withTransaction {
+        write {
             state(generation)
             begin(FinanceDraftMode.NEW, UUID.randomUUID().toString(), null, input)
         }
     }
 
     override suspend fun beginEditDraft(generation: String, recordId: String, expectedVersion: Long, zoneId: String): FinanceDraft = io {
-        database.withTransaction {
+        write {
             state(generation)
             val record = record(recordId)
             if (record.version != expectedVersion) fail(FinanceError.VersionConflict)
@@ -112,7 +115,7 @@ internal class RoomFinanceService(
     }
 
     override suspend fun updateDraft(generation: String, draftId: String, expectedRevision: Long, input: FinanceInput): FinanceDraft = io {
-        val result = database.withTransaction {
+        val result = write {
             state(generation)
             editing(draftId, expectedRevision)
             if (dao.reviseDraft(draftId, expectedRevision, encode(input), clock.millis()) != 1) fail(FinanceError.DraftConflict)
@@ -124,24 +127,24 @@ internal class RoomFinanceService(
     }
 
     override suspend fun discardDraft(generation: String, draftId: String, expectedRevision: Long) = io {
-        database.withTransaction {
+        write {
             state(generation)
             val current = storedDraft() ?: fail(FinanceError.DraftConflict)
-            if (expectedRevision in 1 until Long.MAX_VALUE && current.draftId == draftId && current.state == "DISCARDED" && current.draftRevision == expectedRevision + 1) return@withTransaction
+            if (expectedRevision in 1 until Long.MAX_VALUE && current.draftId == draftId && current.state == "DISCARDED" && current.draftRevision == expectedRevision + 1) return@write
             editing(draftId, expectedRevision)
             if (dao.finishDraft(draftId, expectedRevision, "DISCARDED", "{}", null, clock.millis()) != 1) fail(FinanceError.DraftConflict)
         }
     }
 
     override suspend fun saveDraft(generation: String, draftId: String, expectedRevision: Long): FinanceSaveReceipt = io {
-        val receipt = database.withTransaction {
+        val receipt = write {
             val state = state(generation)
             val current = storedDraft() ?: fail(FinanceError.DraftConflict)
             if (current.draftId != draftId) fail(FinanceError.DraftConflict)
             if (current.state == "SAVED") {
                 val saved = decodeReceipt(current)
                 if (saved.draftId != draftId || saved.confirmedDraftRevision != expectedRevision) fail(FinanceError.DraftConflict)
-                return@withTransaction saved
+                return@write saved
             }
             val draft = editing(draftId, expectedRevision).dto()
             val input = draft.input
@@ -187,6 +190,9 @@ internal class RoomFinanceService(
     override suspend fun transaction(generation: String, id: String): FinanceRecord = io {
         database.withTransaction { state(generation); record(id) }
     }
+
+    private suspend fun <T> write(block: suspend () -> T): T =
+        database.withTransaction { dataOperationGate.withWrite { block() } }
 
     private suspend fun begin(mode: FinanceDraftMode, recordId: String, baseVersion: Long?, input: FinanceInput): FinanceDraft {
         val old = storedDraft()

@@ -4,6 +4,8 @@ import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
+import com.paherdin.record2.backup.DataOperationGate
+import com.paherdin.record2.backup.ProcessDataOperationGate
 import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.AgentSessionInfo
@@ -52,12 +54,13 @@ internal class RoomAgentHistoryService(
     private val clock: Clock = Clock.systemUTC(),
     private val checkpoint: (SessionCheckpoint) -> Unit = {},
 ) : AgentHistoryService {
+    internal var dataOperationGate: DataOperationGate = ProcessDataOperationGate.gate
     private val dao = database.sessions()
     private val records = database.records()
     private val control = database.aiControl()
 
     override suspend fun createSession(title: String?): AgentSessionInfo = io {
-        database.withTransaction {
+        write {
             requireGeneration()
             val now = clock.millis()
             val row = AgentSessionEntity(
@@ -157,7 +160,7 @@ internal class RoomAgentHistoryService(
     ): RunStartReceipt = io {
         if (userText.isEmpty()) fail(AgentHistoryError.Validation)
         try {
-            database.withTransaction {
+            write {
                 val state = requireGeneration()
                 if (state.processOwnerId != processOwnerId) fail(AgentHistoryError.RecoveryRequired)
                 requireAuthorization(receiverIdentity, authEpoch)
@@ -242,13 +245,13 @@ internal class RoomAgentHistoryService(
         processOwnerId: String,
         outcome: RunOutcome,
     ): RunCompletionReceipt = io {
-        database.withTransaction {
+        write {
             val run = dao.run(runId) ?: fail(AgentHistoryError.NotFound)
             val now = clock.millis()
             if (run.state == RunState.COMPLETED.name) {
                 val existing = dao.finalAssistant(runId) ?: fail(AgentHistoryError.RecoveryRequired)
                 if (!sameOutcome(existing, outcome)) fail(AgentHistoryError.RunInvalidated)
-                return@withTransaction RunCompletionReceipt(
+                return@write RunCompletionReceipt(
                     runId = runId,
                     assistantMessageId = existing.id,
                     assistantMessageSequence = existing.sequence,
@@ -334,15 +337,15 @@ internal class RoomAgentHistoryService(
         state: RunTerminal,
         safeErrorCode: SafeRunErrorCode,
     ): RunTerminalReceipt = io {
-        database.withTransaction {
+        write {
             val run = dao.run(runId) ?: fail(AgentHistoryError.NotFound)
             if (run.state != RunState.RUNNING.name || run.activeSlot == null) {
-                return@withTransaction RunTerminalReceipt(runId, parseState(run.state), run.safeErrorCode, true)
+                return@write RunTerminalReceipt(runId, parseState(run.state), run.safeErrorCode, true)
             }
             val current = records.dataState() ?: fail(AgentHistoryError.RecoveryRequired)
             if (current.processOwnerId != run.processOwnerId) {
                 // A stale process lost its runs to the ownership gate; it must not retag them.
-                return@withTransaction RunTerminalReceipt(runId, parseState(run.state), run.safeErrorCode, true)
+                return@write RunTerminalReceipt(runId, parseState(run.state), run.safeErrorCode, true)
             }
             val now = clock.millis()
             if (dao.failRun(runId, state.name, now, safeErrorCode.name, run.processOwnerId) != 1) {
@@ -357,14 +360,14 @@ internal class RoomAgentHistoryService(
     }
 
     override suspend fun beginProcessOwnership(processOwnerId: String): ProcessOwnershipReceipt = io {
-        database.withTransaction {
+        write {
             val state = records.dataState()
             if (state == null) {
                 if (records.hasDataWithoutGeneration()) fail(AgentHistoryError.RecoveryRequired)
-                return@withTransaction ProcessOwnershipReceipt(processOwnerId, false, 0, true)
+                return@write ProcessOwnershipReceipt(processOwnerId, false, 0, true)
             }
             if (state.processOwnerId == processOwnerId) {
-                return@withTransaction ProcessOwnershipReceipt(processOwnerId, false, 0, false)
+                return@write ProcessOwnershipReceipt(processOwnerId, false, 0, false)
             }
             val interrupted = dao.interruptAllRunning(clock.millis())
             if (records.updateProcessOwner(processOwnerId) != 1) fail(AgentHistoryError.ConcurrentUpdate)
@@ -405,6 +408,9 @@ internal class RoomAgentHistoryService(
             if (hasNote && records.noteForLifecycle(reference.noteId!!) == null) fail(AgentHistoryError.Validation)
         }
     }
+
+    private suspend fun <T> write(block: suspend () -> T): T =
+        database.withTransaction { dataOperationGate.withWrite { block() } }
 
     private fun requireGeneration(): RecordDataStateEntity {
         val state = records.dataState()
