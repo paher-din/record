@@ -88,10 +88,13 @@ internal class RoomProposalService(
         val generation = currentGeneration(run.dataGeneration)
         val operations = ProposalCodec.normalize(intents, clock)
         val canonical = ProposalCodec.canonical(operations)
-        validateTargets(operations)
-        mark(ProposalCheckpoint.TARGETS_VALIDATED)
+        // Identity before targets: a repeated create answers from the persisted proposal even
+        // when the business targets have moved on since; only a genuinely new proposal is
+        // validated against the current target versions.
         val existing = proposals.proposalByCreationRequest(run.proposalCreationRequestId)
         if (existing != null) return repeated(existing, canonical, run, generation)
+        validateTargets(operations)
+        mark(ProposalCheckpoint.TARGETS_VALIDATED)
         proposals.activeProposal(run.sessionId)?.let { occupied(it) }
         val now = clock.millis()
         val id = UUID.randomUUID().toString()

@@ -156,6 +156,30 @@ class ProposalServiceContractTest {
     }
 
     @Test
+    fun repeatedPrepareReturnsTheOriginalProposalAfterTargetVersionsAdvance() = runBlocking {
+        // The persisted proposal, not the current target versions, answers a repeated create.
+        val intents = listOf(fixture.updateTransaction())
+        val first = service.prepare(context, intents)
+        sql("UPDATE record_transaction SET version=4 WHERE id=?", fixture.transaction.id)
+        val advanced = snapshot()
+        val repeated = service.prepare(context, intents)
+        assertEquals(first.id, repeated.id)
+        assertEquals(1L, repeated.revision)
+        assertEquals(first.payloadDigest, repeated.payloadDigest)
+        assertEquals(advanced, snapshot())
+        // The same idempotence holds when the referenced account version advances instead.
+        val accountIntents = listOf(fixture.createTransaction())
+        val second = service.prepare(fixture.context(fixture.secondRun), accountIntents)
+        sql("UPDATE account SET version=2 WHERE id=?", fixture.account.id)
+        val advancedAccount = snapshot()
+        val repeatedAccount = service.prepare(fixture.context(fixture.secondRun), accountIntents)
+        assertEquals(second.id, repeatedAccount.id)
+        assertEquals(1L, repeatedAccount.revision)
+        assertEquals(advancedAccount, snapshot())
+        assertEquals(2, proposals().size)
+    }
+
+    @Test
     fun concurrentPrepareOnOneCreationRequestYieldsExactlyOneProposal() = runBlocking {
         val results = onTwoConnections({ it.prepare(context, goldenIntents) }, { it.prepare(context, goldenIntents) })
         val views = results.map { it.getOrThrow() }
@@ -505,6 +529,8 @@ class ProposalServiceContractTest {
         ) + " ".repeat(ProposalBudget.MAX_PAYLOAD_BYTES)
         // Structurally canonical with a matching digest, but its LINK consumes an undeclared localRef.
         val semanticallyForeign = goldenCanonical.replace("""{"type":"LOCAL","localRef":"#t1"}""", """{"type":"LOCAL","localRef":"#t9"}""")
+        // Digest-consistent but the frozen instant disagrees with the local time and offset by 1 ms.
+        val timeInconsistent = goldenCanonical.replace("\"occurredAt\":1792729800000", "\"occurredAt\":1792729800001")
         val corruptions = listOf(
             listOf("UPDATE change_proposal SET payloadJson='{}'"),
             listOf("UPDATE change_proposal SET payloadJson=?", """{"formatVersion":1,"operations":[{"type":"DELETE_RECORD"}]}"""),
@@ -520,6 +546,7 @@ class ProposalServiceContractTest {
             // A well-formed unique creation identity that no longer binds to its origin run.
             listOf("UPDATE change_proposal SET creationRequestId=?", UUID.randomUUID().toString()),
             listOf("UPDATE change_proposal SET payloadJson=?, payloadDigest=?", semanticallyForeign, sha256(semanticallyForeign)),
+            listOf("UPDATE change_proposal SET payloadJson=?, payloadDigest=?", timeInconsistent, sha256(timeInconsistent)),
         )
         for (corruption in corruptions) {
             sql(corruption.first(), *corruption.drop(1).toTypedArray())

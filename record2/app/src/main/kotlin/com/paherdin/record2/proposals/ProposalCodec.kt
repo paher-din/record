@@ -8,6 +8,8 @@ import com.paherdin.record2.records.Money
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -171,23 +173,27 @@ internal object ProposalCodec {
                 localRef(operation.localRef)
                 require(declared.putIfAbsent(operation.localRef, true) == null)
                 persistedTransactionFields(operation)
+                persistedTime(operation.time)
             }
             is ProposalOperation.UpdateTransaction -> {
                 identity(operation.id)
                 version(operation.expectedVersion)
                 require(updatedTransactions.add(operation.id))
                 persistedTransactionFields(operation)
+                persistedTime(operation.time)
             }
             is ProposalOperation.CreateNote -> {
                 localRef(operation.localRef)
                 require(declared.putIfAbsent(operation.localRef, false) == null)
                 persistedBody(operation.body)
+                persistedTime(operation.time)
             }
             is ProposalOperation.UpdateNote -> {
                 identity(operation.id)
                 version(operation.expectedVersion)
                 require(updatedNotes.add(operation.id))
                 persistedBody(operation.body)
+                persistedTime(operation.time)
             }
             is ProposalOperation.LinkRecords -> {
                 requirePairs(operation.pairs)
@@ -225,6 +231,20 @@ internal object ProposalCodec {
 
     private fun persistedBody(body: String) {
         require(body.isNotBlank() && body.length <= ProposalBudget.MAX_NOTE_BODY_CHARS)
+    }
+
+    /**
+     * The frozen time quadruple must stay arithmetically self-consistent: the canonical local
+     * value in millisecond precision, combined with the frozen offset, must reproduce the
+     * persisted instant exactly. Zone rules are deliberately never re-consulted, so a tzdata
+     * update can never reinterpret history; the zone id only has to stay a well-formed id.
+     */
+    private fun persistedTime(time: ProposalTime) {
+        require(runCatching { ZoneId.of(time.zoneId) }.isSuccess)
+        require(time.offsetSeconds in -64800..64800)
+        val local = LocalDateTime.parse(time.localDateTime)
+        require(local.toString() == time.localDateTime && local.nano % 1_000_000 == 0)
+        require(local.toInstant(ZoneOffset.ofTotalSeconds(time.offsetSeconds)).toEpochMilli() == time.occurredAt)
     }
 
     private fun persistedPair(pair: RecordPair, declared: Map<String, Boolean>) {

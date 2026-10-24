@@ -375,6 +375,29 @@ class ProposalCodecTest {
         }
     }
 
+    @Test
+    fun decodeValidatesFrozenTimeSemantics() {
+        // A legitimate DST-overlap resolution and a millisecond-fraction timestamp keep decoding.
+        val overlap = canonical(ProposalIntent.CreateTransaction("#t1", input(localDateTime = "2025-11-02T01:30", zoneId = "America/New_York")))
+        val frozen = (ProposalCodec.decode(overlap).single() as ProposalOperation.CreateTransaction).time
+        assertEquals(-14400, frozen.offsetSeconds)
+        val millis = canonical(ProposalIntent.CreateTransaction("#t1", input(localDateTime = "2026-10-23T12:30:30.500")))
+        assertEquals("2026-10-23T12:30:30.500", (ProposalCodec.decode(millis).single() as ProposalOperation.CreateTransaction).time.localDateTime)
+        // Any single-field corruption of the frozen quadruple must fail closed without consulting
+        // current zone rules.
+        for (corrupt in listOf(
+            overlap.replace("\"occurredAt\":${frozen.occurredAt}", "\"occurredAt\":0"),
+            overlap.replace("\"occurredAt\":${frozen.occurredAt}", "\"occurredAt\":${frozen.occurredAt + 1}"),
+            overlap.replace("\"offsetSeconds\":${frozen.offsetSeconds}", "\"offsetSeconds\":${frozen.offsetSeconds + 60}"),
+            overlap.replace("\"zoneId\":\"America/New_York\"", "\"zoneId\":\"Not/AZone\""),
+            overlap.replace("\"localDateTime\":\"2025-11-02T01:30\"", "\"localDateTime\":\"2025-11-02 01:30\""),
+            overlap.replace("\"localDateTime\":\"2025-11-02T01:30\"", "\"localDateTime\":\"2025-11-02T01:30:00\""),
+            overlap.replace("\"localDateTime\":\"2025-11-02T01:30\"", "\"localDateTime\":\"2025-11-02T01:30:00.000500\""),
+        )) {
+            expect(ProposalError.RecoveryRequired) { ProposalCodec.decode(corrupt) }
+        }
+    }
+
     private fun depth(json: String): Int {
         var depth = 0
         var maximum = 0
