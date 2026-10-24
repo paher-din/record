@@ -91,9 +91,13 @@ internal class TimelineBrowser(
         return browseFromCurrent { BrowseIntent(it.query, it.anchorDate) }
     }
 
-    private suspend fun browseFromCurrent(transform: (TimelineState) -> BrowseIntent): Boolean {
+    private suspend fun browseFromCurrent(transform: (BrowseBase) -> BrowseIntent): Boolean {
         val registration = synchronized(lock) {
-            val intent = transform(mutableState.value)
+            val current = mutableState.value
+            val pendingBrowse = pending as? Pending.Browse
+            val base = pendingBrowse?.let { BrowseBase(it.query, it.anchorDate) }
+                ?: BrowseBase(current.query, current.anchorDate)
+            val intent = transform(base)
             val canonical = try {
                 TimelineQueryRules.canonical(intent.query.copy(zoneId = zoneId))
             } catch (error: RuntimeException) {
@@ -211,6 +215,8 @@ internal class TimelineBrowser(
     }
 
     private data class BrowseIntent(val query: TimelineQuery, val anchorDate: LocalDate?)
+
+    private data class BrowseBase(val query: TimelineQuery, val anchorDate: LocalDate?)
 
     private data class BrowseRegistration(
         val token: Long,

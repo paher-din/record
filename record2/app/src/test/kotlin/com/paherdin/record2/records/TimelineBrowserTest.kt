@@ -265,6 +265,60 @@ class TimelineBrowserTest {
     }
 
     @Test
+    fun consecutiveKindAndKeywordChangesMergePendingIntent() = runBlocking {
+        val service = FakeTimelineService(generation)
+        val browser = TimelineBrowser(service, generation, zone)
+        val entry = note("00000000-0000-0000-0000-000000000001", 100)
+        val kindStarted = CompletableDeferred<Unit>()
+        val releaseKind = CompletableDeferred<Unit>()
+        service.timelineHandler = { query, _, _ ->
+            if (query.kind == RecordKind.NOTE && query.keyword == null) {
+                kindStarted.complete(Unit)
+                releaseKind.await()
+            }
+            page(entry)
+        }
+
+        val slowKind = async(Dispatchers.Default) { browser.setKind(RecordKind.NOTE) }
+        kindStarted.await()
+        assertTrue(browser.setKeyword("午餐"))
+        assertEquals(RecordKind.NOTE, browser.state.value.query.kind)
+        assertEquals("午餐", browser.state.value.query.keyword)
+        releaseKind.complete(Unit)
+        assertFalse(slowKind.await())
+        assertEquals(RecordKind.NOTE, browser.state.value.query.kind)
+        assertEquals("午餐", browser.state.value.query.keyword)
+        assertEquals(listOf(entry.id), browser.state.value.entries.map { it.id })
+    }
+
+    @Test
+    fun consecutiveRangeAndKindChangesMergePendingIntent() = runBlocking {
+        val service = FakeTimelineService(generation)
+        val browser = TimelineBrowser(service, generation, zone)
+        val range = TimelineRange(10, 20)
+        val entry = note("00000000-0000-0000-0000-000000000001", 100)
+        val rangeStarted = CompletableDeferred<Unit>()
+        val releaseRange = CompletableDeferred<Unit>()
+        service.timelineHandler = { query, _, _ ->
+            if (query.range == range && query.kind == null) {
+                rangeStarted.complete(Unit)
+                releaseRange.await()
+            }
+            page(entry)
+        }
+
+        val slowRange = async(Dispatchers.Default) { browser.setRange(range) }
+        rangeStarted.await()
+        assertTrue(browser.setKind(RecordKind.NOTE))
+        assertEquals(range, browser.state.value.query.range)
+        assertEquals(RecordKind.NOTE, browser.state.value.query.kind)
+        releaseRange.complete(Unit)
+        assertFalse(slowRange.await())
+        assertEquals(range, browser.state.value.query.range)
+        assertEquals(RecordKind.NOTE, browser.state.value.query.kind)
+    }
+
+    @Test
     fun concurrentLoadMoreRegistrationsIssueOneQueryAndAppendOnePage() = runBlocking {
         val service = FakeTimelineService(generation)
         val browser = TimelineBrowser(service, generation, zone)
