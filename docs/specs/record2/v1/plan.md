@@ -1483,7 +1483,7 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 | 项 | 本批实现 |
 |---|---|
 | 格式/校验 | `record2/app/src/main/kotlin/com/paherdin/record2/backup/`：12段JSONL、manifest/contentDigest、严格JSON（重复key/未知字段/整数/深度/UTF-8）、ZIP v1读写（13条目、STORED/DEFLATE、空段STORED/0/0、CRC/大小/压缩比/无ZIP64/无注释/无尾随/本地头覆盖校验）、G0 §5引用/合法历史oracle、C0/C1/B1/B2/E1 owner codec重验 |
-| 导出 | 独立`OPEN_READONLY`+`query_only`快照；WAL前置；按§4.2排序；staging ZIP自检；SAF `BackupTarget`写入/flush/关闭/回读摘要；WAL增长与卷余量监控接缝；导出不改写O、不消费草稿、不取消Run/Run/Pending、不写receipt |
+| 导出 | 独立`OPEN_READONLY`+`query_only`单语句快照；WAL前置；按§4.2排序并**逐行流式写段文件**（不保留全量行/载荷）；staging ZIP流式自检；SAF `BackupTarget`写入/flush/关闭/回读摘要；WAL增长与卷余量监控接缝；导出不改写O、不消费草稿、不取消Run/Run/Pending、不写receipt |
 | 恢复 | 隔离preflight与候选绑定（源字节/整ZIP SHA/manifest/contentDigest/目标代际/App-Schema版本）；确认后独占门禁、staging复验、目标authEpoch重读、单Room事务删/插、RUNNING→INTERRUPTED、EDITABLE/LOCKED→NEEDS_REVIEW、Pending保留原代际、AI OFF/无grant、receipt同事务、提交前断言、失败回滚 |
 | 启动/门禁 | `RestoreStartupGate`只读校验receipt（present-malformed/代际不符→RecoveryRequired；NULL→正常启动，不新增标记）；`DataOperationGate`导出/恢复互斥、恢复等待在途写并拒绝新写；当前写服务在事务内接入gate；`RestoreMemoryBarrier`为E2/F2内存失效接缝 |
 | SAF/UI接缝 | `ContentResolverBackupSource/Target`、`BackupIntents` create/open document；未实现最终设置/备份页面、进度/取消/确认Dialog或F1导航接线 |
@@ -1491,13 +1491,14 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 **本批验证（仅证据见[G1 evidence](../../../engineering/evidence/2026-10-25-g1.md)）：**
 
 - **Host（T1）：** `:app:testDebugUnitTest`通过109项/0失败；其中backup新增`LogicalFormatTest`8项与`DataOperationGateTest`3项，覆盖严格JSON、manifest、ZIP空段/DEFLATE空块拒绝、往返、校验器合法/损坏历史、gate drain/互斥。
-- **API34 instrumentation（T3）：** `emulator-5586`（AVD `record2-f1-api34`，API34）运行`BackupRestoreContractTest` 5项全部通过：完整业务/聊天/Applied/旧Pending轮转与owner重读、14表零写门禁、authEpoch MAX-1拒绝/MAX-2→MAX-1、receipt损坏/NULL边界、WAL只读导出与并发写、空段恢复再导出。构建`assembleDebug`/`assembleDebugAndroidTest`通过。
+- **API34 instrumentation（T3）：** `emulator-5594`（AVD `record-api34`，API34）运行`BackupRestoreContractTest` 5项全部通过：完整业务/聊天/Applied/旧Pending轮转与owner重读、14表零写门禁、authEpoch MAX-1拒绝/MAX-2→MAX-1、receipt损坏/NULL边界、WAL只读导出与并发写、空段恢复再导出。构建`assembleDebug`/`assembleDebugAndroidTest`通过。
 - **回归：** `RecordSchemaContractTest`+`AiSecurityInitializationContractTest` 13项通过；Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`，无Schema/迁移/Manifest/data-extraction规则改动。
 - **未运行/阻塞：** 真机与真实DocumentsUI SAF create/write/flush/close/回读、真实Keystore/Provider、云备份/设备迁移排除、进程终止（force-stop/kill）全矩阵、完整BK2/BK4、64 MiB/256 MiB/500,000行边界、性能/ANR/OOM、F1/E2/F2最终UI与迟到Run内存取消接线、最终APK/合并/G2联合验收均NOT RUN或BLOCKED；G1完成门禁未因此通过。
+- **P1内存修复与剩余风险：** 导出路径已从“全量content→写ZIP→全量再读校验”改为单语句快照逐行写段文件、完成后用不保留行的ZIP verify；host/API34重跑通过。**导入preflight仍使用`LogicalZipReader.read`+全量validator**，在256 MiB/500,000行上限下仍有内存风险，必须在G1完整验收前流式化或提供覆盖上限的内存/性能证据；本批不把该风险标为已解除。
 
 **需负责人确认的实现偏差/风险：**
 
-1. **API34只读快照事务：** Android `SQLiteDatabase`在`OPEN_READONLY`连接上执行显式`BEGIN`会按写事务打开并以`SQLITE_READONLY`失败；本批改用同一只读连接、同一WAL、一个`UNION ALL`+`json_object`复合SELECT的隐式读事务，cursor遍历期间全部12表+`record_data_state`处于同一SQLite快照，仍不使用Room写事务、DB/WAL复制或多连接拼接。该实现与G0 §7.1字面`BEGIN DEFERRED`不同；若负责人要求严格字面合同，需回到G0/实现审查，不得直接以本批替代。
+1. **API34只读快照事务：** Android `SQLiteDatabase`在`OPEN_READONLY`连接上执行显式`BEGIN`会按写事务打开并以`SQLITE_READONLY`失败；本批改用同一只读连接、同一WAL、一个`UNION ALL`+`json_object`复合SELECT的隐式读事务，cursor遍历期间全部12表+`record_data_state`处于同一SQLite快照，仍不使用Room写事务、DB/WAL复制或多连接拼接。负责人2026-10-25已接受该等价实现，不再要求为字面SQL退回G0；但导出P1已按流式段文件修复，导入preflight内存风险仍归G1后续。
 2. **写入门禁层级：** gate接入现有Room服务的写事务边界，并覆盖当前所有生产写服务；未来新增写入口（E2/D1/F2等）必须复用`ProcessDataOperationGate.gate`，本批不提供SQLite authorizer级强制。`RestoreMemoryBarrier`只提供内存失效钩子，真实Run/工具协程取消由E2/F2接线并另测。
 3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
 
