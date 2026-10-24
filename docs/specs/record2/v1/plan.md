@@ -928,3 +928,36 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 
 
 2026-10-24批准轮（APPROVE）附带两项非阻塞建议，合并前已在D0测试设施内处理：批次预留改为原子持有+结算——`reserveForRequest`在同步块内把模型Run上限计入`outstanding`持有，响应到达或请求失败时结算，并发预留不再可能超发（新增10并发预留的确定性测试：$0.20上限/$0.10预留下恰好2项获准）；真实请求无响应失败时按全额预留结算（Provider可能已计费），由`RecordingHttpClient`失败路径触发，并新增对应确定性测试。费率表仍为固定估算，不构成账单严格保证；供应商计费变更与账单级结算策略仍为D1输入。本轮脚本设备套件19/19 PASS（17项既有+2项新增）；真实套件未重跑（成功路径行为未变且Key未再注入），§24.3与集成真实回归记录仍然有效。
+## 26. E1：Room 权威历史与 ChatHistoryProvider（issue #12）
+
+2026-10-24负责人要求“完成issue E1”，并要求“需要建立工作树”。本批按§6 E1合同与G-CODE执行正式Session/Message/Run服务/持久约束、ChatHistoryProvider/Coordinator与测试；沿用A1/Schema v1/B0/E0/D0交付，不新增ADR、不修改Schema v1物理结构、不实现UI/Record Tools/取消矩阵（E2/D1/F2边界）。会话入口为E1 issue #12全文，与§6 E1一致。执行于独立工作树`D:/record/.worktrees/e1-room-chat-history`（分支`codex/e1-room-chat-history`，基于含D0 PR #22的origin/main `991892b`）。
+
+### 26.1 实现交付
+
+- [sessions/AgentHistory.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/sessions/AgentHistory.kt)：Koog-free历史服务契约与最小历史DTO（Session/Message/Run/RunStart/RunCompletion/ProcessOwnership），枚举持久名遵循B0 §3.4（INPUT/Answer/Navigate/ProposalReady/ClarificationNeeded；RUNNING/COMPLETED/FAILED/CANCELLED/INTERRUPTED）。错误区分Validation/NotFound/SessionBusy/RunInvalidated/AuthorizationRequired/NotInitialized/RecoveryRequired/ConcurrentUpdate/OutcomeUnknown/RecoverableIO/StorageFull。
+- [storage/RoomAgentHistoryService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomAgentHistoryService.kt)：真实Room实现。startRun单事务校验代际/processOwner/授权行（mode/grant/epoch）后插入RUNNING(activeSlot=1)+当前USER消息并推进序号，boundary记录此前sequence/historyVersion；completeRun单事务重验Run状态/owner/receiver/epoch/代际/boundaryVersion后写最终ASSISTANT消息+引用、Run COMPLETED、释放slot、historyVersion+1；failRun仅当前owner可终态（FAILED/CANCELLED，幂等）；beginProcessOwnership为B0 §6恢复门禁（空库不采纳、同owner幂等不触碰活Run、采纳时全部RUNNING→INTERRUPTED并释放slot）。事务内checkpoint测试缝沿用Note/B1惯例，COMMITTED检查点异常映射OutcomeUnknown。并发发起由`(sessionId,activeSlot)`唯一索引裁决，约束异常映射SessionBusy。
+- [ai/runs/RoomChatHistoryProvider.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/runs/RoomChatHistoryProvider.kt)：每Run一个provider实例，绑定session+boundary。load重建已完成USER/ASSISTANT历史并**自带system消息**（见26.3发现1）；store为显式no-op——不建缓存表、不回写Room，store成功而最终回复未提交时不可能产生幽灵回复（Spec 5.2.4“或不持久缓存”分支）；窗口裁剪在provider内完成（system+最近N-1条），不使用Koog windowSize预处理器（其会连system一起裁掉）。隐藏推理与tool消息永不进入Room。
+- [ai/runs/AgentRunCoordinator.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/runs/AgentRunCoordinator.kt)：单用户Run编排（Spec 5.2）——E0 requirePermit→startRun原子启动→在useCredential回调内仅构造DeepSeekLLMClient（明文即清）→真实Koog AIAgent+ChatMemory执行（thinking显式disabled、toolRegistry可注入留给D1、当前输入经run参数恰一次）→completeRun原子提交；异常映射为有界SafeRunErrorCode，取消标CANCELLED；页面切换不取消Run（E2拥有取消/迟到写回调用点）。历史窗口/最大步数为非产品默认（沿用D0 §24.5测试上界），产品预算仍待D1/E2证据。
+- [storage/SessionDao.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/SessionDao.kt)新增条件更新/边界历史/全历史联查；[RecordDao.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RecordDao.kt)仅新增`updateProcessOwner`。无Schema v1结构/字段/索引/外键变更。
+
+### 26.2 实际验证与证据
+
+- **构建/host PASS：** JDK17.0.20+8、Gradle 8.13、AGP 8.12.3、Kotlin 2.3.10、Room 2.8.4、Koog 1.3.0/1.3.0-beta，自身wrapper显式`-p`运行`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`成功（1分42秒，129项中63执行/66 up-to-date）。host单元测试Debug、Release各33项（新增E1 10项），fail/error/skip均0。lint无错误（既有警告类别保留）。
+- **真实设备 PASS：** 复用专用`record2-schema-api34`（serial`emulator-5580`，API34，与本轮此前批次同AVD惯例；运行前核查boot/包归属/无活动instrumentation），仅安装/更新本批debug与.debug.test（SHA-256见[apk-hashes.txt](../../../../record2/build/e1/apk-hashes.txt)：debug`fea27acf…`、test`8a65d92b…`、release-unsigned`41fc0374…`）。[SessionRunContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/SessionRunContractTest.kt) 11项全PASS（`OK (11 tests)`，命令`am instrument -w -r -e class com.paherdin.record2.storage.SessionRunContractTest com.paherdin.record2.debug.test/androidx.test.runner.AndroidJUnitRunner`）：原子启动落盘形状、同Session双连接并发发起恰一胜出且败者输入零落盘、跨Session隔离、最终回复事务COMPLETION_WRITTEN持续故障×2+真协程取消全回滚、COMPLETION_COMMITTED丢失回执按同内容幂等核查/异内容拒绝、终态后迟到写零变化、运行中撤销epoch拒绝完成（重授亦拒绝）、所有权门禁中断陈旧Run+陈旧写者致盲+新owner新创建身份+同owner重复门禁不触碰活Run、窗口裁剪下18条磁盘全量保留且第9Run上下文有界、隐藏推理/tool流量全库哨兵扫描零泄漏、COMPLETED/FAILED/INTERRUPTED跨重开UI全历史可读、引用校验/持久化、TERMINAL_WRITTEN故障/取消回滚+终态幂等。
+- **共享回归 PASS：** 同AVD执行`RecordSchemaContractTest,SessionRunRealContractTest,NoteServiceContractTest`共25项`OK (25 tests)`——Schema v1契约10项（SessionDao新增查询未破坏物理契约）、B2 Note合同13项回归、E1真实类2项按Assume记为未激活（无Key时INCONCLUSIVE，不冒充PASS）。回执[build/e1/](../../../../record2/build/e1/)：instrument-initial.txt（首轮4项失败，见26.3）、instrument-second/third.txt（修正后11/11）、instrument-regression2.txt、build-full.log。
+- **秘密/制品 PASS：** 合成哨兵`r2-e1-synthetic-7c1d4e9a2b3f4a58`仅存在于test APK dex与androidTest源码，Debug/Release APK dex/resource扫描0命中；无真实Key/用户数据/网络调用（设备套件全部脚本化transport，凭据链走真实Keystore+E0服务）。E1真实类的key文件约定`files/e1/deepseek.key`，读取后即删。
+- **首轮失败与修正保留：** instrument-initial.txt记录4项失败：2项为测试脚本错误（消息计数误计3实为4、`ai_control`行变更未纳入快照基线），1项为取消辅助器在runBlocking事件循环线程上直接阻塞等待（B2原版用`withContext(Dispatchers.IO)`挂起让出线程，本批照此修正），1项为磁盘行按UUID主键排序导致角色断言错位（改为按role查找）。未删除测试或放宽断言；修正在重跑中11/11通过。
+
+### 26.3 E1实际发现（D1/E2输入）
+
+1. **Koog 1.3.0 ChatMemory合并规则：** StrategyStarting处load结果非空时**整体替换**prompt消息（含agent config的system消息）（本机agents-features-memory 1.3.0 AAR字节码核实：`ChatMemory$Feature$installInternal$1$1$invokeSuspend$lambda$0`——history为空→保留current，history非空→整体替换为history。）因此provider的load必须自带system消息并在provider内做窗口裁剪；Koog官方“load/store直接存消息”示例在多Run后会丢失system消息，不能照搬为用户历史双写（与Plan风险预判一致）。
+2. **DeepSeek响应解码要求`system_fingerprint`字段存在**（MissingFieldException→LLMClientException），脚本fixture必须携带该字段。
+3. `useCredential`回调为非suspend，长网络调用不能置于回调内；本批在回调内仅构造client（明文随即清零），agent在回调外执行，运行中撤销由完成事务epoch复验拦截——E2仍须把“先持久失效再取消网络”的排序接到调用点。
+
+### 26.4 未执行边界与下游责任
+
+- **真实Koog/DeepSeek跨Run协议证据NOT RUN：** [SessionRunRealContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/SessionRunRealContractTest.kt)已就绪（prepare/verify两段instrumentation+force-stop跨进程，固定私有库`e1-contract-real.db`），需负责人按D0 §24.1方式注入独立测试Key后执行：
+  `adb -s emulator-5580 shell run-as com.paherdin.record2.debug sh -c 'mkdir -p files/e1 && cat > files/e1/deepseek.key'`
+  →`am instrument -w -r -e mode prepare -e class …SessionRunRealContractTest …`→`adb shell am force-stop com.paherdin.record2.debug`→重新注入Key→`-e mode verify`。费用沿用D0批准的Flash单Run上限；缺Key时该类以Assume记INCONCLUSIVE，不阻塞确定性套件。E1完成门禁中“真实跨Run协议证据”在该批次执行并PASS前不视为完成。
+- E2拥有的取消/换Provider/删除Session/真进程恢复矩阵、D1的Record Tools与系统提示词、F2的UI与告知文案、G0/G1备份恢复均未在本批启动；`AgentRunDefaults`为测试参考值，产品默认预算不冻结。
+- 本批未修改record1、R1文档、CI、环境与备份规则；未操作普通`record2.db`、旧测试库与其他设备。Git提交/推送/PR及issue #12状态按负责人后续授权另行记录，不提前关闭远端任务。
