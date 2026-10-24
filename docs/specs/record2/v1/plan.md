@@ -984,3 +984,19 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 ### 26.7 PR交付（2026-10-24）
 
 负责人明确“需要你推送pr，不是推送分支”。已创建[PR #25](https://github.com/paher-din/record/pull/25)，base `main`、head `codex/b3-record-links`；PR包含B3实现、测试/runner、Plan §26与文档路由，合并main后的验证见§26.6。未合并main、未关闭issue #6；审查、合并及issue收口由负责人决定。实际提交、远端引用与PR身份由Git/GitHub回执证明。
+
+### 26.8 审阅修复与最终回执（2026-10-24）
+
+负责人本轮结论为“有条件通过，暂不合并”。本轮只改B3源码/测试与本Plan，不增加Schema、不扩展最终UI、不修改D0/E0/C0等任务语义。
+
+- **P1（提交后取消的未知结果）：** 新增`LinkCancellation`（仍是`CancellationException`，保留结构化取消语义）及`LinkCommittedCancellation`/`LinkOutcomeUnknownCancellation`。`RoomLinkService.apply`把事务内的取消归类为outcome unknown；把`LINKS_COMMITTED`检查点移到IO事务块之外，提交后的取消归类为committed cancellation。`LinkSelectionEditor.complete`捕获所有取消，先置`error=OutcomeUnknown`、`requiresReload=true`，再原样重抛，绝不把已提交结果留成可继续编辑的旧选择。
+- **P1测试：** host覆盖committed、ambiguous、plain三类取消及编辑器状态；真实Room在提交后门控取消，断言异常子类、完整关系集合、两端版本和可见计数；既有事务内取消测试继续证明回滚。
+- **P2（reload一致性）：** 构造与`reloadDiscardingSelection()`共用`validate`，检查generation、transactionId、transaction version、Note version、deletedAt、重复ID及linked/candidate互斥；无效结果返回RecoveryRequired并保留当前选择。host覆盖8类无效结果后有效重载成功。
+- **同步main：** 2026-10-24再次fetch，`origin/main`仍为`991892bbd55ee10ccd3940031eaec571f545c0ee`且已是本分支祖先（§26.6的普通merge保留D0 §24），本轮无需新增合并；未覆盖E0/D0/C0记录。
+- **测试对应commit：** `7cb32d0963df33e3afda223f02835ee0bdfa7595`。以下结果均由该commit构建的制品执行：
+  - host：62项（Debug/Release各31），fail/error/skip均0；[build-review2-fixed2.log](../../../../record2/build/b3/build-review2-fixed2.log)。
+  - 真实Room：36项（B3 13+Note 13+Schema 10），`OK (36 tests)`，8.677秒，无失败/skip；[instrumentation-review2-fixed3.txt](../../../../record2/build/b3/instrumentation-review2-fixed3.txt)。
+  - 进程：LINK/REMOVE × BEFORE/AFTER 4场景×2次真实强停/重启全部PASS；[process-run-review2.log](../../../../record2/build/b3/process-run-review2.log)与`process-b64c88406c6644c4b78eeeaccf4d0e9f/`。
+  - 制品：Debug/Release/AndroidTest APK SHA-256分别为`ef3e9e9f16e37412ffeea15027fd31082f57bbbf83b862788d0c9be81f9668eb`、`6acbdfceaddd3408916342857135818bbafd4a243ac32e666a06dab9958fba65`、`7de89ba3e3cb7027aac27350f3b6048b4c834ed89e9cf50d67afe9d0fa88165e`；设备安装摘要与构建一致；lint 0错误/7项警告；Schema LF规范化摘要仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
+- **失败与修订保留：** 初次`build-review2-fixed.log`因block body缺少`return`编译失败；`instrumentation-review2.txt`因提交点仍在IO块内导致取消被包装为OutcomeUnknown；`instrumentation-review2-fixed.txt`因测试门控阻塞`runBlocking`事件线程而超时。分别修正为事务外提交点、IO上启动门控协程并保留全部失败回执；未删除测试或放宽断言。
+- **未覆盖项不变：** C1/Tools的LINK/UNLINK、F0/F1页面、Agent/AI、ZIP/备份及TP-05完整提案链路仍属下游；本轮未合并main、未关闭issue #6，PR #25由负责人再次审阅。
