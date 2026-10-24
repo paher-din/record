@@ -20,6 +20,8 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -743,7 +745,19 @@ class CommitContractTest {
         val view = proposals.prepare(context, goldenIntents)
         val dispatcher = HeldDispatcher()
         val scope = CoroutineScope(dispatcher + Job())
-        val deferred = scope.async { service(CommitGolden.ids()).confirm(command(view)) }
+        // A caller inside the coroutine sees the classification at its own catch site; the
+        // cancelled job itself only ever surfaces plain cancellation to outside awaiters.
+        val classified = CompletableDeferred<Throwable>()
+        val deferred = scope.async {
+            try {
+                service(CommitGolden.ids()).confirm(command(view))
+                classified.complete(IllegalStateException("unexpected success"))
+            } catch (error: CommitReceiptLossException) {
+                classified.complete(error)
+            } catch (error: CancellationException) {
+                classified.complete(error)
+            }
+        }
         // Run to the io suspension; the confirm body commits on Dispatchers.IO while its
         // completion stays parked in the held dispatcher.
         dispatcher.drain()
@@ -751,8 +765,9 @@ class CommitContractTest {
         // The operation is durable and the caller has not resumed yet: this cancellation races
         // the withContext return, which must discard the value without losing the classification.
         deferred.cancel()
-        val error = cancelAtReturnBoundaryAndAwait(deferred, dispatcher)
-        assertTrue(error is CommitReceiptLossException)
+        val error = resumeAndObserve(deferred, dispatcher, classified)
+        if (error !is CommitReceiptLossException) error("classified as: " + error)
+        assertTrue((error as CommitReceiptLossException).cause is CancellationException)
         assertEquals("Pending", operations().single()[7])
         assertEquals("LOCKED", rowOf("change_proposal", 0, view.id)[11])
         val reconciled = service().confirm(command(view))
@@ -767,12 +782,22 @@ class CommitContractTest {
         service(CommitGolden.ids()).confirm(command(view))
         val dispatcher = HeldDispatcher()
         val scope = CoroutineScope(dispatcher + Job())
-        val deferred = scope.async { service().execute(CommitGolden.OPERATION) }
+        val classified = CompletableDeferred<Throwable>()
+        val deferred = scope.async {
+            try {
+                service().execute(CommitGolden.OPERATION)
+                classified.complete(IllegalStateException("unexpected success"))
+            } catch (error: CommitReceiptLossException) {
+                classified.complete(error)
+            } catch (error: CancellationException) {
+                classified.complete(error)
+            }
+        }
         dispatcher.drain()
         awaitDurable { operations().isNotEmpty() && operations().single()[7] == "Applied" }
         deferred.cancel()
-        val error = cancelAtReturnBoundaryAndAwait(deferred, dispatcher)
-        assertTrue(error is CommitReceiptLossException)
+        val error = resumeAndObserve(deferred, dispatcher, classified)
+        if (error !is CommitReceiptLossException) error("classified as: " + error)
         // The facts committed exactly once; a later idempotent re-execution returns the same result.
         assertEquals(2L, rowOf("record_transaction", 0, CommitGolden.NEW_TRANSACTION)[8])
         assertEquals(2L, rowOf("note", 0, CommitGolden.NEW_NOTE)[3])
@@ -783,10 +808,11 @@ class CommitContractTest {
     }
 
     /** Resumes the parked caller (the cancellation race) and keeps draining its follow-ups. */
-    private suspend fun <T> cancelAtReturnBoundaryAndAwait(
+    private suspend fun <T> resumeAndObserve(
         deferred: kotlinx.coroutines.Deferred<T>,
         dispatcher: HeldDispatcher,
-    ): Throwable? = kotlinx.coroutines.coroutineScope {
+        classified: CompletableDeferred<Throwable>,
+    ): Throwable = kotlinx.coroutines.coroutineScope {
         val drainer = launch(Dispatchers.Default) {
             while (!deferred.isCompleted) {
                 dispatcher.drain()
@@ -794,7 +820,7 @@ class CommitContractTest {
             }
             dispatcher.drain()
         }
-        val error = runCatching { deferred.await() }.exceptionOrNull()
+        val error = classified.await()
         drainer.cancel()
         error
     }

@@ -27,8 +27,8 @@ import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
@@ -377,19 +377,29 @@ internal class RoomCommitService(
 
     /**
      * Post-commit cancellation reconciliation. A cancelled withContext may discard an already
-     * committed result, so the durable operation state — read under NonCancellable — classifies
-     * the outcome: committed means receipt loss, unchanged means a plain cancellation, and an
-     * unreadable database means the outcome cannot be determined.
+     * committed result, so the durable operation state — read synchronously so no cancelled
+     * resume can discard the answer — classifies the outcome: committed means receipt loss,
+     * unchanged means a plain cancellation, and an unreadable database means the outcome
+     * cannot be determined.
      */
-    private suspend fun reconcileConfirmation(command: ConfirmationCommand, cause: CancellationException): Nothing {
-        val committed: Boolean? = withContext(NonCancellable + Dispatchers.IO) {
-            try {
-                database.withTransaction {
-                    validate(command)
-                    proposals.operationForProposal(command.proposalId) != null
-                }
-            } catch (error: SQLiteException) {
-                null
+    private fun reconcileConfirmation(command: ConfirmationCommand, cause: CancellationException): Nothing {
+        val committed: Boolean? = blockingRead {
+            validate(command)
+            proposals.operationForProposal(command.proposalId) != null
+        }
+        when (committed) {
+            null -> throw CommitException(CommitError.OutcomeUnknown, cause)
+            true -> throw CommitReceiptLossException(cause)
+            false -> throw cause
+        }
+    }
+
+    private fun reconcileExecution(operationId: String, cause: CancellationException): Nothing {
+        val committed: Boolean? = blockingRead {
+            identity(operationId)
+            when (proposals.operation(operationId)?.status()) {
+                CommitStatus.Pending, null -> false
+                else -> true
             }
         }
         when (committed) {
@@ -399,25 +409,12 @@ internal class RoomCommitService(
         }
     }
 
-    private suspend fun reconcileExecution(operationId: String, cause: CancellationException): Nothing {
-        val committed: Boolean? = withContext(NonCancellable + Dispatchers.IO) {
-            try {
-                database.withTransaction {
-                    identity(operationId)
-                    when (proposals.operation(operationId)?.status()) {
-                        CommitStatus.Pending, null -> false
-                        else -> true
-                    }
-                }
-            } catch (error: SQLiteException) {
-                null
-            }
-        }
-        when (committed) {
-            null -> throw CommitException(CommitError.OutcomeUnknown, cause)
-            true -> throw CommitReceiptLossException(cause)
-            false -> throw cause
-        }
+    /** One indexed identity read on Dispatchers.IO, returned synchronously; null = undeterminable. */
+    private fun blockingRead(read: () -> Boolean): Boolean? = try {
+        runBlocking(Dispatchers.IO) { runCatching(read).getOrNull() }
+    } catch (error: CancellationException) {
+        // The enclosing frame is already cancelled; keep the caller's cancellation semantics.
+        throw error
     }
 
     private fun displayed(row: ChangeProposalEntity, command: ConfirmationCommand): String {
