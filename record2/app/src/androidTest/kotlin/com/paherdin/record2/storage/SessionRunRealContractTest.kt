@@ -16,10 +16,11 @@ import org.junit.Test
  *
  *  1. `prepare` (invocation A): inject the key first via
  *     `adb -s <serial> shell run-as com.paherdin.record2.debug sh -c 'mkdir -p files/e1 && cat > files/e1/deepseek.key'`
- *     then run this class with `-e mode prepare -e class ...SessionRunRealContractTest`. It resets
- *     its own synthetic database, configures the E0 authorization chain with the real key, and
- *     runs two real turns on one session. Then force-stop the app process.
- *  2. `verify` (invocation B): run with `-e mode verify` in the fresh process. The ownership gate
+ *     then run with `-e class ...SessionRunRealContractTest#prepare`. It resets its own synthetic
+ *     database, configures the E0 authorization chain with the real key, and runs two real turns
+ *     on one session. Then force-stop the app process.
+ *  2. `verify` (invocation B): re-inject the key, then run with
+ *     `-e class ...SessionRunRealContractTest#verify` in the fresh process. The ownership gate
  *     adopts a new owner, and a third real turn must recall the turn-1 fact purely from the
  *     Room-rebuilt history. The key file is deleted on first read in each invocation.
  *
