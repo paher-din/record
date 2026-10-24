@@ -980,3 +980,7 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 - **合并后真实Room PASS：** [instrumentation-merged.txt](../../../../record2/build/b3/instrumentation-merged.txt)为`OK (35 tests)`、35个完成状态0、无失败/skip，19.239秒；仍为B3 12项+Note 13项+Schema 10项。
 - **合并后进程矩阵 PASS：** [process-run-merged.log](../../../../record2/build/b3/process-run-merged.log)与`process-a6616d03daac49ca8510b1245d947617/`；LINK/REMOVE × BEFORE/AFTER 4场景×2重启全部PASS。
 - **合并后制品：** Debug/Release/AndroidTest APK SHA-256分别为`a7e0cef2f9c3a6385a934850c3ceb53253606ef85628adff456e101ca7e1fa38`、`221a387ad5f5a0e6457227afbcc62fb48299406f7c9cfdf26bea83a54192c3d9`、`98b3ea1dac3b53cb4570846dbed7e989ffb583a50f824420cade9b0a0bddbe5d`；设备安装的`.debug`/`.debug.test`摘要与构建产物一致。仍为D盘`record2-b2-api34`/emulator-5584/API34 x86_64；Schema LF规范化摘要仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。§26.3保留合并前证据，不将其APK摘要挪给合并后制品。
+
+### 26.7 PR交付（2026-10-24）
+
+负责人明确“需要你推送pr，不是推送分支”。已创建[PR #25](https://github.com/paher-din/record/pull/25)，base `main`、head `codex/b3-record-links`；PR包含B3实现、测试/runner、Plan §26与文档路由，合并main后的验证见§26.6。未合并main、未关闭issue #6；审查、合并及issue收口由负责人决定。实际提交、远端引用与PR身份由Git/GitHub回执证明。
