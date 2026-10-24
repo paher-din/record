@@ -78,10 +78,8 @@ internal class LinkSelectionEditor(
                 )
             }
             return true
-        } catch (cancelled: LinkCancellation) {
-            mutableState.update { it.copy(error = LinkError.OutcomeUnknown, requiresReload = true) }
-            throw cancelled
         } catch (cancelled: CancellationException) {
+            mutableState.update { it.copy(error = LinkError.OutcomeUnknown, requiresReload = true) }
             throw cancelled
         } catch (error: LinkException) {
             mutableState.update { it.copy(error = error.code, requiresReload = true) }

@@ -107,9 +107,10 @@ class LinkSelectionEditorTest {
     }
 
     @Test fun cancellationWithUnknownOutcomeRequiresReloadAndKeepsSelection() = runBlocking {
-        val cancellations = listOf(
+        val cancellations = listOf<CancellationException>(
             LinkCommittedCancellation(CancellationException("synthetic committed")),
             LinkOutcomeUnknownCancellation(CancellationException("synthetic rollback-or-commit")),
+            CancellationException("synthetic plain"),
         )
         for (cancellation in cancellations) {
             val service = service()
