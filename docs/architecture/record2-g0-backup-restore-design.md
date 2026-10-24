@@ -4,6 +4,8 @@
 
 依据：[Spec §6](../specs/record2/v1/spec.md)、[B0 §9](record2-b0-data-model-design.md#9-完整备份代际与恢复接缝)、[ADR 0018](decisions/0018-record2-data-concurrency-and-history.md)、[C1 证据](../engineering/evidence/2026-10-24-c1.md)、[E1 证据](../engineering/evidence/2026-10-24-e1.md)、[F0-C3 D-SAFE](../design/record2-f0-c3-review.md#8-d-safe授权历史备份与恢复)。冻结统一架构、Spec 行为、B0 数据语义和 C1/E1 状态机不被本文重开；本文只在 G0 授权内冻结恢复格式与协议。
 
+**Rev2（2026-10-25，PR #28 审阅修订）：** 保留“逻辑 ZIP + 单事务原子恢复”总体架构及 G0-D1～D14 编号，不扩大实现范围、不改 Schema/Android 源码。本修订只处理四项审阅问题：§8.3 门禁的 Run 取消/迟到写回/事务前零写入；§8.5/§10.2 的 `restoreReceipt` 缺失可检测性；§5.1/§6 时间规则与 C0/C1 校验器对齐；§7.1 真正只读导出快照及 WAL/并发验证。相应 BK2/BK4/G1 测试契约同步增加，仍全部 NOT RUN。
+
 ## 1. 结论与待批准决定
 
 推荐采用**单一手动完整逻辑 ZIP + 单一数据库事务整体导入**。不建设物理文件切换或第二套恢复框架。所有数值、状态转换和拒绝规则在本文件冻结；负责人批准前不得据此写恢复代码。
@@ -194,10 +196,35 @@ V1 没有必须随备份保存的“解释性偏好”数据库外存储：草�
 | 身份 | 规范小写 UUID 文本 `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`；大小写/花括号/空格/非 UUID 拒绝。默认账户/分类身份必须匹配 B1 种子集合 |
 | 版本 | `version`/`revision`/`draftRevision`/`historyVersion`/`historyBoundaryVersion`/`authEpoch`/`confirmedRevision` 为 `1..Long.MAX_VALUE-1`；`businessRevision`/`nextMessageSequence`/`historyBoundarySequence` 为 `0..Long.MAX_VALUE-1`；`amountMinor` 为 `1..Long.MAX_VALUE` |
 | 枚举 | `direction` 仅 INCOME/EXPENSE；`currency` 仅 CNY；Run/Proposal/Operation/草稿/角色/结果/错误码仅既有封闭集合；未知字符串拒绝 |
-| 时间 | 全部 epoch millis 必须在 §6 范围内；`updatedAt>=createdAt`；`deletedAt` 为空或 `createdAt<=deletedAt<=updatedAt`；`finishedAt` 在 `createdAt/startedAt` 之后；RUNNING 的 `finishedAt` 必须为 null；消息时间落在 Run 生命周期内 |
+| 时间（通用导入范围） | 全部 epoch millis 必须落在 §6 的导入绝对范围内；`updatedAt>=createdAt`；`deletedAt` 为空或 `createdAt<=deletedAt<=updatedAt`；`finishedAt` 在 `createdAt/startedAt` 之后；RUNNING 的 `finishedAt` 必须为 null；消息时间落在 Run 生命周期内 |
+| 时间（C0/C1 对齐，Rev2） | `change_proposal.createdAt/updatedAt` 必须 `createdAt>=0 && updatedAt>=createdAt`；`commit_operation.createdAt>=0`；载荷内 `ProposalTime` 必须完整通过 C0/C1 codec（`ZoneId`、±64800 offset、规范 localDateTime、毫秒精度、epoch 自洽）。§6 绝对范围是额外导入边界，不能替代 codec，也不能放宽这些字段最小值 |
 | 金额/文本 | Note 正文非全空白且原样保存；memo 非 null 且原样（可为空串）；字符串不做 trim/归一化；行长 ≤8 MiB；非法 UTF-8/BOM/CRLF/孤立代理项拒绝 |
 | JSON | 行与载荷必须是合法 UTF-8 JSON；重复 key、未知字段、浮点/指数金额、字符串化整数、超过深度 32 拒绝；载荷格式版本必须为 1 且由 C0/C1/B1 编解码器重新验证 |
 | 摘要 | `payloadDigest`/`frozen payload`/manifest 段哈希/`contentDigest`/整 ZIP 哈希均为 64 位小写十六进制，且按定义重算相等 |
+
+**时间/版本字段与现有 owner 校验器对齐（Rev2）。** 导入成功的数据必须在 C0/C1/B1/B2/E1 重读时不被判为 RecoveryRequired；导入接受集合是各 owner 校验集合的**单向子集**（导入可更严格拒绝，不能接受 owner 会拒绝的值）。§6 的绝对范围只是额外导入安全边界，不能替代或放宽下列规则；被它额外拒绝的极端时间属于导入失败，不是成功导入后的 RecoveryRequired。
+
+| 字段/载荷 | 现有 owner 校验事实 | 导入必须满足 |
+|---|---|---|
+| `change_proposal.createdAt/updatedAt` | C0 `view`、C1 `displayed`: `createdAt>=0`、`updatedAt>=createdAt` | 同左；再加 §6 绝对范围 |
+| `commit_operation.createdAt` | C1 `frozen`: `createdAt>=0` | 同左；再加 §6 绝对范围 |
+| `commit_operation.finishedAt` | C1 只校验状态/null 组合，未校验负值/顺序 | 导入额外要求终态 `finishedAt>=createdAt`；更严格但不接受 C1 会拒绝的值 |
+| Proposal/frozen payload 的 `ProposalTime` | C0/C1 codec：`ZoneId` 可解析、`offsetSeconds` 在 -64800..64800、`localDateTime` 规范且毫秒精度、`toEpochMilli` 自洽 | 先完整通过 codec，再满足 §6 范围；ZIP 层不得只查范围而跳过 codec |
+| `transaction`/`note.occurredAt` | B1 `FinanceTime`/B2 只在正常写入时拒绝未来；读取不重验 | §6 范围 + `occurredAt<=updatedAt`；不把恢复历史按“新建写”重新拒绝 |
+| `account/category/transaction/note/draft/session/run/message` 的其余时间 | 无 C0/C1 的 `>=0` 限制；B1/B2 另校金额/版本/正文/删除顺序 | §6 通用范围 + §5.2 顺序；不声称 C0/C1 会拒绝负值 |
+| `deletedAt` | B2: null 或 `>=createdAt` | 同左，并 `<=updatedAt` |
+| `businessRevision` | C0/C1 读取要求 `>=0`；递增 SQL 条件 `<Long.MAX_VALUE` | `0..Long.MAX_VALUE-1`；MAX 拒绝（否则不可正常推进） |
+| `version`/`revision`/`draftRevision`/`historyVersion`/`historyBoundaryVersion`/`authEpoch`/`confirmedRevision` | C0/C1/B1/B2/E0 接受 `>=1`；写条件 `<MAX>` | `1..Long.MAX_VALUE-1` |
+| `nextMessageSequence`/`historyBoundarySequence` | E1 在 `>=Long.MAX_VALUE` 拒绝；boundary 从本次历史边界取值 | `0..Long.MAX_VALUE-1`；`historyBoundaryVersion>=1` |
+| `payloadFormatVersion` | C0/C1 必须为 1 | 必须为 1 |
+| `amountMinor`/`currency`/`direction` | B1/C1: `>0`、CNY、INCOME/EXPENSE | 同左 |
+| `note.body`/`deletedAt` | B2: 非全空白；`deletedAt>=createdAt` | 同左 |
+
+校验事实来源：`RoomProposalService.view()/editable()`、`RoomCommitService.displayed()/frozen()`、`ProposalCodec.persistedTime()`/`CommitCodec.time()`；G1必须按实际源码复核这些规则，不能只按本文文字。若源码校验变化，导入器先同步收紧，再允许该格式版本通过。
+
+§6 的绝对时间范围对 payload 内 `occurredAt` 也是额外导入边界；C0/C1 codec 是时间四元组自洽性的权威校验。若某个极端时间仅被 §6 拒绝，那是**导入拒绝**，不是“导入成功后服务判 RecoveryRequired”；不得为了接受极端历史时间而跳过 codec 或放宽 owner 最小值。
+
+若未来 owner 增加更严格校验，导入器必须同步收紧或拒绝该格式版本；不能出现“导入 PASS、服务重读 RecoveryRequired”的组合。G1 必须对成功导入后的真实服务重读做专项断言（§10.3），不是只比对 14 表。
 
 ### 5.2 跨表状态
 
@@ -205,8 +232,8 @@ V1 没有必须随备份保存的“解释性偏好”数据库外存储：草�
 - `agent_session`：`historyVersion>=1`、`0<=nextMessageSequence<Long.MAX_VALUE`、`title` 为 null 或非空字符串、`updatedAt>=createdAt`。
 - `agent_message` 的 `(sessionId,sequence)` 唯一且从 0 连续到 `nextMessageSequence-1`；`(runId,role)` 唯一；USER 消息恰 1 条/非空 body/`resultKind=INPUT`/无 result/proposal 字段；ASSISTANT 至多 1 条且 `resultKind!=INPUT`；`proposalId`/`proposalRevision` 同时为空或同时非空，非空时 Proposal 必须存在、属于同一 Session、revision>=1，且 revision 允许是历史 revision 而非当前值；消息 createdAt 落在 Run 的 `startedAt..finishedAt`（RUNNING 只要求 >=startedAt）；Run/Message 会话归属一致；引用 ordinal 从 0 连续且恰一个目标非空，引用消息必须为 ASSISTANT。
 - `agent_run`：`(id,sessionId)` 唯一、`proposalCreationRequestId` 全库唯一；`state=RUNNING` ⇔ `activeSlot=1` 且 `finishedAt=null`；终态 ⇔ `activeSlot=null` 且 `finishedAt>=startedAt`；COMPLETED 恰有最终 ASSISTANT，其它状态不得有；RUNNING/COMPLETED 的 `safeErrorCode=null`，FAILED/CANCELLED 必须是已知非空错误码，INTERRUPTED 为 null 或已知码；`historyBoundarySequence<=session.nextMessageSequence`、`historyBoundaryVersion<=session.historyVersion`；`receiverIdentity` 非空、≤256 code point、无控制字符。
-- Proposal 的 `originRunId` 必须存在且其 `proposalCreationRequestId` 等于 `creationRequestId`；`lastWriterRunId` 属于同一 Session；`creationRequestId` 全库唯一；`payloadDigest` 与 `payloadJson` 一致；`creationPayloadJson` 与 `payloadJson` 在 revision=1 时必须相等；`updatedAt>=createdAt`；EDITABLE/LOCKED ⇔ `activeSlot=1`，其余状态 ⇔ `activeSlot=null`；state/payloadFormatVersion 必须为已知值。
-- Proposal↔Operation：`commit_operation.proposalId` 唯一；Proposal EDITABLE 不得有 Operation；LOCKED 恰有一个 Pending；NEEDS_REVIEW 可无或有 Pending；ABANDONED 无 Operation；终态 Proposal 若仍存在则恰有一个同终态 Operation。Pending Operation 的 Proposal 可因已删除 Session 而缺失；Applied/Rejected 同理可缺失。Operation 的 `createdAt` 合法；Pending 的 `finishedAt/resultJson/rejectionCode` 必须全为 null；终态 `finishedAt>=createdAt`；冻结 payload、result、rejectionCode 与状态组合按 C1 规则校验。
+- Proposal 的 `originRunId` 必须存在且其 `proposalCreationRequestId` 等于 `creationRequestId`；`lastWriterRunId` 属于同一 Session；`creationRequestId` 全库唯一；`payloadDigest` 与 `payloadJson` 一致；`creationPayloadJson` 与 `payloadJson` 在 revision=1 时必须相等；`createdAt>=0`、`updatedAt>=createdAt`；EDITABLE/LOCKED ⇔ `activeSlot=1`，其余状态 ⇔ `activeSlot=null`；state/payloadFormatVersion 必须为已知值。
+- Proposal↔Operation：`commit_operation.proposalId` 唯一；Proposal EDITABLE 不得有 Operation；LOCKED 恰有一个 Pending；NEEDS_REVIEW 可无或有 Pending；ABANDONED 无 Operation；终态 Proposal 若仍存在则恰有一个同终态 Operation。Pending Operation 的 Proposal 可因已删除 Session 而缺失；Applied/Rejected 同理可缺失。Operation 的 `createdAt>=0`；Pending 的 `finishedAt/resultJson/rejectionCode` 必须全为 null；终态 `finishedAt>=createdAt`；冻结 payload、result、rejectionCode 与状态组合按 C1 规则校验。
 - Applied 结果中的创建/更新 ID 必须在正式业务表中存在；**不**要求当前 version/字段仍等于结果版本/冻结 payload（后续合法编辑允许）。Note 软删除仍算存在。关系计数必须在冻结配对数内。Proposal/Operation payload 内的目标身份是历史意图/冻结输入，不要求当前存在或版本匹配；只有正式表外键/消息引用和 Applied result 的稳定 ID 做存在性校验（Rejected 的 NotFound 历史不因目标缺失而判损坏）。
 - 草稿：`slot=1`；仅 EDITING；`draftRevision` 为 `1..Long.MAX_VALUE-1`；NEW 的 `baseVersion=null` 且 `recordId` 不得已是正式交易；EDIT 的 `baseVersion` 为正且 `recordId` 必须存在；`inputJson` 只验封闭信封/字段类型，不要求金额/时间/账户/分类版本当前有效或基线匹配（陈旧草稿是合法历史，继续编辑时由 B1 重验）。信封必须为 `{"formatVersion":1,"input":{amountText,direction,accountId,accountVersion,categoryId,categoryVersion,memo,localDateTime,zoneId}}`，未知字段/未知版本拒绝；`inputJson` 字节不得超过单行上限。`saveReceiptJson` 不导出，导入置 null。
 
@@ -241,29 +268,38 @@ V1 没有必须随备份保存的“解释性偏好”数据库外存储：草�
 | `MAX_ROWS_TOTAL` | 500,000 | 12 段数据行总数 |
 | `MAX_COMPRESSION_RATIO` | 100 | 单段 `uncompressed/compressed`；压缩后字节为 0 的空段按 0 处理 |
 | `MAX_JSON_DEPTH` | 32 | 行/载荷 JSON 嵌套深度 |
-| `MIN_TIMESTAMP_MS` | -62,135,596,800,000（0001-01-01T00:00:00Z） | 接受下界 |
+| `MIN_TIMESTAMP_MS` | -62,135,596,800,000（0001-01-01T00:00:00Z） | 导入安全下界；不替代/不放宽 Proposal/Operation `createdAt>=0` 等字段规则（§5.1） |
 | `HARD_MAX_TIMESTAMP_MS` | 253,402,300,799,999（9999-12-31T23:59:59.999Z） | 绝对上界 |
-| `MAX_FUTURE_SKEW_MS` | 86,400,000（24h） | 相对导入当前时刻的未来容差；有效上界取 `min(HARD_MAX, now+24h)` |
+| `MAX_FUTURE_SKEW_MS` | 86,400,000（24h） | 相对导入当前时刻的未来容差；有效上界取 `min(HARD_MAX, now+24h)`；C0/C1 本身没有该上界，导入更严格 |
 | `MAX_RECEIPT_BYTES` | 4,096 | `restoreReceipt` JSON 上限 |
 | `MAX_RECEIVER_IDENTITY_CHARS` | 256 | `receiverIdentity` 历史字段 |
 | `MAX_APP_VERSION_NAME_CHARS` | 128 | manifest 展示字段 |
+| `MAX_EXPORT_WAL_GROWTH_BYTES` | 402,653,184（384 MiB） | 导出读快照期间 WAL 相对基线的增长上限（最大逻辑 256 MiB + 128 MiB 余量）；超过则中止导出 |
+| `EXPORT_FREE_RESERVE_BYTES` | 67,108,864（64 MiB） | 导出期间 DB 卷与 staging 卷各自最低余量；低于则中止 |
+| `GATE_DRAIN_TIMEOUT_MS` | 30,000 | 获取恢复门禁后等待在途短写事务排空的上限；超时放弃恢复且 O 零写 |
 | 导出 staging 余量 | 134,217,728（128 MiB） | 开始导出前 staging 所在卷至少 64 MiB ZIP + 64 MiB 余量 |
 | 导入磁盘余量 | `zipBytes + 2*totalUncompressed + currentDbBytes + currentWalBytes + 134,217,728` | 事务删除/插入、WAL、staging 和回滚余量；低于此值在门禁前拒绝 |
 
 - 压缩策略：导出器对每段优先 DEFLATE；若该段比值会超过 100:1，则改用 STORED，保证生成的包可被本格式接受；若整包仍超过 64 MiB，导出明确失败，不生成“成功”回执。导入器按 central directory 的压缩/解压大小和实际流双重检查。空段压缩/解压字节都必须为 0；非空段的压缩字节必须 >0 且 `compressed*100>=uncompressed`。
 - 限额是 V1 产品边界，不是旧 100000 项/20GiB/200:1 的继承。未来若产品数据规模需要更大，必须新 formatVersion/负责人批准，不能静默放宽。
-- 磁盘余量检查在预检/门禁前执行，使用数据库目录与 staging 目录的实际可用空间；导出写入过程中若低于 64 MiB 余量则中止且不报成功。
+- 导入磁盘余量在预检/门禁前按上述公式检查，低于阈值拒绝导入，O 不变。
+- 导出开始时记录 DB 卷/staging 卷可用空间与 WAL 基线；快照期间持续监控 WAL 增长和两卷余量。WAL 增长超过 `MAX_EXPORT_WAL_GROWTH_BYTES` 或任一余量低于 `EXPORT_FREE_RESERVE_BYTES` 时立即中止导出、关闭读事务/丢弃 staging，不报成功；O 不变。G1 记录基线/峰值/增长，并证明中止路径可重试。
+- 这些导出监控是只读快照的资源保护，不表示导出取得写锁；正常业务写可在快照期间继续（WAL），其能否完成与 WAL/余量上限由 G1 按 §10.4 验证。
 
 ## 7. 导出协议
 
 ### 7.1 前置与快照
 
-1. 仅在正常启动门禁完成后提供导出；RecoveryRequired、恢复门禁进行中或数据库不可读时拒绝。
+1. 仅在正常启动门禁完成后提供导出；RecoveryRequired、恢复门禁进行中或数据库不可读时拒绝。导出与恢复共用唯一数据操作门禁：导出持只读操作 lease（直到 SAF 回读/失败结束），恢复在导出期间返回 Busy；导出**不**获取恢复写门禁，因此不阻塞正常业务写。
 2. 用户经 SAF 选择目标并看到未加密/含私人数据/不含 Key/有效授权的告知；若存在 `EDITING` 草稿，告知必须说明它作为未提交输入保留、SAVED/DISCARDED 不包含且导出不改变草稿状态；staging 余量检查通过。
-3. 在一个 **只读 Room 事务**内按固定段顺序读取全部 12 段和 `record_data_state`；所有读取使用同一事务/同一连接，不使用多个连接的“近似快照”。快照时点为读取开始时的 Clock；manifest `exportedAt` 使用该值。
-4. 读取时同步执行行级校验/限额计数并写入 staging ZIP 的数据条目/哈希；然后写 manifest（含 `contentDigest`）、关闭 ZIP。DB 事务在 ZIP 完成后结束。
-5. 导出**不**要求停写：WAL/只读事务给出时点快照；导出期间完成的 Run/自动保存/提交不进入该 ZIP，但不会造成混合表状态。若运行环境使读者阻塞写者，阻塞时间以 ZIP 构建为界；不把该现象伪装成“已冻结全部业务”。
-6. RUNNING Run 按快照原样导出（RUNNING）；Pending/LOCKED 也按快照原样导出；恢复协议负责转换。导出不回写、不消费草稿、不取消 Run。
+3. **真正只读快照（Rev2）：** 从应用私有 DB 路径打开独立的只读 SQLite 连接（`OPEN_READONLY` + `PRAGMA query_only=ON`），执行 `BEGIN DEFERRED`，在同一读事务中按固定段顺序读取全部 12 段和 `record_data_state`。**不得**使用 `RoomDatabase.withTransaction`、`beginTransaction`、`beginTransactionNonExclusive` 或任何可能取得写锁的连接；读事务只执行 SELECT，不 checkpoint、不执行会修改数据库文件的 PRAGMA/DDL/写语句（`query_only=ON` 是连接状态，不是数据库写）。
+4. 同一连接前置检查 `PRAGMA journal_mode` 必须为 `wal`；WAL 是读快照不阻塞正常写的必要条件。非 WAL 时导出以明确的 unsupported 状态拒绝，**不以 Room 写事务降级**；G1 记录该环境前置。
+5. 快照时点为 `BEGIN DEFERRED` 后第一次读取；全部段/`record_data_state` 必须来自同一连接/同一事务，不允许跨连接拼快照。读取时同步执行行级校验/限额计数并写入 staging ZIP 的数据条目/哈希；然后写 manifest（含 `contentDigest`）、关闭 ZIP，随后结束读事务/关闭只读连接，再进入 §7.2 SAF。manifest `exportedAt` 使用快照时点 Clock。
+6. 导出**不**要求停写：只读快照不持写锁，正常业务写可在快照期间继续（WAL）；导出期间完成的 Run/自动保存/提交不进入该 ZIP，也不会造成混合表状态。WAL 增长和两卷余量按 §6 监控并可在越界时中止导出，不报成功。
+7. 若只读连接在当前 Room/WAL 环境无法取得一致快照或无法看到当前 WAL 内容，**停止并回到 G0/实现审查**；不得静默改用 Room 写事务、复制 DB/WAL 文件或改用普通连接的多条 SELECT 拼快照。
+8. RUNNING Run 按快照原样导出（RUNNING）；Pending/LOCKED 也按快照原样导出；恢复协议负责转换。导出不回写、不消费/保存草稿、不取消 Run、不写 `ai_control`。
+
+**Rev2 说明：** 独立只读连接能否在当前 Android/Room/WAL 环境读取一致快照，是 G1 的环境前置；本设计不声称所有平台或低内存 journal mode 都支持。若非 WAL、只读连接失败或读不到当前 WAL，导出停止/拒绝，不产生第二套“写事务快照”或 DB 文件复制方案。
 
 ### 7.2 验证与 SAF 写入
 
@@ -305,18 +341,19 @@ IDLE → SOURCE_SELECTED → PREFLIGHT（可取消）
 
 ### 8.3 独占门禁与 staging
 
-确认后进入不可取消阶段：
+确认后进入不可取消阶段。**门禁/prepare 阶段的事务前零写入是硬约束：这段路径只能读，不能写 O；任何失败都必须让 O 的 14 表逐字段不变。**
 
-1. 获取唯一数据操作门禁（导出/恢复互斥）；其它写服务（自动保存/草稿/提交/Run 工具/创建 Session 等）停止接受新请求并等待在途短事务结束；读取可继续但不得进入新写。
-2. 信号使当前 AI Run/请求失效：取消/停止后续网络与写回；旧 permit/owner/generation 不再有效。恢复不依赖网络成功，迟到结果由代际/owner 校验拦截。
-3. 重新读取目标代际与 App/Schema 版本，与候选上下文比较；不一致则释放门禁、回到预检（O 不变）。
-4. 重新打开 SAF 源并流式复制到私有 staging ZIP，同时计算 SHA-256/字节数；必须与候选完全一致；不一致（源字节变化/读取失败）则丢弃 staging、释放门禁、回到预检并提示重新校验。这一步是最后一次源读取；之后源文件再变化不影响已捕获的候选，导入的始终是与候选摘要完全一致的 staging 字节。
-5. 从 staging ZIP 再次执行结构/manifest/行级/引用/限额校验；检查导入磁盘余量公式；任何失败释放门禁，O 不变。
-6. staging 只位于应用私有 `noBackupFilesDir` 专用目录；G1 负责明确清理范围；不得把源文件或 staging 暴露到外部存储/日志。
+1. **获取写门禁（不写 DB）。** 获取进程级唯一数据操作门禁（导出/恢复互斥），门禁在**存储事务边界**执行，不只靠服务层检查。获取门禁本身不写数据库；其它写服务（自动保存/草稿/A/B 提交/Run 工具/创建 Session/凭据/AI 控制等）停止接受新请求，旧写 lease 对**新**写立即失效；已在 SQLite 事务内的短写允许完成并被等待，不强制回滚。读取可继续，但不得进入新写。
+2. **排空在途写，不写 DB。** 在 `GATE_DRAIN_TIMEOUT_MS`（§6）内等待在途短写事务结束；不取消/不强杀数据库事务，也不通过 `failRun`/`cancelRun`/`interruptAllRunning`/`updateProcessOwner`/`advanceBusinessRevision` 或任何等效路径持久化取消。若在途写无法在门禁的受限等待内排空，放弃本次恢复并释放门禁，O 不变。**零写入保证针对门禁/prepare 自身；门禁前已开始的正常业务写可能正常完成并改变 O，门禁只等待、不回滚它们。** BK4 的“O 不变”以排空后的基线（或静止 O）比较，不能把无关业务写归因于恢复。
+3. **当前 Run/AI 只在内存隔离。** 使当前 Run、工具请求、自动保存和旧 permit/owner/generation 的**内存资格**失效，并 best-effort 取消网络/协程；不得调用正常 E2 用户取消路径（它会写 CANCELLED/INTERRUPTED/释放 slot），也不得写草稿收据/AI 控制/receipt。O 中的 Run 行仍保持来源状态（通常 `RUNNING`/`activeSlot=1`）。外发/凭据使用入口在门禁期间也必须检查门禁/内存 epoch 并失败；不能只依赖 DB 的 `authEpoch` 在提交后才失效。已经开始的远程请求无法撤回，但其迟到结果不得落盘。
+4. **迟到写回隔离。** 门禁期间任何旧 Run/工具/自动保存/提交尝试写入时，在 SQL 前以 `RestoreInProgress`/`Busy` 拒绝，不产生 DB 变更；服务错误处理不得捕获后再写一个终态/草稿。若在导入提交后到达，则由新代际/owner/authEpoch 拒绝。任何迟到写都不得修改 O 或 S。
+5. **事务前校验只读。** 重新读取目标代际/App/Schema 并与候选上下文比较；重开源并流式复制到私有 staging ZIP（同时核 SHA-256/字节数）；再次执行结构/manifest/行级/引用/限额校验和磁盘余量公式。以上全部不写 O。任一失败：丢弃 staging、释放门禁、报告失败；O 的 14 表逐字段不变，无 receipt。被内存隔离的 Run 行仍是 `RUNNING`——它需要 E2 的独立受控核查/中断或下次启动 E1 所有权门禁处理；**该后续处理是单独的失败后恢复动作，不属于本次恢复尝试，不能算作“O 不变”测试的一部分**。失败后 UI 不得显示“已取消/已完成”；该 Session 在 E2 核查前不得开始新 Run。
+6. **唯一写阶段。** 只有全部事务前校验通过后才进入 §8.4 单一导入事务；该事务持有恢复专用写 lease 并唯一写入 O/S。若事务失败/回滚，O 不变，仍按第 5 条的独立 E2/启动恢复处理，不把失败伪装成已取消或已恢复。
+7. **staging 边界。** staging 只位于应用私有 `noBackupFilesDir` 专用目录；G1 负责明确清理范围；不得把源文件或 staging 暴露到外部存储/日志。第 4/5 条的最后一次源读取之后，源文件再变化不影响已捕获候选，导入始终使用与候选摘要一致的 staging 字节。
 
 ### 8.4 单一事务导入
 
-在门禁内使用一个 Room 事务完成全部写入；事务外不写业务表：
+在门禁内使用一个 Room 事务完成全部写入；这是恢复唯一允许写 DB 的阶段，§8.3 的门禁/prepare 路径不写任何表：
 
 1. **删除顺序**：`agent_message_reference` → `agent_message` → `change_proposal` → `commit_operation` → `agent_run` → `agent_session` → `transaction_note_link` → `native_finance_draft` → `note` → `record_transaction` → `category` → `account` → `ai_control` → `record_data_state`。每个表删除全部现有行（不按来源过滤）。
 2. **插入顺序**：`account` → `category` → `record_transaction` → `note` → `transaction_note_link` → `native_finance_draft` → `agent_session` → `agent_run` → `change_proposal` → `commit_operation` → `agent_message` → `agent_message_reference` → `ai_control` → `record_data_state`。先应用 §4.3 转换；载荷字符串按预检/复核后的字节原样插入。
@@ -345,24 +382,40 @@ IDLE → SOURCE_SELECTED → PREFLIGHT（可取消）
 }
 ```
 
+**Rev2 —— receipt 可检测性边界（Schema v1；不新增持久化标记）：**
+
+`restoreReceipt` 与数据在同一事务提交；按本协议，成功提交后 receipt 缺失不可达（除非外部篡改/损坏）。Schema v1 没有独立的“应已恢复”期望代际或外部完成标记，不能区分“从未恢复”和“恢复后 receipt 被外部删除/损坏”。因此只承诺下表可检测项，不承诺缺失检测，也不新增标记。
+
+| 启动时条件 | 可靠检测 | 行为 |
+|---|---|---|
+| receipt 为 NULL | **否**；与从未恢复不可区分 | 正常路径；不因缺失判 RecoveryRequired；不自动修复；不声称检测“提交后丢失” |
+| receipt 存在但 JSON/字段/版本/大小/hex/数值范围错 | **是** | RecoveryRequired；只读进入，不写/不修复；恢复入口仍可替换数据 |
+| receipt 存在但 `restoredGeneration != data_state.dataGeneration` | **是** | RecoveryRequired |
+| receipt 存在但 `sourceGeneration == restoredGeneration` | **是** | RecoveryRequired |
+| `data_state` 行可解析但不是 id=1/字段不可读，且 receipt 非 NULL | **是**（DB 可读时） | RecoveryRequired；`id=1` 缺失且无 receipt 时按未初始化/正常启动，由 E1/Finance 处理 |
+| 成功恢复后 receipt 被外部删除 | **否**；与从未恢复不可区分 | 普通启动；数据本身仍是完整 S（事务已原子提交），但审计/来源标记丢失；不新增标记、不自动修复 |
+
 启动顺序（G1 实现时保持原有 E1/B0 语义）：
 
-1. 打开数据库并完成 Room Schema 身份检查；读取 `record_data_state`/receipt（只读）。
-2. 若存在 receipt：严格解析字段/≤4 KiB；`formatVersion=1`；`sourceFormatVersion=1`、`sourceSchemaVersion=1`；`sourceGeneration`/`restoredGeneration` 为规范 UUID 且 `sourceGeneration != restoredGeneration`；`restoredGeneration == dataState.dataGeneration`；`sourceZipSha256`/`contentDigest` 为 64 位小写十六进制；`sourceZipBytes` 在 `0..MAX_ZIP_BYTES`；`importedRows` 在 `0..MAX_ROWS_TOTAL`；`restoredAt` 在 §6 时间范围；`businessRevisionAtRestore` 非负。不要求 `businessRevisionAtRestore` 等于当前 revision（恢复后正常写会推进）。任何不匹配 → **RecoveryRequired**：不执行迁移/修复/自动恢复，不开放业务写/AI；恢复入口仍可替换数据。
-3. receipt 无效时不得先写 `processOwnerId`/中断 Run 再报错；先只读校验，再进入正常所有权门禁。receipt 有效或不存在时，按 E1 `beginProcessOwnership` 取得唯一进程所有权、将遗留 RUNNING 标 INTERRUPTED/清 slot；随后才开放业务与 AI。
-4. 恢复事务成功后，POST_COMMIT 更新内存代际/owner、失效 cursor/缓存、重置 AI 为 OFF、关闭旧编辑器/会话视图、回到安全入口；若此后重启，receipt+generation 使 S 继续有效。POST_COMMIT 的 UI/缓存失败不得把已提交 S 报成“恢复失败”；应报告“已提交，需重开”。
-5. 启动门禁不自动执行旧 Pending、不自动重放旧模型/工具、不恢复旧授权/Key、不推断失败。恢复到新设备/新代际的聊天历史可读；旧 Pending 只读。启动不重跑全量业务 oracle（成本不可接受）：恢复事务在提交前已整体验证；Room/SQLite 打开、E1 读取或 receipt 校验失败按各自 RecoveryRequired 处理，不静默修复。
+1. 打开数据库并完成 Room Schema 身份检查；只读读取 `record_data_state`/receipt。
+2. 若 receipt **非 NULL**：严格解析字段/≤4 KiB；`formatVersion=1`；`sourceFormatVersion=1`、`sourceSchemaVersion=1`；`sourceGeneration`/`restoredGeneration` 为规范 UUID 且 `sourceGeneration != restoredGeneration`；`restoredGeneration == dataState.dataGeneration`；`sourceZipSha256`/`contentDigest` 为 64 位小写十六进制；`sourceZipBytes` 在 `0..MAX_ZIP_BYTES`；`importedRows` 在 `0..MAX_ROWS_TOTAL`；`restoredAt` 在 §6 时间范围；`businessRevisionAtRestore` 非负。不要求 `businessRevisionAtRestore` 等于当前 revision（正常写会推进）。任何不匹配 → **RecoveryRequired，且在任何写之前返回**：不执行迁移/修复/自动恢复，不开放业务写/AI；恢复入口仍可替换数据。
+3. 若 receipt 为 **NULL**：视为“没有已记录的恢复”，走正常启动路径；**不**因缺失判 RecoveryRequired，也不尝试推断/修复“缺失的 receipt”。
+4. receipt 有效或 NULL 时，按 E1 `beginProcessOwnership` 取得唯一进程所有权、将遗留 RUNNING 标 INTERRUPTED/清 slot；随后才开放业务与 AI。receipt 无效时不得先写 `processOwnerId`/中断 Run 再报错。
+5. 恢复事务成功后，POST_COMMIT 更新内存代际/owner、失效 cursor/缓存、重置 AI 为 OFF、关闭旧编辑器/会话视图、回到安全入口；若此后重启，receipt+generation 使 S 继续有效。POST_COMMIT 的 UI/缓存失败不得把已提交 S 报成“恢复失败”；应报告“已提交，需重开”。
+6. 启动门禁不自动执行旧 Pending、不自动重放旧模型/工具、不恢复旧授权/Key、不推断失败。恢复到新设备/新代际的聊天历史可读；旧 Pending 只读。启动不重跑全量业务 oracle（成本不可接受）：恢复事务在提交前已整体验证；Room/SQLite 打开、E1 读取或 receipt 校验失败按各自 RecoveryRequired 处理，不静默修复。
 
 ### 8.6 失败、回退与不变量
 
 | 阶段 | 失败/终止 | 结果 | 收据/启动 |
 |---|---|---|---|
 | 预检/候选 | 格式/限额/数据/源变化/取消 | O 不变，无写 | 无新 receipt；正常启动 |
-| 门禁准备 | 源变化、staging 失败、磁盘不足、在途写未清 | O 不变，释放门禁 | 无新 receipt |
-| 导入事务内（删除/插入/收据前） | 异常/取消/进程终止/磁盘满 | 事务回滚，O 完整 | 无新 receipt；启动按旧代际 |
+| 门禁准备（事务前） | 源变化、staging 失败、磁盘不足、在途写未清、Run 隔离/校验失败 | O 的 14 表逐字段不变，释放写门禁，无 receipt；旧 Run 行可能仍为 `RUNNING`，由独立 E2/下次启动所有权门禁处理 | 无新 receipt；失败尝试本身零写入 |
+| 迟到写（门禁/提交后） | 旧 Run/工具/自动保存/提交晚到 | 在 SQL 前拒绝；不修改 O/S | 无新 receipt；不影响恢复结果 |
+| 导入事务内（删除/插入/收据前） | 异常/取消/进程终止/磁盘满 | 事务回滚，O 完整；旧 Run 的后续处理同门禁准备 | 无新 receipt；启动按旧代际 |
 | 提交成功 | 进程终止/回执后置失败 | S 完整，receipt 已持久 | 启动校验 receipt→S；不重放 |
-| 启动校验 | receipt 损坏/代际不符 | 不自动修复/不写 | RecoveryRequired；仅恢复入口 |
-| 导出 | 读/写/关闭/回读/取消/超限 | O 不变，无成功回执 | 不影响 receipt；staging 由 G1 清理 |
+| 启动校验 | receipt 存在但损坏/代际不符 | 不自动修复/不写 | RecoveryRequired；仅恢复入口 |
+| 启动校验 | receipt 为 NULL | 视为无已记录恢复，正常启动 | 不可靠检测“提交后缺失”；不新增标记 |
+| 导出 | 读/写/关闭/回读/取消/超限/WAL 或余量越界 | O 不变，无成功回执 | 不影响 receipt；staging 由 G1 清理 |
 
 不变量：任何时刻持久库只有完整 O 或完整 S；不得出现“新业务 + 旧聊天/旧关系/旧删除状态”的混合；任何半包/半导入都不报成功；O 的 14 表规范化快照在拒绝/回滚后逐字段不变；S 的 14 表经独立 oracle 逐字段/引用比较（§4.3 转换除外）。
 
@@ -388,33 +441,68 @@ G0 只冻结合同；以下由 G1 在获批源码/设备范围执行，G2 做最
 | 资源 | ZIP 64 MiB±1、总解压 256 MiB±1、单段 128 MiB±1、行 8 MiB±1、行数 500,000±1、比值 100±、深度 32±、manifest 1 MiB±1、磁盘不足 | 刚好到界通过；越界拒绝且 O 不变 |
 | 身份/版本 | 大写/花括号/非 UUID/重复 PK/版本 0 或 MAX/金额 0/负/超 Long/序号缺口/重复 ordinal/authEpoch 0 或 MAX/businessRevision 负或 MAX | 整包拒绝；O 不变 |
 | 时间 | 低于下界/超过 24h 未来/刚好 24h/createdAt>updatedAt/deletedAt<createdAt/finishedAt<startedAt/RUNNING 有 finishedAt/消息在 Run 外 | 边界内通过；越界拒绝；不改写时间 |
+| 时间/owner 对齐（Rev2） | Proposal/Operation `createdAt<0`；payload `offsetSeconds` 为 ±64800 边界/越界；localDateTime 非规范/非毫秒精度；epoch 与 local+offset 不自洽；导入成功后 C0/C1/B1/B2/E1 重读 RecoveryRequired | 对应阈值内通过；越界/不自洽拒绝；合法候选导入后 owner 重读不得 RecoveryRequired |
 | 数据 | 账户数≠1/分类集合或方向错/缺失引用/孤立关系/空白 Note/币种/方向/分类方向错/未知枚举/未知字段/重复 key/浮点/指数/非法 UTF-8/BOM/CRLF/孤立代理/超长字符串/SAVED 或 DISCARDED 混入草稿 | 整包拒绝；O 不变 |
 | 跨表 | 创建身份改绑/payload digest 或格式错/Proposal slot/状态错/Proposal-Operation 关系错/Operation result 或 rejection 组合错/Applied 目标缺失/终态 Proposal 无 Operation/消息 proposal 缺失/引用目标缺失/Run-Message 归属错/COMPLETED 缺回复/失败 Run 有回复/序列缺口/NEW 草稿 ID 已存在/EDIT 草稿目标缺失/未知草稿信封 | 整包拒绝；O 不变 |
-| 合法历史 | Applied 目标后续编辑/Note 软删除/隐藏关系/Proposal 或 Session 删除后 Operation 自留/旧代际 Pending/NEEDS_REVIEW+Pending/终态 Proposal/INTERRUPTED 无回复/陈旧 EDIT 草稿/改名账户/零消息 Session/空段/边界内未来时间 | 通过；S 与独立规范化 oracle 一致 |
+| 合法历史 | Applied 目标后续编辑/Note 软删除/隐藏关系/Proposal 或 Session 删除后 Operation 自留/旧代际 Pending/NEEDS_REVIEW+Pending/终态 Proposal/INTERRUPTED 无回复/陈旧 EDIT 草稿/改名账户/零消息 Session/空段/边界内未来时间；Proposal/Operation `createdAt=0` 与 payload 时间四元组自洽 | 通过；S 与独立规范化 oracle 一致；导入后 owner 重读无 RecoveryRequired |
 
 ### 10.2 BK3/BK4 故障矩阵
 
 | 阶段 | 故障注入 | 期望 |
 |---|---|---|
-| 导出 | 快照读失败、staging 写失败/满、限额越界、manifest/段/整体校验失败、SAF create/write/flush/close 失败、回读摘要/大小不符、取消 | 不报成功；O 不变；不列半包；staging 按授权清理 |
+| 导出 | 快照读失败、staging 写失败/满、限额越界、manifest/段/整体校验失败、SAF create/write/flush/close 失败、回读摘要/大小不符、取消；WAL 增长/余量越界 | 不报成功；O 不变；不列半包；staging 按授权清理；并发写/快照测试见 §10.4 |
 | 预检 | 源不可读、ZIP/行/引用/限额错、摘要不符、源变化、目标代际变化、取消 | O 不变；无门禁/无 staging 残留 |
-| 门禁准备 | 门禁忙、在途写未清、源变化、staging 失败/满、复核失败、磁盘不足 | O 不变；释放门禁；可重试/重预检 |
-| 导入事务 | 删除前/删除后/首插后/全插后/收据前/提交前异常、SQLiteFull、取消、进程终止 | 未提交→O 完整；已提交→S 完整；无混合 |
-| 提交后 | 进程终止、缓存/重开失败 | S 持久；下次启动 receipt 校验；不报“恢复失败” |
-| 启动 | receipt 损坏/代际不符；恢复后 receipt 缺失（正常未恢复库的缺失不属故障） | 不写/不修复；RecoveryRequired；恢复入口可用 |
+| 门禁准备（有活动 Run/在途写） | 门禁忙、在途写未清、源变化、staging 失败/满、复核失败、磁盘不足；Run/工具/自动保存/提交迟到写 | **事务前零写入**：O 的 14 表逐字段不变、无 receipt；迟到写在 SQL 前拒绝；旧 Run 行可能仍 RUNNING，后续 E2/启动处理单独记录 |
+| 导入事务 | 删除前/删除后/首插后/全插后/收据前/提交前异常、SQLiteFull、取消、进程终止 | 未提交→O 完整；已提交→S 完整；无混合；事务外无写 |
+| 提交后 | 进程终止、缓存/重开失败；旧 Run 迟到结果 | S 持久；代际/owner 拒绝迟到写；下次启动 receipt 校验；不报“恢复失败” |
+| 启动（receipt 存在） | 损坏/代际不符/字段或数值越界 | 不写/不修复；RecoveryRequired；恢复入口可用 |
+| 启动（receipt 为 NULL） | receipt 缺失 | 视为无已记录恢复，正常启动；**不可靠检测**“提交后缺失”，不新增标记、不判 RecoveryRequired |
+| 导入后 owner 重读 | 合法候选导入后 C0 `proposal()`、C1 `inspect()`、B1 `transaction()/readDraft()`、B2 `visible()/deleted()`、E1 `sessionMessages()/persistedResult()` | 不得 RecoveryRequired；与 §5.1 时间/版本规则一致 |
 | 独立比较 | 每次拒绝/回滚 | O 的 14 表规范化快照逐字段不变、重启可读；每次成功 S 逐字段/引用与 oracle 一致（§4.3 转换） |
 
 ### 10.3 必测 oracle 与范围
 
 - 独立 SQLite 只读连接读取 O/S 全 14 表，按固定 ORDER BY 比较；不能调用生产导出/导入器生成期望；不能只比较计数。
 - BK1：S→ZIP→新隔离 R→重启逐字段/稳定 ID/整数/正文/时间/全部关系/账户分类/删除状态；恢复 Note 后关联可见。BK2 见上表；BK3 导出失败/取消；BK4 全故障/进程终止；BK5 SAF 取消、候选显示/整体替换/源变化重验。
+- **导入后 owner 重读（Rev2）：** 合法候选导入后，逐行通过现有服务读取：C0 `proposal()`（全部 Proposal）、C1 `inspect()`（全部 Operation）、B1 `transaction()`/`readDraft()`、B2 `visible()`/`deleted()`、E1 `sessionMessages()`/`persistedResult()`；任何 RecoveryRequired 即失败。该测试证明时间/版本规则不会“导入成功后被服务判损坏”，并需覆盖 `createdAt=0`、payload offset ±64800 边界及自洽时间四元组。
+- **receipt 检测边界（Rev2）：** malformed/字段或代际不匹配的 receipt 必须 RecoveryRequired 且零写；NULL receipt 必须正常启动且不写；模拟“成功恢复后删除 receipt”时，记录为不可靠检测（与从未恢复不可区分），不新增标记、不声称检测；不得用 `NEEDS_REVIEW`/旧代际 Pending 作为“已恢复”的推断依据。
 - SES-09/14、SD-P4 的跨代际聊天可读、Pending 不执行、授权/Key 重建、删除/隐藏关系完整；TP-08 的恢复后不自动重复提交。
 - 真实 Room/磁盘/SAF/API34 专用设备与获批真机范围由 G1/G2 任务授权；恢复不得在真实用户库上做实验。G0 未运行任何构建、设备、数据库或数据实验。
 - G1 必须在 API34 参考环境实测最坏限额（64 MiB ZIP/256 MiB 解压/500,000 行）的导出、预检、导入和进程恢复耗时/内存，确认无 ANR/OOM；若单事务在真实设备不可接受，必须先回到 G0 调低限额或重新审核协议，不能静默切换到第二套恢复实现，也不以本设计表代替性能 PASS。
 
+### 10.4 Rev2 新增 BK4/G1 测试契约
+
+**A. 门禁/事务前零写入（对应 §8.3）**
+
+| 测试 | 必须证明 |
+|---|---|
+| `gateFailureWithActiveRunLeavesAll14TablesIdentical` | O 含 RUNNING Run/活动 slot；进入门禁并在源/目标校验处失败；释放门禁后、任何后续 E2/启动处理前，14 表逐字段/逐行等于**排空后基线或静止 O**；无 receipt；Run 仍为 RUNNING/activeSlot=1。若测试另注入门禁前在途正常写，先允许其提交并重取基线；不得把该无关写算作恢复失败改动 |
+| `gateRejectsLateRunToolAutosaveCommitWithoutSqlWrite` | 门禁期间旧 Run/工具/自动保存/A/B 提交尝试写；均以 `RestoreInProgress`/`Busy` 在 SQL 前拒绝；14 表零变化；服务不得捕获后写终态/草稿 |
+| `prepareFailureAfterStagingLeavesOUnchanged` | staging 已完成但目标上下文/源摘要/行校验/磁盘检查失败；O 14 表不变；staging 丢弃；无 receipt |
+| `gateDrainTimeoutLeavesOUnchanged` | 另一连接持有写事务超过 `GATE_DRAIN_TIMEOUT_MS`；恢复放弃、释放门禁、零写 O、无 receipt；不得强杀该事务 |
+| `transactionRollbackWithCancelledRunLeavesOUnchanged` | 导入事务内注入异常/SQLiteFull/进程终止；回滚后 O 14 表不变；无 receipt；旧 Run 处理与失败恢复分开 |
+| `lateResultAfterAbortOrCommitCannotWrite` | abort 后旧 lease 仍无效；commit 后旧 generation/owner 无效；迟到写不修改 O/S |
+| `processKillDuringGateOrPrepareLeavesOUnchanged` | 进程在门禁/prepare 各点终止；重启后 O 与写前一致；启动 E1 对遗留 RUNNING 的正常中断作为独立事实记录，不归因于恢复事务 |
+
+**B. 导出真正只读快照、并发写与 WAL（对应 §7.1/§6）**
+
+| 测试 | 必须证明 |
+|---|---|
+| `exportUsesReadOnlyConnectionAndWal` | 实际使用 `OPEN_READONLY`/`query_only` + `BEGIN DEFERRED`，`PRAGMA journal_mode=wal`；不使用 Room 写事务；读事务只 SELECT、不 checkpoint/DDL/写 PRAGMA；读连接能看到当前 WAL 快照 |
+| `exportSnapshotDoesNotBlockConcurrentWriter` | 快照打开期间，另一个连接执行正常业务写（交易/Note/关联或自动保存）可提交；无整段快照期间的写锁等待；允许短暂 `SQLITE_BUSY` 重试但不得把正常写误报为永久失败 |
+| `exportSnapshotIsPointInTimeAcrossTables` | 快照开始后执行一个多表原子写（如交易+关联+版本）；导出的 ZIP 只含完整前态或完整后态，不含混合；再用独立基线核对所有段/哈希 |
+| `exportConcurrentWriteVisibility` | 快照前提交的写进入 ZIP；快照开始后提交的写不进入 ZIP、但导出后 DB 可见；`exportedAt`/段内容与同一快照点一致 |
+| `exportMonitorsWalGrowthAndAborts` | 记录 WAL 基线与峰值；并发写使增长超过 `MAX_EXPORT_WAL_GROWTH_BYTES` 或卷余量低于 `EXPORT_FREE_RESERVE_BYTES` 时，导出中止、不报成功、O 不变、staging 丢弃/按授权清理；中止后可重试 |
+| `exportRequiresWalWithoutWriteFallback` | 非 WAL 或只读连接失败/读不到当前 WAL 时，导出以明确 unsupported 拒绝；不得回退到 Room 写事务、DB/WAL 复制或多连接拼快照；O 不变 |
+| `exportDoesNotMutateDraftRunOrAiControl` | 导出前后 EDITING 草稿 revision、RUNNING Run、Pending/LOCKED Proposal、`ai_control`、`record_data_state` 逐字段不变；不消费草稿、不取消 Run、不写 receipt |
+| `exportRestoreMutualExclusion` | 导出持数据操作 gate 期间，恢复进入写门禁被拒（Busy），不写 O；导出结束后恢复可正常开始；正常业务写不受导出 gate 影响 |
+| `exportReadOnlyFailureLeavesNoSuccessOrStateChange` | 读连接/段读取/staging/校验失败均不产生成功回执；O 不变；不列半包；staging 清理有明确范围 |
+
+以上测试均为 G1 设计契约，G0 未运行；任何一项不通过都阻止 G1 声称 BK3/BK4 或导出并发安全完成。
+
 ## 11. 需负责人批准的事项
 
-1. 是否接受 G0-D1～D14，特别是：逻辑 ZIP/无物理切换、只读快照、单事务导入、草稿仅 EDITING、24h 时钟容差、资源限额、无加密告知、无需 Schema 变更。
+1. 是否接受 G0-D1～D14 及 Rev2 细化，特别是：逻辑 ZIP/无物理切换、独立只读 SQLite 快照（非 Room 写事务，WAL）、门禁事务前零写入、单事务导入、草稿仅 EDITING、24h 时钟容差、C0/C1 时间字段对齐、receipt 缺失不可检测的明确限制、资源限额、无加密告知、无需 Schema 变更。
 2. 若接受，G0 设计完成，ADR 0019 可转 Accepted；issue #18 才可关闭。若调整任一数值/状态转换，本文与 ADR 同步修订后重新审阅，不先写实现。
 3. G1 实现/测试、Schema 写入（本设计不需要）、设备/SAF/真机、临时文件清理及 G1 产物的提交/推送/发布均为独立授权；本设计不自动激活。G0 文档本身的审阅提交/推送/PR按 Plan §31 的交付记录处理。
 

@@ -1406,12 +1406,12 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 - **设计 owner：** [G0 逻辑 ZIP / 代际恢复设计审查包](../../../architecture/record2-g0-backup-restore-design.md)，拥有格式、12段数据清单、逐表字段/引用 oracle、资源限额、导出/预检/独占门禁/单事务导入/回退/启动门禁、BK2/BK4 矩阵和 G1 验证接缝。
 - **ADR owner：** [Proposed ADR 0019](../../../architecture/decisions/0019-record2-logical-backup-restore-protocol.md)，记录“逻辑 ZIP + 单事务原子导入、不做物理切换/旧格式兼容”的长期决定；批准前保持 Proposed，不冒充 Accepted。
-- **核心决定：** `record2.logical` v1（12数据段+manifest，排除`ai_control`/Key/Keystore/授权/缓存/Trace）；导出用只读事务时点快照；恢复用单一Room事务整体删除/导入并生成新代际/owner/receipt；RUNNING→INTERRUPTED、EDITABLE/LOCKED→NEEDS_REVIEW、Pending保留来源代际且不可执行；草稿只导出EDITING；候选绑定整ZIP SHA-256/字节数/contentDigest/目标代际，源变化重验；24h跨设备时钟容差；不加密并明确告知；无需Schema变更。
+- **核心决定：** `record2.logical` v1（12数据段+manifest，排除`ai_control`/Key/Keystore/授权/缓存/Trace）；导出用独立只读SQLite连接+`BEGIN DEFERRED`时点快照（非Room写事务，要求WAL，监控WAL增长/卷余量）；恢复用单一Room事务整体删除/导入并生成新代际/owner/receipt；**门禁/prepare事务前零写入**，当前Run仅内存失效、迟到写在SQL前拒绝，校验失败O的14表不变；RUNNING→INTERRUPTED、EDITABLE/LOCKED→NEEDS_REVIEW、Pending保留来源代际且不可执行；草稿只导出EDITING；候选绑定整ZIP SHA-256/字节数/contentDigest/目标代际，源变化重验；24h跨设备时钟容差；时间字段按C0/C1 owner最小值与payload codec对齐；receipt存在才校验，NULL与从未恢复不可区分、不检测缺失、不新增标记；不加密并明确告知；无需Schema变更。
 - **限额：** 64MiB ZIP、256MiB总解压、128MiB单段、1MiB manifest、8MiB行、500,000行、100:1压缩比、JSON深度32、时间/磁盘余量按G0 §6；越界拒绝不截断。ADR 0019 与 G0 设计共享这些数值的唯一来源为 G0 §6；本段仅为审阅摘要，不另建阈值表。
 
 ### 31.2 当前状态与批准边界
 
-- **状态：** 设计候选完成，**待负责人对G0-D1～D14（尤其原子导入、草稿策略、限额、时钟容差、无Schema变更）明确批准**。ADR 0019 仍为 Proposed；issue #18 保持 OPEN；G1 未启动。
+- **状态：** 设计候选完成并已按PR #28审阅意见完成Rev2修订（门禁零写入、receipt可检测性、时间校验对齐、只读导出快照），**待负责人对G0-D1～D14及Rev2细化（尤其原子导入、门禁零写入、只读快照、草稿策略、限额、时钟容差、receipt缺失限制、无Schema变更）再次明确批准**。ADR 0019 仍为 Proposed；issue #18 保持 OPEN；G1 未启动。
 - **未运行：** 未构建/安装Android、未打开/创建数据库、未运行任何导出/恢复/SAF/进程终止/Provider/设备测试；T0仅为文档/静态检查，不抵扣 BK1～5、SD-P4、SES-09/14、TP-08 或 G2 联合验收。
 - **下游责任：** G1 拥有ZIP/SAF/预检/导入/启动/临时文件清理及真实Room/设备证据，须另获源码/设备/数据操作授权；涉及Schema的变更如出现必须停止并另取G-SCHEMA同意（本设计不需要）；F0/F1/F2拥有D-SAFE最终界面/文案，G2拥有最终联合验收。
 - **不做：** 不合并main、不关闭issue #18、不发布/部署；批准后是否关闭issue及G1何时启动由负责人决定。提交/推送/PR仅作为本轮设计审阅交付，不改变上述状态。
@@ -1432,3 +1432,19 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 - **未做：** 未合并main、未关闭issue #18、未发布；ADR 0019仍为Proposed，G1/G2仍未启动。PR仅作为负责人审阅材料。
 - **批准待办：** 负责人对G0-D1～D14明确批准后，才更新ADR/Plan状态并关闭issue #18；若要求调整任一格式/限额/状态转换，按审阅意见修订后重新推送本分支，不先写恢复实现。
+- **后续：** PR #28 Rev2审阅修订见§31.5；本节保留首轮交付历史。
+
+### 31.5 PR #28 Rev2 审阅修订（2026-10-25）
+
+负责人要求在PR #28上重新修订G0设计，保留“逻辑 ZIP + 单事务原子恢复”总体架构与G0-D1～D14编号，不扩大实现范围、不改Schema/Android源码，处理四项问题：门禁零写入/Run取消/迟到写回；`restoreReceipt`缺失检测矛盾；时间规则与C0/C1校验器一致；真正只读导出快照及并发/WAL证明。本轮只改设计文档，不启动G1，不进行数据库/设备测试。
+
+| 审阅项 | Rev2修订 | 对应测试契约 |
+|---|---|---|
+| 1 门禁零写入 | §8.3明确门禁/prepare**事务前零写入**；当前Run只在内存失效，不调用持久化取消；迟到写在存储事务边界/SQL前拒绝；预检失败O的14表逐字段不变，无receipt；被隔离的RUNNING行由独立E2/启动门禁处理；`GATE_DRAIN_TIMEOUT_MS=30,000`。零写入保证针对恢复路径自身；门禁前在途正常写可完成，测试以排空后基线比较 | §10.4A：活动Run+在途写失败、迟到工具/自动保存/A/B写、staging后失败、事务回滚、进程终止、abort/commit后迟到结果、drain timeout |
+| 2 receipt可检测性 | §8.5新增Schema v1可检测性表：receipt存在但损坏/代际或字段不匹配→RecoveryRequired；receipt为NULL与从未恢复不可区分，按正常启动；不承诺“提交后缺失”检测、不新增持久化标记；§10.2启动矩阵拆分present/NULL | §10.3 receipt边界测试；NULL正常启动、malformed/mismatch零写RecoveryRequired、外部删除只记录限制 |
+| 3 时间校验对齐 | §5.1/§6按owner字段对齐：Proposal/Operation `createdAt>=0`、Proposal `updatedAt>=createdAt`、Operation终态`finishedAt>=createdAt`；payload时间四元组完整通过C0/C1 codec；§6绝对范围是额外导入边界（可更严格），不能替代codec/放宽最小值；新增post-import owner重读要求 | §10.1时间/owner对齐行；§10.3 C0 proposal、C1 inspect、B1 transaction/readDraft、B2 visible/deleted、E1 sessionMessages/persistedResult重读不得RecoveryRequired |
+| 4 只读导出快照 | §7.1改为独立只读SQLite连接（`OPEN_READONLY`+`query_only`）+`BEGIN DEFERRED`，禁止Room写事务/DB-WAL复制；要求WAL；正常业务写可继续；导出与恢复共用数据操作gate互斥；§6新增`MAX_EXPORT_WAL_GROWTH_BYTES=384 MiB`、`EXPORT_FREE_RESERVE_BYTES=64 MiB`监控中止；只读连接失败/非WAL明确拒绝，不回退写事务 | §10.4B：只读连接/WAL、并发写不被写锁阻塞、多表原子快照一致性、前后写可见性、WAL/余量中止、非WAL无回退、导出/恢复互斥、导出不改草稿/Run/AI/receipt |
+
+- **范围：** 修改[G0设计](../../../architecture/record2-g0-backup-restore-design.md)、[ADR 0019](../../../architecture/decisions/0019-record2-logical-backup-restore-protocol.md)与本节；ADR仍为Proposed；G0-D1～D14编号/总体架构不变。无Schema/源码/构建/环境/凭据/CI修改，无数据库/设备/SAF/Provider操作。
+- **T0 Rev2 PASS（仅文档）：** 2026-10-25静态检查，修改3份文件（G0设计/ADR 0019/本Plan）；设计/ADR/Plan新增与受影响28个本地链接/锚点全部解析通过；新文档UTF-8无BOM/LF/无行尾空白/围栏成对；内容断言覆盖Rev2四项、§10.4A/B、`GATE_DRAIN_TIMEOUT_MS`/`MAX_EXPORT_WAL_GROWTH_BYTES`/`EXPORT_FREE_RESERVE_BYTES`/`OPEN_READONLY`/`BEGIN DEFERRED`/receipt可检测性表/owner重读。`git diff --check`退出0（仅既有CRLF提示）；`record2/`、`record1/`、Gradle根、Schema源码/生成JSON无tracked diff，Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。未构建/安装Android、未打开数据库、未操作设备/SAF/Provider/网络；G1/G2 NOT RUN。设计自查，无独立Agent审查。
+- **状态：** Rev2设计提交并更新PR #28后，等待负责人对G0-D1～D14及Rev2细化再次明确批准。issue #18保持OPEN；G1/G2 NOT RUN；不合并main、不关闭issue。
