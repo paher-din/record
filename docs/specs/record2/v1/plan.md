@@ -853,7 +853,7 @@ B2实现与审查修正已保存为`7fefba2`。推送前远端main新增E0的PR 
 
 ### 24.1 授权与实际对象
 
-负责人于2026-10-24通过本轮交互明确选择“授权，≤$1（推荐）”与“授权复用该 AVD（推荐）”：D0只使用当前环境中的独立测试Key和合成提示，真实Provider费用上限$1；只复用专用AVD `record2-schema-api34`（adb serial=`emulator-5580`，API34，fingerprint=`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`），只安装/更新`com.paherdin.record2.debug`与`.debug.test`，使用合成数据，不wipe/uninstall/清库、不改普通`record2.db`或旧测试库、不操作真机/API36/其他AVD。D0测试不启动正式Activity、不打开Room库；此前§20/§21许可不泛化。
+负责人于2026-10-24通过本轮交互明确选择“授权，≤$1（推荐）”与“授权复用该 AVD（推荐）”：D0只使用当前环境中的独立测试Key和合成提示，真实Provider费用上限$1；只复用专用AVD `record2-schema-api34`（首轮serial=`emulator-5580`，集成回归冷启动serial=`emulator-5554`，同一AVD、未清数据；API34，fingerprint=`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`），只安装/更新`com.paherdin.record2.debug`与`.debug.test`，使用合成数据，不wipe/uninstall/清库、不改普通`record2.db`或旧测试库、不操作真机/API36/其他AVD。D0测试不启动正式Activity、不打开Room库；此前§20/§21许可不泛化。
 
 Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@BeforeClass`读取后立即删除；Key未进入命令行参数、源码、APK、Room、日志或证据。证据只保留SHA-256前12位`9612f585b3ef`。D0未修改Schema、Manifest权限、备份规则、普通Host数据、R1或环境/CI配置；仅新增测试依赖与应用内最小适配。
 
@@ -868,11 +868,11 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 
 正式测试位于[DeepSeekProtocolContractTest.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekProtocolContractTest.kt#L30)、[DeepSeekProtocolFailureTest.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekProtocolFailureTest.kt#L32)，共享夹具见[DeepSeekTestSupport.kt](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/ai/DeepSeekTestSupport.kt#L1)。
 
-- **最终真实设备套件：** 8个真实DeepSeek测试方法（最终批次均为attempt 1；测试框架保留最多3次受控重试，D0过程中曾观察到一次仅完成第一步的情况），覆盖普通/Thinking的Flash与Pro、一次和连续两次Tool Call/Result、跨Run ChatMemory、tool pairing与reasoning_content保留。最终命令`am instrument -w -r -e class '...DeepSeekProtocolContractTest,...DeepSeekProtocolFailureTest' ...`返回`OK (22 tests)`、17.503秒、无失败/skip。真实测试只发合成提示；每Run预算记录8条，最终均`WITHIN`。
-- **最终故障/协议套件：** 14项PASS：429、503、超时、空choices、畸形JSON、未知工具、畸形工具参数、tool-level异常、预算耗尽、取消、no-progress watchdog、reasoning_content重放、缺usage、active token预算守卫。取消与失败为确定性本地脚本，不冒充真实Provider故障；no-progress watchdog按批准值在第3次相同调用后取消，并验证取消后无新增请求。
-- **构建：** `check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`最终PASS；debug/test/release APK SHA-256分别为`94391db95b6a1267e86870f52bc51f895ff65b8f73dca504daeb6ee70a009e3c`、`f718530b00a25ea669e84303b38597b1bbd042069580eae29e20c76677d8e149`、`d331c6894ded41c84002841e1369b80e18ad69bf0370b13b0e6458660f2aadd4`；设备安装的debug/test APK摘要与构建产物逐项一致。最终APK权限集合与A1一致（INTERNET及AndroidX动态接收器自动权限），`usesCleartextTraffic=false`、`allowBackup=false`，无新增权限/组件。
-- **实际费用/延迟：** 最终套件真实用量input=3134、output=493、total=3627 tokens；批内估算约$0.00185，远低于批准的Flash $0.10/Pro $0.25每Run上限及批次$1上限（精确账单以Provider为准）。单次真实调用延迟约0.4–2.9秒，最终套件17.5秒。active token守卫测试在64,002 tokens处正确停止。
-- **证据：** 本机[record2/build/d0/](../../../../record2/build/d0/)保留`instrumentation-final.txt`、`real.json`、`failures.json`、`protocol-probe.txt`、`dependencies-debug.txt`、`apk-hashes.txt`、`logcat.txt`及构建日志；被Git忽略，不承诺跨机器存在。脱敏可复核摘要、APK摘要和原始证据SHA-256见[2026-10-24-d0.md](../../../engineering/evidence/2026-10-24-d0.md)。密钥扫描覆盖966份源码/文档、3个APK、证据与logcat，命中0；设备app私有Key文件已确认删除。
+- **集成版本真实设备套件：** 8个真实DeepSeek测试方法（集成批次均为attempt 1；测试框架保留最多3次受控重试，D0过程中曾观察到一次仅完成第一步的情况），覆盖普通/Thinking的Flash与Pro、一次和连续两次Tool Call/Result、跨Run ChatMemory、tool pairing与reasoning_content保留。集成命令`am instrument -w -r -e class '...DeepSeekProtocolContractTest,...DeepSeekProtocolFailureTest' ...`返回`OK (25 tests)`、19.84秒、无失败/skip；其中8项真实测试与17项确定性/预算测试全部PASS。真实测试只发合成提示；每Run预算记录9条（crossRun两Run各一条），最终均`WITHIN`。
+- **集成版本故障/协议套件：** 17项PASS：429、503、超时、空choices、畸形JSON、未知工具、畸形工具参数、tool-level异常、预算耗尽、取消、no-progress watchdog、reasoning_content重放、缺usage、active token预算守卫，以及第二轮新增的50步耗尽归类、缺usage标记UNMETERED、批次闸门请求前阻断。取消与失败为确定性本地脚本，不冒充真实Provider故障；no-progress watchdog按批准值在第3次相同调用后取消，并验证取消后无新增请求。
+- **构建：** 集成版本`check :app:assembleDebug :app:assembleDebugAndroidTest`与`:app:assembleRelease` PASS；debug/test/release APK SHA-256分别为`b80cb9c51c04cb28369ea047d55727d17635cfd1b879175b43e3f8ac304aa733`、`ca4072ed88dac29c571eaddab7163e61aa75840105db0486b92d47533337b36e`、`ef1ae7c103f3fe81770e77785ad27a4ccc97afae6cd005c615ce0fa9477e4321`；设备安装的debug/test APK摘要与构建产物逐项一致。最终APK权限集合与A1一致（INTERNET及AndroidX动态接收器自动权限），`usesCleartextTraffic=false`、`allowBackup=false`，无新增权限/组件。
+- **实际费用/延迟：** 集成套件真实用量input=3080、output=578、total=3658 tokens；批内估算约$0.00251，远低于批准的Flash $0.10/Pro $0.25每Run上限及批次$1上限（精确账单以Provider为准）。单次真实调用延迟约0.6–3.7秒，最终套件19.8秒。active token守卫测试在64,002 tokens处正确停止。
+- **证据：** 本机[record2/build/d0/](../../../../record2/build/d0/)保留`instrumentation-integrated.txt`、`real-integrated.json`、`failures-integrated.json`、`protocol-probe.txt`、`dependencies-debug.txt`、`apk-hashes.txt`、`logcat-integrated.txt`及构建日志；被Git忽略，不承诺跨机器存在。脱敏可复核摘要、APK摘要和原始证据SHA-256见[2026-10-24-d0.md](../../../engineering/evidence/2026-10-24-d0.md)。密钥扫描覆盖最终源码/文档、3个APK、证据与logcat，命中0；设备app私有Key文件已确认删除。
 
 ### 24.4 D0实际发现（D1/E1输入）
 
@@ -885,7 +885,7 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 7. **错误映射不完全：** 空`choices`抛出`IllegalArgumentException`而非`LLMClientException`；畸形工具参数为`JsonDecodingException`；429/503/超时被包装且未观察到重试。复审测试已分别断言这些终态和请求次数，D1/E1仍需统一用户可见状态和零部分提交边界。
 8. **模型不保证指令合规：** 连续两次工具调用的真实运行曾观察到一次只执行第一步；测试框架保留最多3次受控重试并逐attempt记录`protocolPathAvailable`、`fullSequenceObserved`、`modelCompliant`，最终批次attempt 1通过。D1不能用“提示词要求”替代协调器状态机/提案确认，也不能把一次模型失败当协议通过。
 9. **取消/预算验证边界：** 取消、429/503、超时、no-progress为本地脚本在真实API34进程内执行，不等于真实Provider网络故障；active token预算守卫为本地确定性测试。真实cancel、流式、恢复后新Run仍属E1/E2/D1。
-10. **测试预算已实际执行而不是只统计：** `D0TestLimits`统一300秒单请求/50步/900秒Run/64,000 tokens/Flash $0.10/Pro $0.25/Batch $1；`D0RunBudget`在响应边界主动抛出`BudgetExceededException`，功能测试以`Assume`记录`INCONCLUSIVE/BudgetExceeded`；批次累计费用由证据写入时复核。产品默认预算仍不冻结。
+10. **测试预算已实际执行而不是只统计：** `D0TestLimits`统一300秒单请求/50步/900秒Run/64,000 tokens/Flash $0.10/Pro $0.25/Batch $1；`D0RunBudget`在响应边界主动抛出`BudgetExceededException`，`D0BatchBudgetGuard`在真实POST发送前按模型Run上限检查批次余量，功能测试以`Assume`记录`INCONCLUSIVE/BudgetExceeded`/`UNMETERED`；证据写入复核保留为兜底。产品默认预算仍不冻结。
 
 ### 24.5 D0测试阈值（2026-10-24批准；产品默认预算不冻结）
 
@@ -895,16 +895,16 @@ Key只通过stdin注入`run-as`的app私有`files/d0/deepseek.key`，测试在`@
 |---|---|---|
 | 单请求超时 | request/socket 300秒，connect 30秒 | 实测最大单次约2.6秒；为Thinking/网络留余量 |
 | Agent最大步数 | `maxAgentIterations=50` | D0连续两次工具/3次请求约10步；50为测试上界 |
-| 单Run墙钟 | 900秒 | 实测最终套件16.4秒；防止模型/工具停滞 |
-| 累计Token | 64,000/Run | 实测单Run最大1,519（早期1,557） |
-| Flash费用上限 | $0.10/Run | 最终批内真实用量约$0.00185；远低于上限 |
-| Pro费用上限 | $0.25/Run | Pro单次测试约$0.0004–0.0007；远低于上限 |
+| 单Run墙钟 | 900秒 | 集成套件19.8秒；防止模型/工具停滞 |
+| 累计Token | 64,000/Run | 实测集成单Run最大1,462（早期1,557） |
+| Flash费用上限 | $0.10/Run | 集成Flash部分约$0.00125（批内总$0.00251）；远低于上限 |
+| Pro费用上限 | $0.25/Run | Pro单次测试最高约$0.0013；远低于上限 |
 | 连续无进展 | 3次相同工具调用即停 | watchdog在3次后取消通过；工具级异常无效 |
 | 执行批次累计 | $1（沿用原授权） | 不开放无界调用；精确账单以Provider为准 |
 
 **测试策略：** 功能/协议测试使用上表的宽松上限，目标是不因过紧预算提前失败；预算/故障测试单独使用故意设置的低上限（D0现有`maxAgentIterations=2/4`、脚本429/503/超时/取消等），此时`BudgetExceeded`/迭代上限是预期结果，不是功能缺陷。功能测试若因资源预算耗尽而中止，必须记录为`INCONCLUSIVE / BudgetExceeded`，不得直接判为协议FAIL；应在授权批次累计上限内复测，若持续触及上限再分析是否存在异常循环。所有测试仍保留有限上限。
 
-复审实现：`D0TestLimits`统一上表常量；功能测试入口使用300秒请求/30秒连接、50步配置和900秒Run墙钟；`D0RunBudget`在响应边界主动检查64,000 tokens及各模型费用上限并抛出`BudgetExceededException`；`D0Evidence`在写盘时复核批次$1。功能测试的预算记录以`WITHIN`/`INCONCLUSIVE/BudgetExceeded`区分，`activeTokenBudgetGuardStopsOversizedResponse`证明64,002 tokens会被主动截断。最终22项设备测试全部PASS。
+复审实现：`D0TestLimits`统一上表常量；功能测试入口使用300秒请求/30秒连接、50步配置和900秒Run墙钟；`D0RunBudget`在响应边界主动检查64,000 tokens及各模型费用上限并抛出`BudgetExceededException`；`D0Evidence`在写盘时复核批次$1。功能测试的预算记录以`WITHIN`/`INCONCLUSIVE/BudgetExceeded`区分，`activeTokenBudgetGuardStopsOversizedResponse`证明64,002 tokens会被主动截断。最终25项设备测试全部PASS。
 
 正式产品的默认预算暂不冻结：待D0、D1取得真实调用次数、Token、耗时和费用分布后，再按典型/复杂任务制定。D1/E1继承“到达上限即停止、报告而不伪造完成”的行为，但不得把本表当作已冻结的产品参数。
 
@@ -924,4 +924,4 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 - **P2跨Run预算作用域：** crossRun测试改为每Run单独计量（每Run usage快照+`budget.reset()`+单独墙钟/预算检查），64,000 tokens与单Run费用上限不再按两次Run累计；跨Run总费用由批次闸门汇总。
 - **新增确定性测试：** 50步上限耗尽被归类为INCONCLUSIVE而非协议失败、缺usage标记UNMETERED、批次闸门请求前阻断，共3项，全部本地脚本、无真实费用。
 
-集成与回归：先以普通merge同步main（E0 PR #21与B2，仅本Plan冲突；本章由§22重编号为§24，B2 §22/E0 §23完整保留，章节序号后续由负责人统稿），再在集成版本回归：host单元测试Debug+Release共46项fail/error/skip=0；D0确定性设备套件17项（14项既有+3项新增）在同AVD `record2-schema-api34`全部PASS（本轮冷启动serial=`emulator-5554`，AVD中途掉线后重启，未清数据）。真实API套件本轮未重跑：设备`files/d0/deepseek.key`已被授权运行消耗，§24.3真实结果仍有效，最终真实回归待负责人重新注入Key后在集成版本执行。负责人确认并行项目章节序号由其统一处理，本节不追改编号。
+集成与回归：先以普通merge同步main（E0 PR #21已合并、B2已入main；仅本Plan冲突）。章节序号统稿结论：保留B2 §22、E0 §23、D0 §24，不再重排；D0章节内引用统一为§24。集成版本回归：host单元测试Debug+Release共46项fail/error/skip=0；D0确定性设备套件17项（14项既有+3项新增）全部PASS；真实API套件随后由负责人重新注入Key，在同AVD `record2-schema-api34`（冷启动serial=`emulator-5554`，未清数据）重跑8/8 PASS，合并25/25 PASS、19.84秒。Key读取后立即删除；最终APK摘要、tokens/费用见§24.3，原始证据SHA-256见证据文档。§24.3已更新为集成最终结果；首轮22项结果保留在证据文档历史。
