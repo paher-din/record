@@ -1395,3 +1395,33 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 负责人在F0六组接受、issue #15关闭后明确要求“推送到远程仓库吧”，授权本轮F0设计/Skills研究集成材料、保留的探索与旧候选、`record2/PRODUCT.md`、`skills/record-android-design`及文档路由/本Plan记录的Git纳管、提交与推送。基于当前本地main交付，不含Android业务代码、Schema/迁移、环境/凭据/CI、生产部署或历史改写；`.playwright-cli/`本机浏览器记录及已忽略的`record2/build/`证据不纳入。最终提交与远端身份以Git日志及push/远端核验回执为准，不要求提交SHA自引用。
 
 推送前同步远程`origin/main=e2ca1eb`（含C1 PR #27、B4 PR #26），普通merge保留全部远端提交及源码；冲突仅本Plan的追加段落。保留远端C1 §28、B4 §29全文，F0顺延为§30，并同步F0资料、Token状态元数据和路由链接。源代码/Schema相对远端零改动；原UI审查及验证按其执行时基线保留，不用新合并源码冒充重新验证。首轮fetch连接重置，HTTP/1.1重试成功；不强推、不改写历史。
+
+## 31. G0：正式逻辑 ZIP/代际协议设计审核（issue #18）
+
+2026-10-24 负责人要求“完成issue g0”，对应[GitHub #18](https://github.com/paher-din/record/issues/18)。前置B0 #3、C1 #9（PR #27已合并main；issue #9关闭归负责人）、E1 #12已完成；本批按§8 G0合同与G-DESIGN，只冻结完整逻辑数据清单、快照边界、格式/资源限额、草稿处理、Operation 历史/代际资格、原子恢复/回退/启动门禁，并交付格式/fault map及正式备份/启动契约。**不实现恢复、不写源码/Schema/构建/数据库、不操作设备/Provider/网络/真实数据，不运行“先导出看看”的数据实验。** G1/G2 仍 NOT RUN。
+
+执行于独立工作树`D:/record/.worktrees/g0-backup-restore`（分支`codex/g0-backup-restore`，基线main `64daa57`）；未触碰主工作树及其他并行工作树。
+
+### 31.1 设计交付
+
+- **设计 owner：** [G0 逻辑 ZIP / 代际恢复设计审查包](../../../architecture/record2-g0-backup-restore-design.md)，拥有格式、12段数据清单、逐表字段/引用 oracle、资源限额、导出/预检/独占门禁/单事务导入/回退/启动门禁、BK2/BK4 矩阵和 G1 验证接缝。
+- **ADR owner：** [Proposed ADR 0019](../../../architecture/decisions/0019-record2-logical-backup-restore-protocol.md)，记录“逻辑 ZIP + 单事务原子导入、不做物理切换/旧格式兼容”的长期决定；批准前保持 Proposed，不冒充 Accepted。
+- **核心决定：** `record2.logical` v1（12数据段+manifest，排除`ai_control`/Key/Keystore/授权/缓存/Trace）；导出用只读事务时点快照；恢复用单一Room事务整体删除/导入并生成新代际/owner/receipt；RUNNING→INTERRUPTED、EDITABLE/LOCKED→NEEDS_REVIEW、Pending保留来源代际且不可执行；草稿只导出EDITING；候选绑定整ZIP SHA-256/字节数/contentDigest/目标代际，源变化重验；24h跨设备时钟容差；不加密并明确告知；无需Schema变更。
+- **限额：** 64MiB ZIP、256MiB总解压、128MiB单段、1MiB manifest、8MiB行、500,000行、100:1压缩比、JSON深度32、时间/磁盘余量按G0 §6；越界拒绝不截断。ADR 0019 与 G0 设计共享这些数值的唯一来源为 G0 §6；本段仅为审阅摘要，不另建阈值表。
+
+### 31.2 当前状态与批准边界
+
+- **状态：** 设计候选完成，**待负责人对G0-D1～D14（尤其原子导入、草稿策略、限额、时钟容差、无Schema变更）明确批准**。ADR 0019 仍为 Proposed；issue #18 保持 OPEN；G1 未启动。
+- **未运行：** 未构建/安装Android、未打开/创建数据库、未运行任何导出/恢复/SAF/进程终止/Provider/设备测试；T0仅为文档/静态检查，不抵扣 BK1～5、SD-P4、SES-09/14、TP-08 或 G2 联合验收。
+- **下游责任：** G1 拥有ZIP/SAF/预检/导入/启动/临时文件清理及真实Room/设备证据，须另获源码/设备/数据操作授权；涉及Schema的变更如出现必须停止并另取G-SCHEMA同意（本设计不需要）；F0/F1/F2拥有D-SAFE最终界面/文案，G2拥有最终联合验收。
+- **不做：** 不合并main、不关闭issue #18、不发布/部署；批准后是否关闭issue及G1何时启动由负责人决定。提交/推送/PR仅作为本轮设计审阅交付，不改变上述状态。
+
+### 31.3 G0 T0 验证
+
+2026-10-24 文档静态检查完成，**T0 PASS（仅文档；G1/G2 NOT RUN）**。本次为设计自查，无独立Agent审查；不构建Android、不打开/创建数据库、不操作设备/SAF/Provider/网络、不运行导出/恢复/数据实验。
+
+- **变更范围：** 4份文件——新增[G0设计审查包](../../../architecture/record2-g0-backup-restore-design.md)、[ADR 0019](../../../architecture/decisions/0019-record2-logical-backup-restore-protocol.md)，修改本Plan及[docs/index.md](../../../index.md)。`git status`只有这4项；`record2/`、`record1/`、Gradle根、Schema源码/生成JSON均无tracked diff。Schema v1生成JSON的LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`（工作树原始字节有既有CRLF，不代表内容变化）。
+- **链接/锚点：** Python内联检查新文档全部链接及新增Plan §31/index路由的26个链接/锚点，全部解析通过；设计/ADR本地链接覆盖Spec、B0、ADR 0018/0019、C1/E1证据、F0-C3 D-SAFE。
+- **格式/编码：** 新文档UTF-8无BOM、LF、无行尾空白、代码围栏成对；内容断言通过——13个ZIP条目/12个数据段/14表映射/§6全部数值限额/§10 BK2/BK4矩阵/`contentDigest`/`restoreReceipt`/NEEDS_REVIEW/INTERRUPTED/草稿策略/`record2.logical`均存在。Plan/index保留既有工作树CRLF行为。
+- **空白检查：** `git diff --check`退出0，仅既有CRLF提示；无新增空白错误。
+- **结论边界：** 本PASS只证明设计文档/链接/范围静态一致，不证明格式可解析、恢复原子性、SAF/进程终止或任何BK/SES/TP验收；这些均按§31.2留在G1/G2。设计批准仍是issue #18关闭的前置。
