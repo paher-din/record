@@ -486,6 +486,53 @@ class LinkServiceContractTest {
         assertEquals(setOf(t1 to n1.id, t1 to n2.id), linkRows())
     }
 
+    @Test fun cancellationAfterCommitLeavesCommittedRelationsAndReportsUnknown() = runBlocking {
+        val t1 = createTransaction(linkDayOne)
+        val n1 = createNote(linkDayOne, linkNoteOneBody)
+        val before = snapshot()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val observed = CompletableDeferred<Throwable>()
+        var committed: Map<String, List<List<Any?>>>? = null
+        val gated = RoomLinkService(database, linkWriteClock) { point, _ ->
+            if (point == LinkCheckpoint.LINKS_COMMITTED) {
+                entered.countDown()
+                check(release.await(10, TimeUnit.SECONDS))
+            }
+        }
+        val job = launch {
+            try {
+                gated.apply(generation, t1, 1, listOf(LinkNoteRef(n1.id, 1)), emptyList())
+            } catch (error: Throwable) {
+                observed.complete(error)
+                throw error
+            }
+        }
+        try {
+            assertTrue(withContext(Dispatchers.IO) { entered.await(10, TimeUnit.SECONDS) })
+            committed = snapshot()
+            assertNotEquals(before, committed)
+            assertEquals(setOf(t1 to n1.id), linkRows())
+            assertEquals(2L, row("record_transaction", t1)[8])
+            job.cancel()
+        } finally {
+            release.countDown()
+            job.cancel()
+        }
+        job.join()
+        assertTrue(job.isCancelled)
+        val failure = withTimeout(5000) { observed.await() }
+        assertTrue(failure is LinkCommittedCancellation)
+        assertTrue(failure is CancellationException)
+        assertEquals(committed, snapshot())
+        assertEquals(setOf(t1 to n1.id), linkRows())
+        assertEquals(2L, row("record_transaction", t1)[8])
+        assertEquals(2L, row("note", n1.id)[3])
+        val linksAfter = links.transactionLinks(generation, t1)
+        assertEquals(setOf(n1.id), linksAfter.notes.map { it.id }.toSet())
+        assertEquals(1, linksAfter.visibleLinkCount)
+    }
+
     @Test fun versionRevisionOverflowValidationAndDuplicatePairingNeverPartiallyWrite() = runBlocking {
         val t1 = createTransaction(linkDayOne)
         val n1 = createNote(linkDayOne, linkNoteOneBody)

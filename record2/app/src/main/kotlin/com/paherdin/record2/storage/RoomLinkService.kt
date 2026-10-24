@@ -56,48 +56,52 @@ internal class RoomLinkService(
         add: List<LinkNoteRef>,
         remove: List<LinkNoteRef>,
     ): LinkBatchResult = io {
-        val result = database.withTransaction {
-            val state = state(generation)
-            val transaction = transactionRow(transactionId)
-            if (transactionExpectedVersion < 1) fail(LinkError.Validation)
-            if (transaction.version != transactionExpectedVersion) fail(LinkError.VersionConflict)
-            validateRefs(add, remove)
-            val linked = dao.linkedNoteIds(transactionId).toSet()
-            val addRows = add.map { it to noteForLink(it) }
-            val removeRows = remove.map { it to noteForLink(it) }
-            val adds = addRows.filter { (ref, _) -> ref.id !in linked }.map { (_, row) -> row }
-            val removes = removeRows.filter { (ref, _) -> ref.id in linked }.map { (_, row) -> row }
-            val changed = adds.isNotEmpty() || removes.isNotEmpty()
-            val now = clock.millis()
-            if (changed) {
-                var index = 0
-                for (row in adds) {
-                    if (dao.touchNote(row.id, row.version, now) != 1) fail(LinkError.VersionConflict)
-                    dao.insertLink(TransactionNoteLinkEntity(transactionId, row.id))
-                    mark(LinkCheckpoint.LINK_WRITTEN, ++index)
+        val result = try {
+            database.withTransaction {
+                val state = state(generation)
+                val transaction = transactionRow(transactionId)
+                if (transactionExpectedVersion < 1) fail(LinkError.Validation)
+                if (transaction.version != transactionExpectedVersion) fail(LinkError.VersionConflict)
+                validateRefs(add, remove)
+                val linked = dao.linkedNoteIds(transactionId).toSet()
+                val addRows = add.map { it to noteForLink(it) }
+                val removeRows = remove.map { it to noteForLink(it) }
+                val adds = addRows.filter { (ref, _) -> ref.id !in linked }.map { (_, row) -> row }
+                val removes = removeRows.filter { (ref, _) -> ref.id in linked }.map { (_, row) -> row }
+                val changed = adds.isNotEmpty() || removes.isNotEmpty()
+                val now = clock.millis()
+                if (changed) {
+                    var index = 0
+                    for (row in adds) {
+                        if (dao.touchNote(row.id, row.version, now) != 1) fail(LinkError.VersionConflict)
+                        dao.insertLink(TransactionNoteLinkEntity(transactionId, row.id))
+                        mark(LinkCheckpoint.LINK_WRITTEN, ++index)
+                    }
+                    for (row in removes) {
+                        if (dao.touchNote(row.id, row.version, now) != 1) fail(LinkError.VersionConflict)
+                        if (dao.removeLink(transactionId, row.id) != 1) fail(LinkError.VersionConflict)
+                        mark(LinkCheckpoint.LINK_WRITTEN, ++index)
+                    }
+                    if (dao.touchTransaction(transactionId, transactionExpectedVersion, now) != 1) fail(LinkError.VersionConflict)
+                    advance(state)
                 }
-                for (row in removes) {
-                    if (dao.touchNote(row.id, row.version, now) != 1) fail(LinkError.VersionConflict)
-                    if (dao.removeLink(transactionId, row.id) != 1) fail(LinkError.VersionConflict)
-                    mark(LinkCheckpoint.LINK_WRITTEN, ++index)
-                }
-                if (dao.touchTransaction(transactionId, transactionExpectedVersion, now) != 1) fail(LinkError.VersionConflict)
-                advance(state)
+                val updated = transactionRow(transactionId)
+                val notes = dao.visibleNotesForTransaction(transactionId).map { it.checkedNote().dto() }
+                LinkBatchResult(
+                    generation = generation,
+                    transaction = updated.dto(),
+                    notes = notes,
+                    visibleLinkCount = dao.visibleLinkCount(transactionId),
+                    businessRevision = if (changed) state.businessRevision + 1 else state.businessRevision,
+                    changed = changed,
+                )
             }
-            val updated = transactionRow(transactionId)
-            val notes = dao.visibleNotesForTransaction(transactionId).map { it.checkedNote().dto() }
-            LinkBatchResult(
-                generation = generation,
-                transaction = updated.dto(),
-                notes = notes,
-                visibleLinkCount = dao.visibleLinkCount(transactionId),
-                businessRevision = if (changed) state.businessRevision + 1 else state.businessRevision,
-                changed = changed,
-            )
+        } catch (error: CancellationException) {
+            throw LinkOutcomeUnknownCancellation(error)
         }
         if (result.changed) {
             try { mark(LinkCheckpoint.LINKS_COMMITTED, 0) }
-            catch (error: CancellationException) { throw error }
+            catch (error: CancellationException) { throw LinkCommittedCancellation(error) }
             catch (error: Exception) { throw LinkException(LinkError.OutcomeUnknown, error) }
         }
         result

@@ -1,5 +1,7 @@
 package com.paherdin.record2.records
 
+import kotlinx.coroutines.CancellationException
+
 internal data class LinkNoteRef(val id: String, val version: Long)
 
 internal data class TransactionLinks(
@@ -36,6 +38,15 @@ internal enum class LinkError {
 }
 
 internal class LinkException(val code: LinkError, cause: Throwable? = null) : Exception(code.name, cause)
+
+// Keep cancellation semantics while telling callers their selection baseline can no longer be trusted.
+internal sealed class LinkCancellation(cause: CancellationException?) :
+    CancellationException("Link batch outcome is unavailable because the coroutine was cancelled") {
+    init { if (cause != null) initCause(cause) }
+}
+
+internal class LinkCommittedCancellation(cause: CancellationException? = null) : LinkCancellation(cause)
+internal class LinkOutcomeUnknownCancellation(cause: CancellationException? = null) : LinkCancellation(cause)
 
 internal interface LinkService {
     suspend fun transactionLinks(generation: String, transactionId: String): TransactionLinks

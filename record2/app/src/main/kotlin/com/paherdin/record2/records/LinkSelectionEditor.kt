@@ -1,5 +1,6 @@
 package com.paherdin.record2.records
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,15 +24,7 @@ internal class LinkSelectionEditor(
     private val transactionId: String,
     initial: LinkSelection,
 ) {
-    init {
-        val linkedIds = initial.linked.map { it.id }
-        val candidateIds = initial.candidates.map { it.id }
-        require(initial.generation == generation && initial.transaction.id == transactionId)
-        require(initial.transaction.version >= 1)
-        require(initial.linked.all { it.deletedAt == null })
-        require(initial.candidates.all { it.deletedAt == null && it.id !in linkedIds })
-        require(linkedIds.size == linkedIds.toSet().size && candidateIds.size == candidateIds.toSet().size)
-    }
+    init { validate(initial) }
 
     private val mutableState = MutableStateFlow(
         LinkSelectionState(
@@ -85,6 +78,11 @@ internal class LinkSelectionEditor(
                 )
             }
             return true
+        } catch (cancelled: LinkCancellation) {
+            mutableState.update { it.copy(error = LinkError.OutcomeUnknown, requiresReload = true) }
+            throw cancelled
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: LinkException) {
             mutableState.update { it.copy(error = error.code, requiresReload = true) }
             return false
@@ -109,6 +107,7 @@ internal class LinkSelectionEditor(
         }
         try {
             val fresh = service.selection(generation, transactionId)
+            validate(fresh)
             val notes = (fresh.linked + fresh.candidates).associateBy { it.id }
             baselineVersions = notes.mapValues { it.value.version }
             baselineSelected = fresh.linked.map { it.id }.toSet()
@@ -126,5 +125,19 @@ internal class LinkSelectionEditor(
         } finally {
             mutableState.update { it.copy(busy = false) }
         }
+    }
+
+    private fun validate(selection: LinkSelection) {
+        val linkedIds = selection.linked.map { it.id }
+        val candidateIds = selection.candidates.map { it.id }
+        val invalid = selection.generation != generation ||
+            selection.transaction.id != transactionId ||
+            selection.transaction.version < 1 ||
+            selection.linked.any { it.deletedAt != null || it.version < 1 } ||
+            selection.candidates.any { it.deletedAt != null || it.version < 1 } ||
+            linkedIds.size != linkedIds.toSet().size ||
+            candidateIds.size != candidateIds.toSet().size ||
+            linkedIds.any { it in candidateIds.toSet() }
+        if (invalid) throw LinkException(LinkError.RecoveryRequired)
     }
 }

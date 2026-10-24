@@ -1,5 +1,6 @@
 package com.paherdin.record2.records
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -105,6 +106,56 @@ class LinkSelectionEditorTest {
         assertEquals(1, service.calls.size)
     }
 
+    @Test fun cancellationWithUnknownOutcomeRequiresReloadAndKeepsSelection() = runBlocking {
+        val cancellations = listOf(
+            LinkCommittedCancellation(CancellationException("synthetic committed")),
+            LinkOutcomeUnknownCancellation(CancellationException("synthetic rollback-or-commit")),
+        )
+        for (cancellation in cancellations) {
+            val service = service()
+            val editor = LinkSelectionEditor(service, "generation", "t1", service.links)
+            assertTrue(editor.toggle("n2"))
+            service.nextCancellation = cancellation
+            val failure = runCatching { editor.complete() }.exceptionOrNull()
+            assertSame(cancellation, failure)
+            assertEquals(LinkError.OutcomeUnknown, editor.state.value.error)
+            assertTrue(editor.state.value.requiresReload)
+            assertFalse(editor.state.value.completed)
+            assertEquals(setOf("n1", "n2"), editor.state.value.selected)
+            assertFalse(editor.toggle("n3"))
+            assertFalse(editor.complete())
+            assertEquals(1, service.calls.size)
+        }
+    }
+
+    @Test fun reloadRejectsInvalidServiceStateAndKeepsCurrentSelection() = runBlocking {
+        val service = service()
+        val editor = LinkSelectionEditor(service, "generation", "t1", service.links)
+        assertTrue(editor.toggle("n2"))
+        val valid = service.links
+        val invalid = listOf(
+            valid.copy(generation = "other"),
+            valid.copy(transaction = valid.transaction.copy(id = "other")),
+            valid.copy(transaction = valid.transaction.copy(version = 0)),
+            valid.copy(linked = listOf(linked.copy(version = 0))),
+            valid.copy(linked = listOf(linked.copy(deletedAt = 100))),
+            valid.copy(candidates = listOf(candidateA.copy(deletedAt = 100))),
+            valid.copy(linked = listOf(linked, linked)),
+            valid.copy(candidates = listOf(linked)),
+        )
+        for (candidate in invalid) {
+            service.links = candidate
+            assertFalse(editor.reloadDiscardingSelection())
+            assertEquals(LinkError.RecoveryRequired, editor.state.value.error)
+            assertTrue(editor.state.value.requiresReload)
+            assertEquals(setOf("n1", "n2"), editor.state.value.selected)
+        }
+        service.links = valid
+        assertTrue(editor.reloadDiscardingSelection())
+        assertEquals(setOf("n1"), editor.state.value.selected)
+        assertNull(editor.state.value.error)
+    }
+
     @Test fun hiddenTargetFailureKeepsTheCurrentSelectionForRetryAfterReload() = runBlocking {
         val service = service()
         val editor = LinkSelectionEditor(service, "generation", "t1", service.links)
@@ -123,6 +174,7 @@ class LinkSelectionEditorTest {
         val calls = mutableListOf<ApplyCall>()
         var selectionReads = 0
         var nextError: LinkError? = null
+        var nextCancellation: CancellationException? = null
         var result = LinkBatchResult(links.generation, links.transaction, links.linked, links.linked.size, 1, false)
 
         override suspend fun transactionLinks(generation: String, transactionId: String): TransactionLinks = error("Not used by editor")
@@ -140,6 +192,7 @@ class LinkSelectionEditorTest {
             remove: List<LinkNoteRef>,
         ): LinkBatchResult {
             calls += ApplyCall(transactionExpectedVersion, add, remove)
+            nextCancellation?.let { nextCancellation = null; throw it }
             nextError?.let { nextError = null; throw LinkException(it) }
             return result
         }
