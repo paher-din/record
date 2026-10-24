@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -586,6 +587,82 @@ class DeepSeekProtocolFailureTest {
                 put("result", "PASS")
             },
         )
+    }
+
+    @Test
+    fun concurrentReservesCannotOversubscribeBatchCap() = runBlocking {
+        val guard = D0BatchBudgetGuard(capUsd = 0.20)
+        val body = """{"model":"deepseek-flash","messages":[]}"""
+        // Every request reserves before any of them settles: this is the window in which a
+        // check-only implementation would let concurrent requests oversubscribe the cap.
+        val allReserved = java.util.concurrent.CountDownLatch(10)
+        val grants = (1..10).map {
+            async(Dispatchers.IO) {
+                val granted = runCatching { guard.reserveForRequest(body) }.isSuccess
+                allReserved.countDown()
+                allReserved.await()
+                if (granted) guard.record(body, chatResponse(text = "ok"))
+                granted
+            }
+        }.awaitAll().count { it }
+        assertEquals("only reserves covered by the cap may be granted", 2, grants)
+        assertTrue("settled spend must stay within the cap", guard.spentUsd <= 0.20)
+        assertEquals("all holds must be settled", guard.spentUsd, guard.reservedUsd, 1e-9)
+        evidence.add(
+            buildJsonObject {
+                put("test", "concurrentReservesCannotOversubscribeBatchCap")
+                put("capUsd", 0.20)
+                put("concurrentRequests", 10)
+                put("grantedReserves", grants)
+                put("settledSpentUsd", guard.spentUsd)
+                put("result", "PASS")
+            },
+        )
+    }
+
+    @Test
+    fun failedRequestSettlesFullReserve() {
+        val guard = D0BatchBudgetGuard(capUsd = 0.20)
+        val body = """{"model":"deepseek-flash","messages":[]}"""
+        val fake = ScriptedHttpClient { _, _ ->
+            throw KoogHttpClientException(
+                clientName = "record2-d0-scripted",
+                statusCode = 500,
+                errorBody = "synthetic request failure",
+            )
+        }
+        RecordingHttpClient(fake, budget = null, batchBudget = guard).use { guarded ->
+            repeat(2) {
+                val failure = runCatching {
+                    runBlocking {
+                        guarded.post(
+                            path = "chat/completions",
+                            requestBody = body,
+                            requestBodyType = String::class,
+                            responseType = String::class,
+                            parameters = emptyMap(),
+                            headers = emptyMap(),
+                        )
+                    }
+                }.exceptionOrNull()
+                assertTrue(failure is KoogHttpClientException)
+            }
+            assertEquals("failed requests must keep their full reserve charged", 0.20, guard.spentUsd, 1e-9)
+            assertEquals(0.20, guard.reservedUsd, 1e-9)
+            val blocked = runCatching { guard.reserveForRequest(body) }.exceptionOrNull()
+            assertTrue("cap must be exhausted after two failed full-reserve settlements", blocked is BudgetExceededException)
+            assertEquals(2, fake.requests.size)
+            evidence.add(
+                buildJsonObject {
+                    put("test", "failedRequestSettlesFullReserve")
+                    put("capUsd", 0.20)
+                    put("failedRequests", fake.requests.size)
+                    put("chargedUsd", guard.spentUsd)
+                    put("blockedAfterFailures", true)
+                    put("result", "PASS")
+                },
+            )
+        }
     }
 
     companion object {

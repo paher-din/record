@@ -128,21 +128,27 @@ internal class D0RunBudget {
 }
 
 /**
- * Batch-wide guard for real API calls. Each real request must reserve the model's full run cap
- * before it is sent, so the batch cannot exceed [capUsd] after the fact; responses without usage
- * are charged the run cap because their consumption is unknown.
+ * Batch-wide guard for real API calls. Each real request atomically reserves the model's full
+ * run cap before it is sent — concurrent reserves accumulate as outstanding holds, so the batch
+ * cannot be oversubscribed — and settles when the response arrives; responses without usage are
+ * charged the run cap because their consumption is unknown. A request that fails without a
+ * response keeps its full reserve charged: the provider may still have billed it. Estimates use
+ * fixed rates and are a safety cap, not a billing guarantee.
  */
 internal class D0BatchBudgetGuard(private val capUsd: Double = D0TestLimits.BATCH_USD) {
     private val lock = Any()
     private var spent = 0.0
+    private var outstanding = 0.0
     private var unmetered = 0
 
     val spentUsd: Double get() = synchronized(lock) { spent }
+    val reservedUsd: Double get() = synchronized(lock) { spent + outstanding }
     val unmeteredResponses: Int get() = synchronized(lock) { unmetered }
 
     fun reset() {
         synchronized(lock) {
             spent = 0.0
+            outstanding = 0.0
             unmetered = 0
         }
     }
@@ -150,14 +156,16 @@ internal class D0BatchBudgetGuard(private val capUsd: Double = D0TestLimits.BATC
     fun reserveForRequest(requestBody: String) {
         val reserve = D0TestLimits.costCapUsd(modelOf(requestBody))
         synchronized(lock) {
-            if (spent + reserve > capUsd) {
+            if (spent + outstanding + reserve > capUsd) {
                 throw BudgetExceededException(
                     listOf(
-                        "batch budget: spent ${"%.4f".format(spent)} + next-request reserve " +
+                        "batch budget: spent ${"%.4f".format(spent)} + outstanding " +
+                            "${"%.4f".format(outstanding)} + next-request reserve " +
                             "${"%.4f".format(reserve)} exceeds cap $capUsd",
                     ),
                 )
             }
+            outstanding += reserve
         }
     }
 
@@ -167,6 +175,7 @@ internal class D0BatchBudgetGuard(private val capUsd: Double = D0TestLimits.BATC
             Json.parseToJsonElement(responseBody).jsonObject["usage"]?.jsonObject
         }.getOrNull()
         synchronized(lock) {
+            outstanding = maxOf(0.0, outstanding - D0TestLimits.costCapUsd(model))
             if (usage == null) {
                 unmetered += 1
                 spent += D0TestLimits.costCapUsd(model)
@@ -177,6 +186,14 @@ internal class D0BatchBudgetGuard(private val capUsd: Double = D0TestLimits.BATC
                     usage.intField("completion_tokens") ?: 0,
                 )
             }
+        }
+    }
+
+    fun settleFailed(requestBody: String) {
+        synchronized(lock) {
+            val reserve = D0TestLimits.costCapUsd(modelOf(requestBody))
+            outstanding = maxOf(0.0, outstanding - reserve)
+            spent += reserve
         }
     }
 
@@ -240,7 +257,14 @@ internal class RecordingHttpClient(
             requests += requestBody
             batchBudget?.reserveForRequest(requestBody)
         }
-        val response = delegate.post(path, requestBody, requestBodyType, responseType, parameters, headers)
+        val response = try {
+            delegate.post(path, requestBody, requestBodyType, responseType, parameters, headers)
+        } catch (failure: Throwable) {
+            // The request may have reached the provider and been billed, so a failed call keeps
+            // its full reserve charged instead of releasing the hold.
+            if (requestBody is String) batchBudget?.settleFailed(requestBody)
+            throw failure
+        }
         if (response is String) {
             responses += response
             if (requestBody is String) {
