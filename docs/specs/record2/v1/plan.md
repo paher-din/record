@@ -929,6 +929,122 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 
 2026-10-24批准轮（APPROVE）附带两项非阻塞建议，合并前已在D0测试设施内处理：批次预留改为原子持有+结算——`reserveForRequest`在同步块内把模型Run上限计入`outstanding`持有，响应到达或请求失败时结算，并发预留不再可能超发（新增10并发预留的确定性测试：$0.20上限/$0.10预留下恰好2项获准）；真实请求无响应失败时按全额预留结算（Provider可能已计费），由`RecordingHttpClient`失败路径触发，并新增对应确定性测试。费率表仍为固定估算，不构成账单严格保证；供应商计费变更与账单级结算策略仍为D1输入。本轮脚本设备套件19/19 PASS（17项既有+2项新增）；真实套件未重跑（成功路径行为未变且Key未再注入），§24.3与集成真实回归记录仍然有效。
 
+## 25. C0 / issue #8：六类 Proposal 的稳定创建与 Revision CAS
+
+负责人要求“完成issue c0”，对应[GitHub #8](https://github.com/paher-din/record/issues/8)；前置[A1 #2](https://github.com/paher-din/record/issues/2)、[B0 #3](https://github.com/paher-din/record/issues/3)均已关闭为completed。按§5 C0原任务合同实施，不新建Spec/ADR、不重开B0设计、不改Schema、不引Koog类型进业务层。负责人另明确三项裁决：设备复用既有专用AVD并与B2串行、规范化编码采用严格封闭基线、章节编号无偏好（初版取§24；D0先合并占用§24后本批顺延为§25）。
+
+章节编号的实际冲突已逐个核查：主工作树的B2批次与`d0-koog-deepseek`批次各自占用了§22，`e0-provider-authorization`批次占用了§23，故本批取当时唯一空闲的§24。编号冲突按“先合并者保留、后合并者顺延”处理，本批不复制其他批次的记录、也不代替它们改号；§21.4的B1收口记录同样由B2/E0工作树各自追加，本批不重复。
+
+### 25.1 隔离、写owner与实际范围
+
+本批全程在独立工作树`.worktrees/c0-proposal-revision`（分支`codex/c0-proposal-revision`，基于main `1cd1d28`）执行。开始时主工作树带有进行中的B2未提交改动（plan.md §21.4/§22、RecordDao.kt的Note生命周期方法、NoteService/NoteEditor/RoomNoteService），另有d0-koog-deepseek与e0-provider-authorization两个工作树的未提交批次；这些一律原样保留、未读取修改、未暂存或回滚。
+
+| 对象 | 本批实际写入 | 边界与冲突控制 |
+|---|---|---|
+| 新业务包 | [ProposalOperation](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/ProposalOperation.kt)、[ProposalCodec](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/ProposalCodec.kt)、[ProposalService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/ProposalService.kt) | 六类封闭操作值模型、规范化编码/摘要/预算、含Coordinator调用契约的服务接口；无Koog类型 |
+| storage实现 | [RoomProposalService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomProposalService.kt) | 事务内代际/Run资格/目标校验、创建幂等、活跃slot、revision CAS、唯一竞争回滚后重核 |
+| 内部DAO | [ProposalDao](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/ProposalDao.kt) +11行、[SessionDao](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/SessionDao.kt) +3行 | 仅新增本批实际调用的按creationRequestId/活跃slot/会话读取；**RecordDao.kt未触碰**，把Note生命周期方法留给B2，避免共享文件冲突写 |
+| 测试 | [ProposalCodecTest](../../../../record2/app/src/test/kotlin/com/paherdin/record2/proposals/ProposalCodecTest.kt)、[ProposalContractFixture](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/ProposalContractFixture.kt)、[ProposalServiceContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/ProposalServiceContractTest.kt) | 复用既有SchemaDiskObserver独立观察器，不改B1/Schema批次的测试与fixture |
+| 未变更 | 构建脚本、版本目录、Manifest、普通Host入口、`app/schemas/…/1.json`、R1、冻结Spec/架构 | 无依赖新增或升级；无Schema/迁移/环境文件/凭据/CI/发布动作；提交、推送与PR见§25.6 |
+
+合计9份纳管候选：2份DAO修改（+14行）、7份新源码（1938行）。软删除目标的NotVisible判定需要一次“含已删除”的Note读取；为不改B2正在写的RecordDao，该查询放在C0自己拥有的ProposalDao内，属读操作，不构成Schema变更。
+
+### 25.2 冻结的规范化编码与输入预算
+
+按[B0 §5.1](../../../architecture/record2-b0-data-model-design.md#51-创建身份修订与规范化)与[B0 §11](../../../architecture/record2-b0-data-model-design.md#11-交付边界与下一步)留给C0的未决项，本批冻结下列编码与限额（`payloadFormatVersion=1`），数值集中在`ProposalBudget`：
+
+- **规范化编码：** 由实现按固定字段顺序显式生成的无空白UTF-8 JSON，不依赖序列化器的属性顺序或Map顺序；字符串按RFC 8259最小转义（仅引号、反斜杠、`\b\f\n\r\t`与小于0x20的控制字符，非ASCII原样保留）；金额/版本/时刻为JSON整数，全链路不用浮点；顶层为`{"formatVersion":1,"operations":[…]}`。
+- **操作顺序：** 按`(类型序, 目标键)`排序，类型序为CREATE_TRANSACTION→CREATE_NOTE→UPDATE_TRANSACTION→UPDATE_NOTE→LINK_RECORDS→UNLINK_RECORDS，目标键为localRef或既有稳定ID。因此语义等价但模型输出顺序不同的两次prepare产生**完全相同的字节与摘要**，这是创建幂等能识别重复的前提。
+- **摘要：** `payloadDigest`为SHA-256(规范化UTF-8字节)的小写十六进制64字符。
+- **意图归一：** 同一既有目标的多个UPDATE先合并为唯一字段变更，字段级矛盾返回Invalid，不采用“最后一个赢”；关系意图合并为唯一增量集合，完全相同的重复配对去重，同端点不同expectedVersion为Invalid，add与remove集合相交为Invalid；新对象的基线版本只能是1。
+- **输入预算：** 单提案操作数≤32；LINK/UNLINK各自配对数≤32；localRef名≤64字符且形如井号加`[A-Za-z0-9_-]{1,64}`；memo≤1000字符、Note正文≤20000字符（仅AI prepare预算，不是原生入口的产品限制，也不引入旧500字符约定）；既有身份必须是规范小写UUID；封闭结构最大嵌套深度6；未知字段与未知操作类型在解码时一律拒绝。
+
+与批准基线的两处偏离及理由，均已在实现中落实并测试：
+
+1. **不再单列localRef数量上限。** 每个localRef必须由本提案内一个CREATE操作声明，故其数量恒不超过操作数上限32；单列常量会成为永不触发的死检查。
+2. **新增“规范化字节总量≤65536”的写入侧门禁。** 逐项限额本身仍允许32条20000字正文（约1.9MB UTF-8），这种payload写得进去却读不回来；因此`canonical()`在生成时即拒绝超限，读取侧另有等长门禁报RecoveryRequired。
+
+另：payload不含`currency`字段，CNY是records域拥有的冻结常量，重复携带只会增加分叉面。相对时间不在C0解析，prepare只接受绝对本地时刻加zoneId并按注入Clock解析为具体时刻，同时冻结`zoneId`/`localDateTime`/`offsetSeconds`解释；DST gap拒绝、overlap取较早offset、拒绝未来时刻沿用B1的`FinanceTime`，口语相对表达属D1工具参数解析。
+
+金标准编码由host测试逐字节钉住：固定合成输入的规范化结果必须是711字节的确定字符串，其摘要必须等于`ac2bbda5fa0c8a4017e5d0a725719c354b718d28cbf03b5df171fe3dd8455fa3`。该摘要由`sha256sum`对同一串字节独立算出后写死为常量，不经`ProposalCodec.digest`；设备测试另用测试代码内独立的`MessageDigest`计算复核落盘`payloadDigest`。
+
+### 25.3 运行合同
+
+- **host：** `ProposalCodecTest`19项，选择器`com.paherdin.record2.proposals.ProposalCodecTest`；固定UTC Clock为`2026-10-23T12:00:00Z`，发生时间`2026-10-23T12:30 Asia/Shanghai`（epoch 1792729800000、offset 28800），DST用例为`2026-03-08T02:30 America/New_York`（gap拒绝）与`2025-11-02T01:30 America/New_York`（overlap取-14400）。
+- **设备：** `com.paherdin.record2.storage.ProposalServiceContractTest`16项。专用AVD `record2-schema-api34`，核名称/API34/boot/fingerprint后固定serial=emulator-5580；仅安装或更新`com.paherdin.record2.debug`与`.debug.test`；每测试新建私有`c0-contract-<UUID>.db`及SQLite关联文件，`@Before`先断言该路径不存在。不读改既有各批次测试库（b1-contract 112、b2-contract 12、e0-auth 42、e0-init 7、schema-contract 110及B1进程场景库21份），不初始化普通`record2.db`，不wipe/uninstall/清包/删文件；每条命令显式`-s emulator-5580`，即使`emulator-5584`（B2批次的record2-b2-api34）同时在线也不向其发送任何命令。
+- **fixture：** 合成代际与processOwner、会话两个、Run两条（各自唯一proposalCreationRequestId）、种子账户与收支分类各一、既有交易version=3、可见Note version=7、软删除Note、一条既有关系、一行EDITING原生草稿（用于证明AI提案不占该slot）。Run行只填C0需要重验的身份与状态字段，按B0 §11以合成合法上下文验证prepare，不声称真实Agent或E1已就绪。
+- **故障点：** `ProposalCheckpoint.TARGETS_VALIDATED`/`PROPOSAL_INSERTED`/`PROPOSAL_REVISED`，分别注入真实协程取消与`SQLiteFullException`。
+- **独立oracle：** 全部14表逐字段快照由既有`SchemaDiskObserver`经独立只读SQLite连接读取，不调用被测规范化器构造预期值；每次拒绝后比较全表快照零变化。
+- **构建命令：** 工作树内以`JAVA_HOME=C:/Users/p3148/tools/jdk/jdk-17.0.20+8`、`ANDROID_HOME=C:/Users/p3148/AppData/Local/Android/Sdk`，自身wrapper显式`-p D:/record/.worktrees/c0-proposal-revision/record2`运行。**未新建`local.properties`**，SDK位置只经环境变量传入，不写任何环境文件。
+
+### 25.4 实际结果
+
+- **构建/host/lint PASS：** `check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`最终BUILD SUCCESSFUL（2分07秒，129项任务中81执行/48 up-to-date）。host JUnit在Debug与Release各25项（ProposalCodecTest 19、FinanceTimeTest 3、MoneyTest 3），共50项，fail/error/skip均0。lint 0错误、6项警告全部落在既有基线文件（app/build.gradle.kts、libs.versions.toml、AndroidManifest.xml、KoogCompilationContract.kt），无一指向C0源码；未降低或关闭任何门禁，Gradle 9弃用与SDK XML版本提示保留。
+- **Schema v1未变：** `app/schemas/com.paherdin.record2.storage.RecordDatabase/1.json`在Git中与`1cd1d28`逐字节相同，blob SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`；工作树内哈希差异只是`core.autocrlf=true`的CRLF checkout，不是内容变化。新增DAO查询与业务服务不构成Schema变更，KSP重新生成DAO实现但导出身份不变。
+- **设备第一轮（16项跑完，3项失败，已全部定位修根因）：** 使用初始APK debug `6d3860c7f3f106ce3591238a0eef54e7066b902cf3a77850aad8c728ee7fb38f`、test `3db42c9a24a462adbaebcdcc461c51a6cc9df1dbd671a0795463d9c7652e360e`，结果`Tests run: 16, Failures: 3`。
+  - `reviseUsesRevisionCas…`为测试脚手架缺陷：`reopen()`后fixture仍持有已关闭的RecordDatabase，报`attempt to re-open an already-closed object`；已给fixture加`rebind()`。
+  - `corruptPersistedProposal…`与`frozenTerminalAndNeedsReview…`是**同一个真实产品缺陷**：`repeated()`与`editable()`在持久完整性门禁之前就比较创建内容与代际，使损坏行被误报为普通`CreationRequestConflict`而非`RecoveryRequired`，等于让一次修订可以静默覆盖已损坏的冻结输入。已把`row.view()`（状态合法、slot与状态一致、摘要匹配、payload可解码、身份规范、时间序合理）提到代际与内容比较之前，并补一条“格式良好但已退役代际”仍报GenerationMismatch的用例，区分损坏与过期。
+- **设备第二轮（被并发批次中断，不是测试结论）：** 修正后重建并以`install -r`更新两个获批包，拉回安装后的base.apk核对，debug `6e04605da5e6052ec9d97bd8d5c6b9901f76889b37d3f85cdacb1326de7f85f7`、test `ecb9f6e1bda11fb6e8e72eb87b7761f83972b15bbeaf1e47fa19f532bcf66b23`与构建产物逐项一致。17:07:59Z开始运行，第1项通过，第2项即`INSTRUMENTATION_RESULT: shortMsg=Process crashed.`。logcat显示17:08:31Z有进程重新安装`com.paherdin.record2.debug`、17:08:52Z开始执行`com.paherdin.record2.ai.DeepSeekProtocolContractTest`——该类只存在于`.worktrees/d0-koog-deepseek`，即D0批次替换test APK时杀掉了C0的instrumentation进程。运行前已核当时无instrumentation在跑，属运行中被抢占。原始输出与中断归因见本机`record2/build/c0/`（device-precheck、device-install、apk-verification、instrumentation-initial、instrumentation-final、device-contention-note）。
+- **设备第三轮 PASS，16/16（收口依据）：** 负责人告知emulator-5580可用后，发现该AVD已被停止（`adb devices`为空），按上一批`emu-launch-params.txt`记录的同一参数冷启动**同一台**`record2-schema-api34`：`emulator -avd record2-schema-api34 -port 5580 -no-snapshot-load -no-audio -no-boot-anim -gpu swiftshader_indirect`，未创建第二设备、未wipe、未改AVD登记。启动后核serial=emulator-5580、API34、fingerprint仍为`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`、AVD名`record2-schema-api34`。因D0曾替换过包，重新以`install -r`安装本批两个APK并拉回base.apk核对，debug `6e04605da5e6052ec9d97bd8d5c6b9901f76889b37d3f85cdacb1326de7f85f7`、test `ecb9f6e1bda11fb6e8e72eb87b7761f83972b15bbeaf1e47fa19f532bcf66b23`与构建产物逐项一致（源码自第二轮起未再变更，仅文档改动）。17:27:58Z运行同一selector，17:28:20Z结束，`OK (16 tests)`：`numtests=16`、16个开始状态1、16个结束状态0、失败0、错误0、skip0、`Process crashed`计数0；不以adb退出码0代替判定。
+- **rebase到真实origin/main后重建重跑 PASS，16/16（收口结论依据）：** 首次rebase目标是当时的`origin/main` `9530833`（E0的PR #21）；期间另一会话把B2与E0集成后推送`937552f`，远端跟踪引用随之移动，而`9530833`的树不含B2。故以`937552f`为最终基线重做rebase：`plan.md`唯一冲突按`§21.4+§22`（B2）、`§23`（E0）、`§24`（C0）顺序保留三方全部记录，不改动B2/E0任何文字，Kotlin全部干净应用无冲突；中途针对`9530833`得到的66项host与`30b4…`/`3bfc…`制品作废，未用于收口。最终基线重新`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`并BUILD SUCCESSFUL（129项任务35执行/94 up-to-date），host Debug与Release各42项（本批19＋E0的8＋B2的9＋既有6），共84项fail/error/skip均为0；lint仍0错误/6项既有警告且无C0文件。最终APK debug `5b29e48b02a0ee002852a7cd89fd6e7d0d47252db6a7296a108e4bc7181596d0`、test `9cae23e39dd42905c267c43e2922735b2147d93c7b9eed6758d7080744cb28a9`，安装后拉回base.apk逐项一致，同一selector重跑`OK (16 tests)`，16个结束状态0、无失败/错误/skip/崩溃。
+- **设备侧善后与范围保护：** `c0-contract-<UUID>.db`最终为66份（初始18份，收口轮、rebase轮与最终基线轮各新增16份，每测试一份新库），关联`-shm/-wal`各5份；b1-contract 112、b2-contract 12、e0-auth 42、e0-init 7、schema-contract 110及B1进程场景库21份在三轮运行前后逐项计数一致，未被读改；普通`record2.db`计数为0，未创建。全程未wipe/uninstall/清包/删除文件或库、未停止设备；`emulator-5584`曾在上线期间出现，所有命令均显式`-s emulator-5580`，未向其发送任何安装、测试、清除或停止命令。本批启动的AVD在本轮结束时**仍在运行**，是否停止留给负责人决定，不代替其他批次关机。
+
+### 25.5 未覆盖项与验收边界
+
+**C0完成门禁已满足。** §5要求“完整原始并发结果、唯一性约束与零业务写快照通过；实际原生确认继续等C1/F2”。第三轮16项原始结果全部通过（`OK (16 tests)`，16个结束状态0，无失败/错误/skip/进程崩溃），其中包含：两条唯一索引对第二个活跃slot与第二个创建身份的物理拒绝、双连接并发prepare与并发revise的单一胜者、每次拒绝后全14表独立快照零变化、原生草稿slot逐字段未变（AI-AC6）。第一轮3项失败与第二轮被D0抢占中断均如实保留为失败/中断事实，未删除、未用第三轮结果覆盖或追溯改写；第三轮使用的是修正后重建的APK，其摘要与安装后拉回的base.apk一致。原生确认与Transaction A/B仍等C1/F2，本批不宣称。
+
+设备证据实际覆盖的断言：prepare只写change_proposal且业务表与草稿零变化、落盘payload等于711字节金标准且payloadDigest经测试内独立`MessageDigest`复核、重开后状态与内容保持；重复creationRequestId同内容返回原提案与**当前**revision且不回滚后续修订、异内容一律拒绝（含并发下败者内容不被静默采纳）；revise保持proposalId与creationPayloadJson、originRunId不变而lastWriterRunId随新Run更新、旧expectedRevision与0/-1/Long.MAX_VALUE全部拒绝；并发revise同expectedRevision只有一个胜者且败者内容不落盘（TP-01/02的C0部分）；同Session第二个活跃提案被拒而新Run可修订既有EDITABLE提案、不同Session各自持有活跃slot；COMPLETED/FAILED/CANCELLED/INTERRUPTED的Run、错误processOwnerId/receiverIdentity/authEpoch、跨Session配对、未知Run/Session、Run或数据状态代际不符全部拒绝且零写入；creationRequestId只来自持久Run行，Run上该字段的唯一索引物理拒绝复用，提案originRun与创建请求不符时报RecoveryRequired；localRef重复声明/悬空/错型/伪造基线与 malformed 名称全部拒绝；非法金额、未来时刻、DST gap、账户或分类缺失/版本不符/方向不符、目标缺失或旧版本、软删除目标NotVisible、超预算操作数与文本长度全部拒绝且零业务事实；LOCKED与四种终态及NEEDS_REVIEW一律拒绝修订，NEEDS_REVIEW释放slot后新用户任务的新Run可产生新proposalId/新创建身份而旧身份不能再造第二份；12种payload损坏在读、重复prepare与修订三条路径一律fail-closed，格式良好但已退役的代际报GenerationMismatch以区分损坏与过期；真实协程取消与StorageFull在插入后与修订后均整体回滚，同请求重试成功。
+
+明确不属于本批、仍归原任务：Transaction A/B与CommitOperation全状态矩阵、TP-03～08、确认与A/B各故障点强停（C1）；真实Run启动与用户历史（E1/E2）；模型参数解析与四工具委托（D1）；原生确认展示与交接（F2）；ZIP与代际恢复把EDITABLE及旧Pending转NEEDS_REVIEW的真实路径（G0/G1，本批测试仅用直接SQL合成这些状态以验证C0的拒绝行为，不代表恢复已实现）。测试中的NEEDS_REVIEW与终态均为合成写入，不声称恢复或确认链已就绪。
+
+关于“循环依赖”：解析器在拓扑遍历中拒绝任何未先声明即被消费的localRef，悬空与错型已由host与设备用例覆盖；封闭六类操作中CREATE不引用任何localRef，故合法payload无法构造出环，本批**没有**单独的环状fixture，这一项按未覆盖如实登记，不以悬空用例冒充。
+
+**最终T0 PASS：** 10份纳管候选（3份修改含本节、7份新增源码）全部限本批；§24内15个链接（12个相对、3个外部）与2个B0锚点全部解析成功，UTF-8无BOM、无制表符、无行尾空白、围栏配平，`git diff --check`返回0且无输出。冻结Spec §4–7、统一架构、B0设计、工程Policy、Schema v1生成JSON、构建脚本与版本目录、Manifest、RecordDao/RoomFinanceService/实体/数据库类、R1全部逐字节未变；Schema v1 blob SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`；未新建`local.properties`或任何环境文件；本批新增行无凭据形状字符串（既有正文关于模型调用额度的表述不属本批新增范围）。回执为本机`record2/build/c0/final-t0.json`，检查器为同目录`verify_c0_t0.py`。
+
+[docs/index.md](../../../index.md)路由表本批**未改**：B2/D0/E0三个并行批次同样会各自追加行，共享文件的行级冲突写留给一次协调更新，C0的实际状态由本节唯一拥有，不因缺少路由行而不可发现。
+
+自查完成，无独立Agent审查。本机`record2/build/c0/`证据目录被忽略，正式Kotlin测试可按上述命令重建。
+
+### 25.6 提交、推送与PR
+
+负责人明确要求“推送PR”，覆盖本C0分支的必要Git提交、分支推送及创建PR；不关闭issue #8、不合并PR、不改动其他批次的分支或工作树。实现提交含10份文件（2份DAO修改、7份新源码与本节所在记录），分支`codex/c0-proposal-revision`。
+
+`origin/main`在本批执行期间由`9530833`（E0的PR #21）推进为`937552f`（集成B2与E0），故把唯一提交rebase到最终基线`937552f`。冲突仅`docs/specs/record2/v1/plan.md`一处，原因是多个批次在同一插入点各自追加章节；解决为`§21.4+§22`（B2）、`§23`（E0）、`§24`（C0）按序全保留，不改动B2/E0任何文字、不改变各自已记录的编号，Kotlin源码全部干净应用无冲突（本批未触碰`RecordDao.kt`，因此B2的Note方法不受影响）。因基线源码集合已变，rebase后重新构建、host与真实Room验证见§25.4，不沿用rebase前或中途目标的制品与结论。
+
+实际提交SHA、PR编号与远端状态由Git/PR日志证明，本节不预填或自引用。
+
+### 25.7 PR #23 审阅修复轮（2026-10-24）
+
+负责人交付 C0 PR #23 的静态审阅结论（1 项 P1、2 项 P2，暂不合并，修复+回归+基于最新 HEAD 重跑），本节按该授权执行，基线为审阅对象 `a48394d` 本身（其父即收口基线`937552f`，无新远端推进）。
+
+- **P1 Run 进程所有权校验不完整：** `validRun()` 原来只把 Run 行快照与调用上下文比对，未核对持久化进程所有权；所有者切换而旧 Run 行仍 RUNNING/占 slot 时，旧上下文的迟到 prepare/revise 仍可成功。修复：`validRun()` 内（create/revise/afterContention 三条路径均在同一 Room 事务中）重读 `record_data_state.processOwnerId`，与 Run 行 `processOwnerId` 不一致即 `RunInvalidated`；数据状态行缺失仍按 `RecoveryRequired` fail-closed。
+- **P2 合并配对绕过 32 对上限：** `checkedPairs()` 只约束单条意图，两条各 ≤32 对的 LINK/UNLINK 意图可合并出 33+ 对。修复：`normalize()` 在 `relationSet` 合并去重后重查 `MAX_LINK_PAIRS`；`decode()` 同步校验每个 LINK/UNLINK 操作的配对数在 1..32（空集或超限的持久 payload 属非规范输出，一律 `RecoveryRequired`）。
+- **P2 activeProposal 检查顺序：** 原实现先比代际后做持久完整性，损坏且属退役代际的行会误报 `GenerationMismatch` 而非 `RecoveryRequired`。修复：与 `repeated()`/`editable()` 一致，先 `row.view()` 完整性后代际比较。
+- **回归用例：** host `ProposalCodecTest` 新增 `mergedRelationBudgetIsRecheckedAfterIntentsCombine`（16+17 拆分合并、全量重复去重、LINK/UNLINK 越界各断言 `BudgetExceeded`），decode 拒绝清单补 33 对 LINK 规范串与空 UNLINK 规范串；设备 `ProposalServiceContractTest` 新增 `aRunWhoseProcessOwnerHasBeenReplacedLosesPrepareAndReviseImmediately`（所有者切换后旧上下文 prepare/revise 均 `RunInvalidated` 且全表快照零变化，随后绑定新所有者的新 Run 可继续修订同一提案），rejections 清单补 LINK 与 UNLINK 两条 16+17 合并预算用例（零写入断言沿用），`corruptPersistedProposal…` 补"损坏+退役代际并存报 `RecoveryRequired`"断言。
+- **重跑 PASS：** 同批 JDK17/Gradle8.13 环境，`:app:testDebugUnitTest :app:testReleaseUnitTest` 后各 43 项（ProposalCodecTest 19→20，其余 E0 8、B2 9、既有 6 不变），fail/error/skip 均 0；`check :app:assembleRelease` BUILD SUCCESSFUL，lint 0 错误/6 项既有警告。设备 `ProposalServiceContractTest` `OK (17 tests)`（16+1），新方法单选抽查 `OK (1 test)`，共用 Schema 回归 `RecordSchemaContractTest` `OK (10 tests)`。Schema v1 未变：工作树无 `1.json` 改动，本轮仅 4 个 Kotlin 文件（2 源码+2 测试）。
+- **设备事实差异与处置：** 本轮开始时专用 AVD 已被先前批次以无 `-port` 参数启动，实际 serial=emulator-5554；按 qemu 命令行 `-avd record2-schema-api34`、API34、fingerprint `google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys` 与 §25.4 记录逐项核实为同一专用 AVD，本机无其他在线设备。按 §9.1"禁止盲用历史 serial"，本轮全部命令显式 `-s emulator-5554`；曾按 §25.4 参数尝试在 5580 冷启动同 AVD 被多实例保护拒绝后未强启、未删锁、未干预运行中实例，未创建第二设备、未 wipe/uninstall/清包/删库。该实例数据分区内本轮前无任何本包数据库，轮末 run-as 计数 c0-contract 18 份（17+1）、schema-contract 10 份、`record2.db` 0 份。APK 摘要：debug `1ac8094acd99b22a292510003113c294e5776f764f98c9c7a4d5066897148e11`、test `58f63cecd849c6563357f87b21d1ceac5aed84880f7e9ea0e2b2f275639958fd`、release-unsigned `84888e193c0848873bd163c7a9e60846fdcce2a0f48216b18d45629fd5f9ff4d`，安装后拉回 base.apk 与构建产物逐项一致。
+- **审阅第三项集成风险（E0 撤销后的迟到写入顺序）不在本批修**：按审阅意见列为 E1/E2 集成验收项，未新增 Schema、未改冻结验收。
+
+### 25.8 PR #23 第二轮审阅修复轮（2026-10-24）
+
+负责人交付第二轮审阅：上轮 3 项确认修复通过，另提出 2 项异常持久数据防御性缺口，建议小范围修复后合并。基线为本批上轮修复 `3d93cdf`，无新远端推进。
+
+- **P2 创建身份与原始 Run 的绑定未校验（B0 §5.1）：** `view()` 原先只验身份 UUID 格式；`creationRequestId` 被改成另一个格式合法且不冲突的 UUID 时，proposal/revise 仍可用，原始 Run 重复创建也识别不出原身份。修复：`view()`（所有持久提案读取的唯一完整性门禁）加跨表核对——`sessions.run(originRunId)` 必须存在且 `proposalCreationRequestId` 与行内一致，否则 `RecoveryRequired`。`change_proposal` 对 `(originRunId, sessionId)` 已有复合 FK 保证 Run 存在且同 session，此核对补上 FK 无法表达的创建身份绑定；读取路径每次多一次主键查询，均在既有事务内。
+- **P2 decode() 缺持久载荷语义验证：** 新增 `validatePersisted()` 在反序列化后重建 normalize() 保证的全部封闭集不变量：localRef 声明唯一与类型匹配、endpoint 槽类型（TRANSACTION/NOTE 不得错槽）、LOCAL 基线必须为 1、身份与版本 shape、amountMinor≥1、memo/body 预算与 body 非空白、category 成对、UPDATE 目标唯一（normalize 折叠语义）、LINK/UNLINK 各至多一个操作、两方向 endpointKey 互斥且各自无重复；再加规范编码一致性 `canonical(operations)==原文`（字段序/转义/数值表示非规范即拒绝，含 resolveOrder 的声明检查经 ProposalException 统一转 `RecoveryRequired`）。正常 prepare/revise 写入路径产物全部满足，不受影响。
+- **回归用例：** host `ProposalCodecTest` 新增 `decodeValidatesPersistedSemanticsBeyondTheWireFormat`（未声明 #t9、双 LINK 操作、LINK/UNLINK 同对、重复 UPDATE、槽类型错位手写规范串、LOCAL 基线 2、amount 0、memo 超长、blank body、字段序非规范共 10 类拒绝 + 金标准仍可解码），19→20→21 项；设备 `corruptPersistedProposalFailsClosedOnEveryReadAndRepeatPath` 的 corruptions 清单补"格式合法唯一但不绑定 originRun 的 creationRequestId"与"digest 一致但 LINK 引用未声明 localRef 的规范串"两条（读/重复 prepare/revise/activeProposal 全路径 fail-closed），并单独断言 activeProposal 对绑定错误的 `RecoveryRequired`。首轮开发中"槽类型错位"用例原经 `canonical()` 构造被 `resolveOrder` 先拒为 Validation，已改为手写规范串直测 decode 门禁，该过程如实保留在提交历史。
+- **重跑 PASS：** host Debug/Release 各 44 项（fail/error/skip 0）；`check :app:assembleRelease` BUILD SUCCESSFUL，lint 0 错误/6 项既有警告；设备 `ProposalServiceContractTest` `OK (17 tests)`，`corruptPersistedProposal…` 单选抽查 `OK (1 test)`，`RecordSchemaContractTest` `OK (10 tests)`。Schema v1 未变（仅 4 个 Kotlin 文件：2 源码 2 测试，`1.json` 无改动）。
+- **设备与制品：** 上轮使用的运行实例（无 `-port` 启动、serial=emulator-5554）在本轮构建期间已被外部停止；本轮按 §25.4 记录参数冷启动**同一台** `record2-schema-api34`：`-port 5580 -no-snapshot-load -no-audio -no-boot-anim -gpu swiftshader_indirect`，核 API34 与 fingerprint 与记录一致，未创建第二设备、未 wipe。数据分区沿用（-no-snapshot-load 不清 data），轮末 run-as 计数 c0-contract 36（18+17+1）、schema-contract 20（10+10）、`record2.db` 0，未读改其他库。APK 摘要：debug `c2e603e080a6e5946e8cf80543078651a94651849d762a8f5c04c71397246228`、test `4211dfe00127c23fb85c290cf5a9f340bd81e7c11dee503f847bbd086514a980`、release-unsigned `2cf4c5563b98649f1937dc34db711c356a2897a874e57bac5ef982962b251178`，安装后拉回 base.apk 逐项一致。
+### 25.9 PR #23 第三轮审阅修复轮与main集成（2026-10-24）
+
+负责人交付第三轮审阅：前两轮 5 项确认通过，新增 1 项 P1（幂等创建被目标版本变化破坏）与 1 项 P2（ProposalTime 缺持久时间语义校验），并要求解决与 main 的合并冲突后在新基线重跑。
+
+- **P1 幂等创建顺序（B0 §5.1 合同）：** `create()` 原先把 `validateTargets()` 放在创建身份查找之前；目标业务行版本推进后，同一 Run 的同内容重复 prepare 会被 `VersionConflict` 拒绝，无法返回已存在提案。修复：身份查找（`proposalByCreationRequest`）与 `repeated()` 幂等核查提前，只有真正首次创建才校验当前业务目标版本；`TARGETS_VALIDATED` 检查点随之只出现在首建路径，语义更准确。`afterContention()` 本就先查身份，无需调整。
+- **P2 冻结时间语义：** `validatePersisted()` 新增 `persistedTime()`——zoneId 必须仍是合法 ZoneId、offsetSeconds 在 ±64800 内、localDateTime 必须是 `LocalDateTime.parse(x).toString()` 的规范形式且毫秒精度（nano%1e6==0，与 FinanceTime.resolve 的输入约束一致）、且 `local.toInstant(offset).toEpochMilli()` 逐毫秒复现 occurredAt。**刻意不重查 zone 规则**：偏移量按冻结值参与算术自洽校验，tzdata 升级不会重新解释历史；DST gap 由写入路径拒绝，overlap 的 first-offset 作为冻结事实原样通过。
+- **回归用例：** host 新增 `decodeValidatesFrozenTimeSemantics`（DST overlap 与毫秒小数正例；occurredAt=0、毫秒错位、偏移漂移、非法时区、非规范 localDateTime 三式共 7 类反例）；设备新增 `repeatedPrepareReturnsTheOriginalProposalAfterTargetVersionsAdvance`（交易 v3→v4 后同请求重试返回原 ID/revision/摘要且零写入；账户 version 1→2 场景复验），`corruptPersistedProposal…` 补"digest 一致但 occurredAt 与冻结本地时间差 1ms"条目。开发中首版毫秒正例断言误写为 ".5"（JDK LocalTime.toString 保留三位毫秒），已修正为 ".500"，过程保留于提交历史。
+- **main 集成（rebase）：** 基线自 `937552f` 推进至 `991892b`（D0 PR #22，8 提交）。按 §25.1 已登记的"先合并者保留、后合并者顺延"规则，D0 保留 §24，C0 全章顺延为 §25（标题、小节与功能性自引用一并改号；段内 6 处对旧编号的历史性陈述按事实保留）。4 个实现/修复提交逐一 rebase，冲突仅 `plan.md` 三处（同一插入点），Kotlin 全部干净应用（D0 新增 ai/ 源码与测试、ktor 依赖与本批文件无重叠）。rebase 改写历史后以 `--force-with-lease` 推送本 PR 分支。
+- **新基线重跑 PASS：** host Debug/Release 各 45 项（ProposalCodecTest 22，新增时间语义 1 项），fail/error/skip 0；`check :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest` BUILD SUCCESSFUL，lint 0 错误、7 项警告（既有 6 项 + D0 依赖引入的 ktor 版本提示，无 C0 文件）。设备 `ProposalServiceContractTest` `OK (18 tests)`（17+幂等 1），幂等与损坏门禁两方法单选抽查 `OK (2 tests)`，`RecordSchemaContractTest` `OK (10 tests)`。Schema v1 未变（`1.json` 无改动，本批源码变更仍限 RoomProposalService/ProposalCodec 及两测试文件）。
+- **设备与制品：** 上轮 5580 实例在两轮之间被外部停止；本轮以 §25.4 记录参数冷启动同一 `record2-schema-api34`（serial=emulator-5580，API34/fingerprint 核对一致）。本轮启动后数据分区仅含本轮新建库（轮末 run-as 计数 c0-contract 20、schema-contract 10、`record2.db` 0），此前轮次的测试库已不在该分区（此前实例停止时的分区状态非本批操作所致；本批全程无 wipe/uninstall/清包/删文件）。APK 摘要：debug `9f58683d5216fd1aa28c8591d8a5cc1360ae41577c498902b79b47762d82b6d3`、test `eb6d3e12e7d7d34d83fc253db376cef83c04f76ef3eefbfcee63962dd7c6dd91`、release-unsigned `485b7835bbdc90c95370247d61a7202641b8557995de8199ca8089b70d22e7e9`，安装后拉回 base.apk 逐项一致。
+
 ## 26. B3：双向关联、隐藏关系与版本并发（issue #6）
 
 2026-10-24负责人要求“完成issue b3”，对应[GitHub #6](https://github.com/paher-din/record/issues/6)；已读取issue全文并与§4 B3合同一致。B2 #5已收口，沿用B1/§21与Schema v1/§20，不新增ADR、Spec或Schema设计。本批在独立工作树`D:/record/.worktrees/b3-record-links`（分支`codex/b3-record-links`，基线`937552f`）实施；主工作树开始时无未提交改动并保持只读。主工作树及并行worktree中§24由D0、§25由C0占用，本任务使用§26，不修改其他任务章节。

@@ -12,6 +12,17 @@ internal interface ProposalDao {
     @Query("SELECT * FROM change_proposal WHERE id = :id")
     fun proposal(id: String): ChangeProposalEntity?
 
+    @Query("SELECT * FROM change_proposal WHERE creationRequestId = :creationRequestId")
+    fun proposalByCreationRequest(creationRequestId: String): ChangeProposalEntity?
+
+    @Query("SELECT * FROM change_proposal WHERE sessionId = :sessionId AND activeSlot = 1")
+    fun activeProposal(sessionId: String): ChangeProposalEntity?
+
+    // A soft-deleted target must be reported as NotVisible, which a visible-only read cannot
+    // distinguish from an absent one.
+    @Query("SELECT * FROM note WHERE id = :id")
+    fun noteIncludingDeleted(id: String): NoteEntity?
+
     @Query("SELECT * FROM commit_operation WHERE proposalId = :proposalId")
     fun operationForProposal(proposalId: String): CommitOperationEntity?
 
