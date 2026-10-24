@@ -1500,3 +1500,5 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 1. **API34只读快照事务：** Android `SQLiteDatabase`在`OPEN_READONLY`连接上执行显式`BEGIN`会按写事务打开并以`SQLITE_READONLY`失败；本批改用同一只读连接、同一WAL、一个`UNION ALL`+`json_object`复合SELECT的隐式读事务，cursor遍历期间全部12表+`record_data_state`处于同一SQLite快照，仍不使用Room写事务、DB/WAL复制或多连接拼接。该实现与G0 §7.1字面`BEGIN DEFERRED`不同；若负责人要求严格字面合同，需回到G0/实现审查，不得直接以本批替代。
 2. **写入门禁层级：** gate接入现有Room服务的写事务边界，并覆盖当前所有生产写服务；未来新增写入口（E2/D1/F2等）必须复用`ProcessDataOperationGate.gate`，本批不提供SQLite authorizer级强制。`RestoreMemoryBarrier`只提供内存失效钩子，真实Run/工具协程取消由E2/F2接线并另测。
 3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
+
+- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；本批审阅HEAD为`558453a3500c54658dd242c522c8ffafc0239d81`。未合并main、未关闭issue #19；后续负责人审阅以GitHub当前引用为准。
