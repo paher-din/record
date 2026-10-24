@@ -1000,3 +1000,11 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
   - 制品：Debug/Release/AndroidTest APK SHA-256分别为`ef3e9e9f16e37412ffeea15027fd31082f57bbbf83b862788d0c9be81f9668eb`、`6acbdfceaddd3408916342857135818bbafd4a243ac32e666a06dab9958fba65`、`7de89ba3e3cb7027aac27350f3b6048b4c834ed89e9cf50d67afe9d0fa88165e`；设备安装摘要与构建一致；lint 0错误/7项警告；Schema LF规范化摘要仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
 - **失败与修订保留：** 初次`build-review2-fixed.log`因block body缺少`return`编译失败；`instrumentation-review2.txt`因提交点仍在IO块内导致取消被包装为OutcomeUnknown；`instrumentation-review2-fixed.txt`因测试门控阻塞`runBlocking`事件线程而超时。分别修正为事务外提交点、IO上启动门控协程并保留全部失败回执；未删除测试或放宽断言。
 - **未覆盖项不变：** C1/Tools的LINK/UNLINK、F0/F1页面、Agent/AI、ZIP/备份及TP-05完整提案链路仍属下游；本轮未合并main、未关闭issue #6，PR #25由负责人再次审阅。
+
+### 26.9 第二轮审阅P2顺带修复与合并前回执（2026-10-24）
+
+- **P2清理：** `LinkSelectionEditor.validate`预计算linked/candidate ID集合，避免`any { it in candidateIds.toSet() }`的重复构造；语义不变。§26.1的测试口径同步为host `LinkSelectionEditorTest` 8项、B3 Room `LinkServiceContractTest` 13项、合计36项。
+- **测试对应commit：** `6c5c0cd2e1d9d692b00fdcd7327a9b0d5690ca33`。该commit之后的文档回执不改变源码/测试。
+- **最终结果：** host 62项fail/error/skip=0（[build-p2-retry.log](../../../../record2/build/b3/build-p2-retry.log)）；真实Room 36项`OK (36 tests)`、24.664秒、无失败/skip（[instrumentation-p2.txt](../../../../record2/build/b3/instrumentation-p2.txt)）；LINK/REMOVE × BEFORE/AFTER 4场景×2重启全部PASS（[process-run-p2.log](../../../../record2/build/b3/process-run-p2.log)与`process-59a19c2033cb47968a750e43a466d857/`）。
+- **最终制品：** Debug/Release/AndroidTest APK SHA-256分别为`d3c3723b5187d85301023ef9cffafe34182c7c547c33d328bd382191ddc3986e`、`45910e3f55303960680854150f25f436e6c5c2720c072d97982b7f7e1b5e8dc7`、`7de89ba3e3cb7027aac27350f3b6048b4c834ed89e9cf50d67afe9d0fa88165e`；设备安装摘要与构建一致；lint 0错误/7项警告；Schema LF规范化摘要仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
+- **同步/交付：** `origin/main`仍为`991892bb...`且为本分支祖先；PR #25在负责人“同意合并”授权下更新后合并；不关闭issue #6，未扩展C1/Tools/F0/F1/AI/ZIP边界。
