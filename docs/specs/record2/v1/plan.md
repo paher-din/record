@@ -1226,3 +1226,13 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 ### 29.6 PR交付（2026-10-24）
 
 源码/测试/Plan/路由提交为`406edc6959f80005b29b8a85d91b0c780e519975`，已推送`codex/b4-timeline-search`并创建[PR #26](https://github.com/paher-din/record/pull/26)（base `main`、head `codex/b4-timeline-search`）。PR包含本任务12个文件及§29证据；未合并main、未关闭issue #7。本节文档回执不改变源码或已测APK；审查、合并与issue收口由负责人决定。
+
+### 29.7 PR #26 审阅修复（2026-10-24，REQUEST CHANGES）
+
+负责人对PR #26给出REQUEST CHANGES，暂不合并；本轮只修P1 `TimelineBrowser`并发状态一致性、P2 cursor错误分类及对应测试，不修改Schema、索引、最终UI、AI工具注册或其他任务语义，不自动合并/关闭issue #7。
+
+- **P1线性化：** 请求注册（token递增、pending、loading/error）与响应提交（token核对后才更新entries/query/anchor/next/error/flags）现在各自在同一短`synchronized(lock)`临界区完成；数据库查询在锁外，不持长锁。`loadMore`在锁内重读当前`next/loading/pending`，因此并发两次页请求最多注册一次；新browse/筛选使旧token失效，旧响应即使最后返回也只丢弃。`clearLoading`仅在token仍当前时生效；`retry`优先重试pending Browse，不再因旧的`requiresReload`丢弃新的筛选失败。新增host并发回归：`concurrentLoadMoreRegistrationsIssueOneQueryAndAppendOnePage`与`concurrentFilterChangesKeepTheLastRegisteredQuery`，使用`Dispatchers.Default`和可控门控制造交错，断言service只调用一次、旧NOTE响应晚到不覆盖新TRANSACTION结果、无重复页。
+- **P2错误分类：** `RoomTimelineService.validateCursor`对非法UUID cursor id统一返回`CursorExpired`，不再先触发`Validation`；与代际/revision/过滤摘要/HMAC排序键校验使用同一损坏/篡改游标错误。合同测试新增`"not-a-uuid"`与空id两种篡改输入，均断言`CursorExpired`。`TimelineBrowser`对`CursorExpired`保留已有可读页、清空next、置`requiresReload=true`，`refresh`成功后恢复，由`cursorExpiryKeepsReadableEntriesAndRefreshReloads`覆盖。
+- **测试对应commit：** `af87fa262ece0cd7aaab344e69e47d8f7f5f2247`（源码/测试只来自该commit；此后仅Plan回执，不改源码）。
+- **验证结果（commit `af87fa2`）：** [build-review-fixes2](../../../../record2/build/b4/build-review-fixes2.log) 50秒、129项中22执行/107 up-to-date；host Debug/Release各88项（新增2项并发），fail/error/skip均0；[B4 Room合同](../../../../record2/build/b4/instrumentation-contract-review-fixes2.txt) 10/10、3.724秒；[性能](../../../../record2/build/b4/instrumentation-perf-review-fixes2.txt) 2/2、27.324秒（典型首屏38ms/单页max20ms/检索10ms/汇总89ms；高量51/19/12/372ms，均低于批准阈值）；[共享回归](../../../../record2/build/b4/instrumentation-regression-review-fixes2.txt) 104/104、45.299秒。最终APK SHA-256：debug`f7c3aeb51584c47df5b89055816c2bb73d3e761bc93247d2612fcfcbd6ca0f25`、release-unsigned`cd29080e924a3bd06d5caf5f536e88b7a168e0406bfe6b0d8c24282bc2d5f904`、androidTest`e91228273e66d4a9db380c0c0b2a644c871c6211b5f75ed7e3cc5146f6a91bbb`；安装后设备摘要与构建一致；lint 0错误/7警告；Schema LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
+- **未覆盖项：** 并发测试是同一JVM内单个`TimelineBrowser`实例的确定性交错，不覆盖多进程、Compose主线程调度或真实数据库写并发；cursor HMAC仍为进程内密钥，跨进程需重新查询。D1工具注册/授权、F1页面、G2真机与最终AC不受本轮影响，仍未完成。未操作真实用户数据、Provider/网络/凭据、Schema/索引、备份或发布；未合并PR、未关闭issue #7。
