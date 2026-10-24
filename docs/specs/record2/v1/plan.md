@@ -1425,3 +1425,10 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - **格式/编码：** 新文档UTF-8无BOM、LF、无行尾空白、代码围栏成对；内容断言通过——13个ZIP条目/12个数据段/14表映射/§6全部数值限额/§10 BK2/BK4矩阵/`contentDigest`/`restoreReceipt`/NEEDS_REVIEW/INTERRUPTED/草稿策略/`record2.logical`均存在。Plan/index保留既有工作树CRLF行为。
 - **空白检查：** `git diff --check`退出0，仅既有CRLF提示；无新增空白错误。
 - **结论边界：** 本PASS只证明设计文档/链接/范围静态一致，不证明格式可解析、恢复原子性、SAF/进程终止或任何BK/SES/TP验收；这些均按§31.2留在G1/G2。设计批准仍是issue #18关闭的前置。
+
+### 31.4 审阅PR交付（2026-10-24）
+
+设计/ADR/Plan/index共4份文档提交为`3a49247598a0adb6937c8d03cbbb31ddb540cda0`，推送`codex/g0-backup-restore`并创建[PR #28](https://github.com/paher-din/record/pull/28)（base `main`）。GitHub只读回执：`state=OPEN`、`mergeable=MERGEABLE`、`mergeStateStatus=CLEAN`。该提交只含上述4份文档，不含源码/Schema/构建/设备/数据库变更；§31.3 T0结果对应其设计内容。
+
+- **未做：** 未合并main、未关闭issue #18、未发布；ADR 0019仍为Proposed，G1/G2仍未启动。PR仅作为负责人审阅材料。
+- **批准待办：** 负责人对G0-D1～D14明确批准后，才更新ADR/Plan状态并关闭issue #18；若要求调整任一格式/限额/状态转换，按审阅意见修订后重新推送本分支，不先写恢复实现。
