@@ -174,7 +174,9 @@ internal class RoomTimelineService(private val database: RecordDatabase) : Timel
     }
 
     private fun validateCursor(cursor: TimelineCursor, state: RecordDataStateEntity, query: TimelineQuery) {
-        identity(cursor.id)
+        if (runCatching { UUID.fromString(cursor.id).toString() }.getOrNull() != cursor.id) {
+            fail(TimelineError.CursorExpired)
+        }
         val expectedDigest = TimelineQueryRules.cursorDigest(
             query, cursor.occurredAt, cursor.kind, cursor.id, cursor.generation, cursor.businessRevision,
         )

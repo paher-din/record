@@ -1,9 +1,12 @@
 package com.paherdin.record2.records
 
 import java.time.LocalDate
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -39,7 +42,7 @@ class TimelineBrowserTest {
         val firstEntry = transaction("00000000-0000-0000-0000-000000000001", 200)
         val first = page(firstEntry, next = cursor(firstEntry))
         service.timelineHandler = { _, _, after -> if (after == null) first else error("unexpected") }
-        assertTrue(browser.openNewest(RecordKind.TRANSACTION))
+        assertTrue(browser.openNewest(RecordKind.TRANSACTION, null))
 
         val started = CompletableDeferred<Unit>()
         val gate = CompletableDeferred<TimelinePage>()
@@ -94,7 +97,7 @@ class TimelineBrowserTest {
         val browser = TimelineBrowser(service, generation, zone)
         val original = transaction("00000000-0000-0000-0000-000000000001", 200)
         service.timelineHandler = { _, _, _ -> page(original) }
-        assertTrue(browser.openNewest(RecordKind.TRANSACTION))
+        assertTrue(browser.openNewest(RecordKind.TRANSACTION, null))
 
         service.timelineHandler = { _, _, _ -> throw TimelineException(TimelineError.RecoverableIO) }
         assertFalse(browser.setKind(RecordKind.NOTE))
@@ -124,7 +127,7 @@ class TimelineBrowserTest {
             page(entry)
         }
 
-        assertTrue(browser.jumpTo(date, RecordKind.TRANSACTION))
+        assertTrue(browser.jumpTo(date, RecordKind.TRANSACTION, null))
         assertEquals(listOf(TimelineTime.nextDayStart(date, zone)), beforeCalls)
         assertEquals(date, browser.state.value.anchorDate)
 
@@ -154,7 +157,7 @@ class TimelineBrowserTest {
             slowStarted.complete(Unit)
             slowGate.await()
         }
-        val slow = async { browser.openNewest(RecordKind.TRANSACTION) }
+        val slow = async { browser.openNewest(RecordKind.TRANSACTION, null) }
         slowStarted.await()
 
         val fresh = note("00000000-0000-0000-0000-000000000002", 300)
@@ -235,7 +238,7 @@ class TimelineBrowserTest {
             if (after == null) page(firstEntry, next = cursor(firstEntry))
             else throw TimelineException(TimelineError.RecoverableIO)
         }
-        assertTrue(browser.openNewest(RecordKind.TRANSACTION))
+        assertTrue(browser.openNewest(RecordKind.TRANSACTION, null))
         service.timelineHandler = { _, _, _ -> throw TimelineException(TimelineError.RecoverableIO) }
         assertFalse(browser.setKind(RecordKind.NOTE))
         assertFalse(browser.loadMore())
@@ -259,6 +262,69 @@ class TimelineBrowserTest {
         assertTrue(browser.state.value.requiresNewGeneration)
         assertFalse(browser.refresh())
         assertFalse(browser.retry())
+    }
+
+    @Test
+    fun concurrentLoadMoreRegistrationsIssueOneQueryAndAppendOnePage() = runBlocking {
+        val service = FakeTimelineService(generation)
+        val browser = TimelineBrowser(service, generation, zone)
+        val firstEntry = transaction("00000000-0000-0000-0000-000000000001", 200)
+        val secondEntry = note("00000000-0000-0000-0000-000000000002", 100)
+        val moreCalls = AtomicInteger()
+        val moreStarted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        service.timelineHandler = { _, _, after ->
+            if (after == null) {
+                page(firstEntry, next = cursor(firstEntry))
+            } else {
+                moreCalls.incrementAndGet()
+                moreStarted.complete(Unit)
+                release.await()
+                page(secondEntry)
+            }
+        }
+        assertTrue(browser.openNewest())
+
+        val first = async(Dispatchers.Default) { browser.loadMore() }
+        moreStarted.await()
+        val second = async(Dispatchers.Default) { browser.loadMore() }
+        val secondResult = withTimeoutOrNull(1_000) { second.await() }
+        assertFalse(secondResult ?: true)
+        assertEquals(1, moreCalls.get())
+
+        release.complete(Unit)
+        assertTrue(first.await())
+        assertEquals(listOf(firstEntry.id, secondEntry.id), browser.state.value.entries.map { it.id })
+        assertEquals(2, browser.state.value.entries.map { it.id }.toSet().size)
+    }
+
+    @Test
+    fun concurrentFilterChangesKeepTheLastRegisteredQuery() = runBlocking {
+        val service = FakeTimelineService(generation)
+        val browser = TimelineBrowser(service, generation, zone)
+        val noteEntry = note("00000000-0000-0000-0000-000000000001", 100)
+        val transactionEntry = transaction("00000000-0000-0000-0000-000000000002", 200)
+        val noteStarted = CompletableDeferred<Unit>()
+        val releaseNote = CompletableDeferred<Unit>()
+        service.timelineHandler = { query, _, _ ->
+            if (query.kind == RecordKind.NOTE) {
+                noteStarted.complete(Unit)
+                releaseNote.await()
+                page(noteEntry)
+            } else {
+                page(transactionEntry)
+            }
+        }
+
+        val slowNote = async(Dispatchers.Default) { browser.setKind(RecordKind.NOTE) }
+        noteStarted.await()
+        assertTrue(browser.setKind(RecordKind.TRANSACTION))
+        releaseNote.complete(Unit)
+        assertFalse(slowNote.await())
+
+        assertEquals(RecordKind.TRANSACTION, browser.state.value.query.kind)
+        assertEquals(listOf(transactionEntry.id), browser.state.value.entries.map { it.id })
+        assertFalse(browser.state.value.loading)
     }
 
     private fun page(vararg entries: TimelineEntry, next: TimelineCursor? = null) =

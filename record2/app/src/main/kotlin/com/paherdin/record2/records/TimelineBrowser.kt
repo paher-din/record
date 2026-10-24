@@ -2,7 +2,6 @@ package com.paherdin.record2.records
 
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,148 +35,195 @@ internal class TimelineBrowser(
     )
     val state: StateFlow<TimelineState> = mutableState.asStateFlow()
 
-    private val requests = AtomicLong(0)
-    @Volatile private var pending: Pending? = null
+    // Registration and commit are short critical sections; the service call never runs under this lock.
+    private val lock = Any()
+    private var requestToken = 0L
+    private var pending: Pending? = null
 
-    suspend fun openNewest(
-        kind: RecordKind? = state.value.query.kind,
-        keyword: String? = state.value.query.keyword,
-    ): Boolean = browse(
-        state.value.query.copy(kind = kind, keyword = keyword, zoneId = zoneId),
-        null,
-    )
+    suspend fun openNewest(): Boolean = browseFromCurrent { BrowseIntent(it.query, null) }
 
-    suspend fun jumpTo(
-        date: LocalDate,
-        kind: RecordKind? = state.value.query.kind,
-        keyword: String? = state.value.query.keyword,
-    ): Boolean = browse(
-        state.value.query.copy(kind = kind, keyword = keyword, zoneId = zoneId),
-        date,
-    )
+    suspend fun openNewest(kind: RecordKind?, keyword: String?): Boolean =
+        browseFromCurrent { BrowseIntent(it.query.copy(kind = kind, keyword = keyword), null) }
 
-    suspend fun setRange(range: TimelineRange?): Boolean = browse(state.value.query.copy(range = range), null)
+    suspend fun jumpTo(date: LocalDate): Boolean = browseFromCurrent { BrowseIntent(it.query, date) }
 
-    suspend fun setKind(kind: RecordKind?): Boolean {
-        val current = state.value
-        return browse(current.query.copy(kind = kind), current.anchorDate)
-    }
+    suspend fun jumpTo(date: LocalDate, kind: RecordKind?, keyword: String?): Boolean =
+        browseFromCurrent { BrowseIntent(it.query.copy(kind = kind, keyword = keyword), date) }
 
-    suspend fun setKeyword(keyword: String?): Boolean {
-        val current = state.value
-        return browse(current.query.copy(keyword = keyword), current.anchorDate)
-    }
+    suspend fun setRange(range: TimelineRange?): Boolean =
+        browseFromCurrent { BrowseIntent(it.query.copy(range = range), null) }
+
+    suspend fun setKind(kind: RecordKind?): Boolean =
+        browseFromCurrent { BrowseIntent(it.query.copy(kind = kind), it.anchorDate) }
+
+    suspend fun setKeyword(keyword: String?): Boolean =
+        browseFromCurrent { BrowseIntent(it.query.copy(keyword = keyword), it.anchorDate) }
 
     suspend fun loadMore(): Boolean {
-        val current = state.value
-        val cursor = current.next ?: return false
-        if (current.loading || current.requiresReload || current.requiresNewGeneration) return false
-        if (pending is Pending.Browse) return false
-        pending = Pending.More(cursor)
-        val token = requests.incrementAndGet()
-        mutableState.update { it.copy(loading = true, error = null) }
+        val registration = synchronized(lock) { registerMoreLocked() } ?: return false
         try {
-            val page = service.timeline(generation, current.query, PAGE_SIZE, cursor)
-            if (token != requests.get()) return false
+            val page = service.timeline(generation, registration.query, PAGE_SIZE, registration.cursor)
             validatePage(page)
-            pending = null
-            mutableState.update {
-                it.copy(entries = it.entries + page.entries, next = page.next, loading = false, error = null)
-            }
-            return true
+            return commitMore(registration, page)
         } catch (cancelled: CancellationException) {
+            clearLoading(registration.token)
             throw cancelled
         } catch (error: TimelineException) {
-            if (token != requests.get()) return false
-            val terminal = error.code == TimelineError.CursorExpired ||
-                error.code == TimelineError.GenerationMismatch ||
-                error.code == TimelineError.RecoveryRequired
-            if (terminal) pending = null
-            mutableState.update {
-                it.copy(
-                    loading = false,
-                    error = error.code,
-                    requiresReload = error.code == TimelineError.CursorExpired,
-                    requiresNewGeneration = error.code == TimelineError.GenerationMismatch,
-                    next = if (terminal) null else it.next,
-                )
-            }
-            return false
+            return commitError(registration.token, error.code, forLoadMore = true)
         } finally {
-            if (token == requests.get()) mutableState.update { it.copy(loading = false) }
+            clearLoading(registration.token)
         }
     }
 
     suspend fun retry(): Boolean {
-        val current = state.value
+        val current = synchronized(lock) { mutableState.value }
         if (current.requiresNewGeneration) return false
-        if (current.requiresReload) return refresh()
-        return when (val request = pending) {
+        return when (val request = synchronized(lock) { pending }) {
+            is Pending.Browse -> browseExplicit(request.query, request.anchorDate)
+            is Pending.More -> if (current.requiresReload) refresh() else loadMore()
             null -> refresh()
-            is Pending.Browse -> browse(request.query, request.anchorDate)
-            is Pending.More -> loadMore()
         }
     }
 
     suspend fun refresh(): Boolean {
-        val current = state.value
-        if (current.requiresNewGeneration) return false
-        return browse(current.query, current.anchorDate)
+        val blocked = synchronized(lock) { mutableState.value.requiresNewGeneration }
+        if (blocked) return false
+        return browseFromCurrent { BrowseIntent(it.query, it.anchorDate) }
     }
 
-    private suspend fun browse(query: TimelineQuery, anchorDate: LocalDate?): Boolean {
+    private suspend fun browseFromCurrent(transform: (TimelineState) -> BrowseIntent): Boolean {
+        val registration = synchronized(lock) {
+            val intent = transform(mutableState.value)
+            val canonical = try {
+                TimelineQueryRules.canonical(intent.query.copy(zoneId = zoneId))
+            } catch (error: RuntimeException) {
+                throw TimelineException(TimelineError.Validation, error)
+            }
+            val before = intent.anchorDate?.let { TimelineTime.nextDayStart(it, zoneId) }
+            registerBrowseLocked(canonical, intent.anchorDate, before)
+        }
+        return performBrowse(registration)
+    }
+
+    private suspend fun browseExplicit(query: TimelineQuery, anchorDate: LocalDate?): Boolean {
         val canonical = try {
             TimelineQueryRules.canonical(query.copy(zoneId = zoneId))
         } catch (error: RuntimeException) {
             throw TimelineException(TimelineError.Validation, error)
         }
         val before = anchorDate?.let { TimelineTime.nextDayStart(it, zoneId) }
-        pending = Pending.Browse(canonical, anchorDate)
-        val token = requests.incrementAndGet()
-        mutableState.update { it.copy(loading = true, error = null) }
+        val registration = synchronized(lock) { registerBrowseLocked(canonical, anchorDate, before) }
+        return performBrowse(registration)
+    }
+
+    private suspend fun performBrowse(registration: BrowseRegistration): Boolean {
         try {
-            val page = if (before == null) {
-                service.timeline(generation, canonical, PAGE_SIZE)
+            val page = if (registration.before == null) {
+                service.timeline(generation, registration.query, PAGE_SIZE)
             } else {
-                service.timelineBefore(generation, canonical, PAGE_SIZE, before)
+                service.timelineBefore(generation, registration.query, PAGE_SIZE, registration.before)
             }
-            if (token != requests.get()) return false
             validatePage(page)
-            pending = null
-            mutableState.update {
-                it.copy(
-                    entries = page.entries,
-                    query = canonical,
-                    anchorDate = anchorDate,
-                    next = page.next,
-                    loading = false,
-                    error = null,
-                    requiresReload = false,
-                    requiresNewGeneration = false,
-                )
-            }
-            return true
+            return commitBrowse(registration, page)
         } catch (cancelled: CancellationException) {
+            clearLoading(registration.token)
             throw cancelled
         } catch (error: TimelineException) {
-            if (token != requests.get()) return false
+            return commitError(registration.token, error.code, forLoadMore = false)
+        } finally {
+            clearLoading(registration.token)
+        }
+    }
+
+    private fun registerBrowseLocked(query: TimelineQuery, anchorDate: LocalDate?, before: Long?): BrowseRegistration {
+        val token = ++requestToken
+        pending = Pending.Browse(query, anchorDate)
+        mutableState.update { it.copy(loading = true, error = null) }
+        return BrowseRegistration(token, query, anchorDate, before)
+    }
+
+    private fun registerMoreLocked(): MoreRegistration? {
+        val current = mutableState.value
+        val cursor = current.next ?: return null
+        if (current.loading || current.requiresReload || current.requiresNewGeneration) return null
+        if (pending is Pending.Browse) return null
+        val token = ++requestToken
+        pending = Pending.More(cursor)
+        mutableState.update { it.copy(loading = true, error = null) }
+        return MoreRegistration(token, current.query, cursor)
+    }
+
+    private fun commitBrowse(registration: BrowseRegistration, page: TimelinePage): Boolean = synchronized(lock) {
+        if (registration.token != requestToken) return false
+        pending = null
+        mutableState.update {
+            it.copy(
+                entries = page.entries,
+                query = registration.query,
+                anchorDate = registration.anchorDate,
+                next = page.next,
+                loading = false,
+                error = null,
+                requiresReload = false,
+                requiresNewGeneration = false,
+            )
+        }
+        true
+    }
+
+    private fun commitMore(registration: MoreRegistration, page: TimelinePage): Boolean = synchronized(lock) {
+        if (registration.token != requestToken) return false
+        pending = null
+        mutableState.update {
+            it.copy(entries = it.entries + page.entries, next = page.next, loading = false, error = null)
+        }
+        true
+    }
+
+    private fun commitError(token: Long, code: TimelineError, forLoadMore: Boolean): Boolean {
+        synchronized(lock) {
+            if (token != requestToken) return false
+            val terminal = code == TimelineError.CursorExpired ||
+                code == TimelineError.GenerationMismatch ||
+                code == TimelineError.RecoveryRequired
+            if (forLoadMore && terminal) pending = null
             mutableState.update {
                 it.copy(
                     loading = false,
-                    error = error.code,
-                    requiresReload = error.code == TimelineError.CursorExpired,
-                    requiresNewGeneration = error.code == TimelineError.GenerationMismatch,
+                    error = code,
+                    requiresReload = code == TimelineError.CursorExpired,
+                    requiresNewGeneration = code == TimelineError.GenerationMismatch,
+                    next = if (forLoadMore && terminal) null else it.next,
                 )
             }
-            return false
-        } finally {
-            if (token == requests.get()) mutableState.update { it.copy(loading = false) }
+        }
+        return false
+    }
+
+    private fun clearLoading(token: Long) {
+        synchronized(lock) {
+            if (token == requestToken) mutableState.update { it.copy(loading = false) }
         }
     }
 
     private fun validatePage(page: TimelinePage) {
         if (page.generation != generation) throw TimelineException(TimelineError.RecoveryRequired)
     }
+
+    private data class BrowseIntent(val query: TimelineQuery, val anchorDate: LocalDate?)
+
+    private data class BrowseRegistration(
+        val token: Long,
+        val query: TimelineQuery,
+        val anchorDate: LocalDate?,
+        val before: Long?,
+    )
+
+    private data class MoreRegistration(
+        val token: Long,
+        val query: TimelineQuery,
+        val cursor: TimelineCursor,
+    )
 
     private sealed interface Pending {
         data class Browse(val query: TimelineQuery, val anchorDate: LocalDate?) : Pending

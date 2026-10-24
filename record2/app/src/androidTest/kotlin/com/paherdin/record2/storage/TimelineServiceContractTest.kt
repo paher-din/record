@@ -243,6 +243,8 @@ class TimelineServiceContractTest {
             cursor.copy(occurredAt = cursor.occurredAt + 1),
             cursor.copy(kind = if (cursor.kind == RecordKind.TRANSACTION) RecordKind.NOTE else RecordKind.TRANSACTION),
             cursor.copy(id = schemaId()),
+            cursor.copy(id = "not-a-uuid"),
+            cursor.copy(id = ""),
             cursor.copy(businessRevision = cursor.businessRevision + 1),
             cursor.copy(cursorDigest = "0".repeat(64)),
         ).forEach { tampered ->
