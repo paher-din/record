@@ -19,6 +19,7 @@ import com.paherdin.record2.ai.security.RecordProviderReceivers
 import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.AgentHistoryService
+import com.paherdin.record2.sessions.ActiveRunView
 import com.paherdin.record2.sessions.AgentSessionInfo
 import com.paherdin.record2.sessions.AgentSessionMessage
 import com.paherdin.record2.sessions.CompletedHistoryEntry
@@ -33,10 +34,13 @@ import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.RunTerminalReceipt
 import com.paherdin.record2.sessions.SafeRunErrorCode
+import com.paherdin.record2.sessions.SessionDeletionReport
+import com.paherdin.record2.sessions.SessionOperationCensus
 import com.paherdin.record2.sessions.SessionRole
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.reflect.KClass
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -152,10 +156,39 @@ internal class FakeHistoryService(
     var persistedOutcomeOverride: RunOutcome? = null
     var persistedResultError: Exception? = null
 
+    // E2 owner fixtures: hold startRun at its entry; simulate the security transaction's atomic
+    // run invalidation; simulate explicit session deletion.
+    var startRunGate: CompletableDeferred<Unit>? = null
+    val authorizationInvalidated = CopyOnWriteArrayList<String>()
+    val deletedSessions = CopyOnWriteArrayList<String>()
+    val deleteSessionCalls = CopyOnWriteArrayList<Pair<String, String>>()
+    var deleteSessionError: AgentHistoryError? = null
+    var deleteSessionCancelledActiveRuns: Int = 1
+
     private var sequence = 0L
     private var sessionId: String? = null
     private val entries = CopyOnWriteArrayList<CompletedHistoryEntry>()
     private val inputs = CopyOnWriteArrayList<Pair<String, RunState>>()
+
+    /** Mirrors the real service's terminal-state view of one run, deletion included. */
+    internal fun stateOf(runId: String): RunState {
+        if (runId in authorizationInvalidated) return RunState.FAILED
+        val failed = failedRuns.lastOrNull { it.first == runId }
+        if (failed != null) {
+            return if (failed.second == RunTerminal.CANCELLED) RunState.CANCELLED else RunState.FAILED
+        }
+        if (completedRuns.any { it.first.runId == runId }) return RunState.COMPLETED
+        val start = startedRuns.singleOrNull { it.runId == runId } ?: return RunState.RUNNING
+        if (start.sessionId in deletedSessions) return RunState.RUNNING
+        return RunState.RUNNING
+    }
+
+    /** What the real security transaction now does atomically to every RUNNING run (E2). */
+    internal fun simulateAuthorizationInvalidation() {
+        startedRuns
+            .filter { stateOf(it.runId) == RunState.RUNNING && it.sessionId !in deletedSessions }
+            .forEach { authorizationInvalidated.addIfAbsent(it.runId) }
+    }
 
     fun newSession(): AgentSessionInfo {
         val id = "session-${sessionIdCounter.incrementAndGet()}"
@@ -202,11 +235,14 @@ internal class FakeHistoryService(
         return if (limit == null) source else source.takeLast(limit)
     }
 
-    override fun newRunIdentity(): RunIdentity = RunIdentity(
-        runId = "run-${startedRuns.size + 1}",
-        userMessageId = "m-${startedRuns.size + 1}-user",
-        proposalCreationRequestId = "req-${startedRuns.size + 1}",
-    )
+    override fun newRunIdentity(): RunIdentity {
+        val ordinal = identityCounter.incrementAndGet()
+        return RunIdentity(
+            runId = "run-$ordinal",
+            userMessageId = "m-$ordinal-user",
+            proposalCreationRequestId = "req-$ordinal",
+        )
+    }
 
     override suspend fun startRun(
         sessionId: String,
@@ -216,6 +252,7 @@ internal class FakeHistoryService(
         processOwnerId: String,
         identity: RunIdentity,
     ): RunStartReceipt {
+        startRunGate?.await()
         startRunError?.let { throw AgentHistoryException(it) }
         if (requireAuthorizationMismatch) throw AgentHistoryException(AgentHistoryError.AuthorizationRequired)
         val receipt = RunStartReceipt(
@@ -248,6 +285,9 @@ internal class FakeHistoryService(
         processOwnerId: String,
         outcome: RunOutcome,
     ): RunCompletionReceipt {
+        // Real-service semantics: a run that a cancel/invalidation/deletion already made
+        // terminal refuses the late completion instead of resurrecting it.
+        if (stateOf(runId) != RunState.RUNNING) throw AgentHistoryException(AgentHistoryError.RunInvalidated)
         completeRunError?.let { throw AgentHistoryException(it) }
         val start = startedRuns.single { it.runId == runId }
         completedRuns += start to outcome
@@ -264,9 +304,12 @@ internal class FakeHistoryService(
 
     override suspend fun persistedResult(runId: String): PersistedRunResult? {
         persistedResultError?.let { throw it }
-        val completed = completedRuns.singleOrNull { it.first.runId == runId }
-        return if (completed != null) {
-            PersistedRunResult(
+        val start = startedRuns.singleOrNull { it.runId == runId } ?: return null
+        if (start.sessionId in deletedSessions) return null
+        val state = stateOf(runId)
+        if (state == RunState.COMPLETED) {
+            val completed = completedRuns.single { it.first.runId == runId }
+            return PersistedRunResult(
                 runId = runId,
                 state = RunState.COMPLETED,
                 assistantMessageId = "assistant-${completedRuns.indexOf(completed) + 1}",
@@ -274,11 +317,8 @@ internal class FakeHistoryService(
                 finishedAt = 0,
                 outcome = persistedOutcomeOverride ?: completed.second,
             )
-        } else {
-            startedRuns.singleOrNull { it.runId == runId }?.let {
-                PersistedRunResult(runId, RunState.RUNNING, null, null, null, null)
-            }
         }
+        return PersistedRunResult(runId, state, null, null, null, null)
     }
 
     override suspend fun failRun(
@@ -286,7 +326,12 @@ internal class FakeHistoryService(
         state: RunTerminal,
         safeErrorCode: SafeRunErrorCode,
     ): RunTerminalReceipt {
-        val start = startedRuns.single { it.runId == runId }
+        val start = startedRuns.singleOrNull { it.runId == runId }
+            ?: throw AgentHistoryException(AgentHistoryError.NotFound)
+        val current = if (start.sessionId in deletedSessions) RunState.INTERRUPTED else stateOf(runId)
+        if (current != RunState.RUNNING) {
+            return RunTerminalReceipt(runId, current, null, true)
+        }
         failedRuns += Triple(runId, state, safeErrorCode)
         inputs.replaceAll { (body, runState) ->
             if (body == startedBody(start) && runState == RunState.RUNNING) {
@@ -303,8 +348,36 @@ internal class FakeHistoryService(
         return ProcessOwnershipReceipt(processOwnerId, true, 0, false)
     }
 
+    override suspend fun activeRun(sessionId: String): ActiveRunView? {
+        if (sessionId in deletedSessions) return null
+        return startedRuns
+            .lastOrNull { it.sessionId == sessionId && stateOf(it.runId) == RunState.RUNNING }
+            ?.let { ActiveRunView(it.runId, sessionId, RunState.RUNNING, it.startedAt) }
+    }
+
+    override suspend fun deleteSession(
+        sessionId: String,
+        processOwnerId: String,
+    ): SessionDeletionReport {
+        deleteSessionCalls += sessionId to processOwnerId
+        deleteSessionError?.let { throw AgentHistoryException(it) }
+        val cancelled = startedRuns.count { it.sessionId == sessionId && stateOf(it.runId) == RunState.RUNNING }
+        deletedSessions.addIfAbsent(sessionId)
+        return SessionDeletionReport(
+            sessionId = sessionId,
+            cancelledActiveRuns = cancelled,
+            discardedProposals = 0,
+            proposalsWithRetainedOperations = 0,
+            deletedRuns = startedRuns.count { it.sessionId == sessionId },
+            deletedMessages = inputs.size,
+            retainedOperations = SessionOperationCensus(0, 0, 0, 0),
+        )
+    }
+
     private fun startedBody(start: RunStartReceipt): String =
         startedRuns.indexOf(start).let { inputs[it].first }
+
+    private val identityCounter = java.util.concurrent.atomic.AtomicInteger(0)
 
     private companion object {
         val sessionIdCounter = java.util.concurrent.atomic.AtomicInteger(0)

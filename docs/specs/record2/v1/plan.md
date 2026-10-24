@@ -1395,3 +1395,44 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 负责人在F0六组接受、issue #15关闭后明确要求“推送到远程仓库吧”，授权本轮F0设计/Skills研究集成材料、保留的探索与旧候选、`record2/PRODUCT.md`、`skills/record-android-design`及文档路由/本Plan记录的Git纳管、提交与推送。基于当前本地main交付，不含Android业务代码、Schema/迁移、环境/凭据/CI、生产部署或历史改写；`.playwright-cli/`本机浏览器记录及已忽略的`record2/build/`证据不纳入。最终提交与远端身份以Git日志及push/远端核验回执为准，不要求提交SHA自引用。
 
 推送前同步远程`origin/main=e2ca1eb`（含C1 PR #27、B4 PR #26），普通merge保留全部远端提交及源码；冲突仅本Plan的追加段落。保留远端C1 §28、B4 §29全文，F0顺延为§30，并同步F0资料、Token状态元数据和路由链接。源代码/Schema相对远端零改动；原UI审查及验证按其执行时基线保留，不用新合并源码冒充重新验证。首轮fetch连接重置，HTTP/1.1重试成功；不强推、不改写历史。
+
+## 32. E2 / issue #13：Run 失效、取消、会话删除及进程恢复
+
+2026-10-24负责人要求“完成issue e2继续”，对应[GitHub #13](https://github.com/paher-din/record/issues/13)；前置E0 #11、E1 #12（含PR #24两轮修复）、C1 #9（含PR #27四轮修复）均已在main交付。本批按§6 E2合同与G-CODE执行正式应用级Run owner、取消/失效/删除协议、进程恢复调用点与tests；沿用A1/Schema v1/B0/B1–B4/C0/C1/E0/E1/D0交付，不新增ADR、不修改Schema v1物理结构、不做UI/F0视觉（F2拥有）、不建后台常驻服务。执行于独立工作树`D:/record/.worktrees/e2-run-lifecycle`（分支`codex/e2-run-lifecycle`，基线main `64daa57`）；§31已被F1分支占用，本批取§32，合并时按实际占用协调。
+
+### 32.1 实现交付
+
+- [ai/runs/AgentRunOwner.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/runs/AgentRunOwner.kt)：应用级Run owner（Spec 5.2.6）。Run在owner自有`SupervisorJob`作用域执行，调用方作用域死亡（Activity重建/页面跳转/面板关闭的机制等价物）不取消Run；`launchRun`预生成`RunIdentity`并返回`OwnedRunHandle`（sessionId/runId/await，await透传RunResult、AgentRunException或取消）；`cancelRun`（用户取消）先以NonCancellable持久落CANCELLED再停内存协程，幂等；`onAuthorizationChanged`（任一控制行变更后调用）逐tracked run读`persistedResult`，仅FAILED/CANCELLED/INTERRUPTED停协程——RUNNING（epoch未变）/COMPLETED（回执在途）/null（未启动，startRun自会重验新授权）一律不动，虚假回调不能误杀有效Run（CTX-04先持久失效再停外发）；`deleteSession`先执行Room删除事务、成功后才停协程，拒绝则Run原样继续；`recoverProcess`仅委托所有权门禁（B0 §6），零模型/工具调用；`close`仅供进程拆除。无前台/后台Service，未改Application/MainActivity（生产接线与UI绑定归F2）。
+- [ai/runs/AgentRunCoordinator.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/ai/runs/AgentRunCoordinator.kt)：`run()`新增可选`identity`参数（owner预生成身份以便失效清扫在启动回执前即可按runId寻址；缺省仍内部生成，E1调用点不变）；`AgentHistoryError.RunInvalidated/NotFound`→`AgentRunError.RunInvalidated`显式映射（被取消/失效/删除会话的迟到完成不再伪装ProviderFailure）。
+- [storage/RoomAiSecurityService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomAiSecurityService.kt)：六个授权变更事务（setMode/selectReceiver/grant/revoke/replaceCredential/clearCredential）在同一Room事务内对全部RUNNING Run落`FAILED/AUTHORIZATION`并释放slot（`failAllRunningForAuthorization`）。E1 §27.3发现3要求的“先持久失效再取消网络”排序就此在持久层无条件成立：permit按epoch绑定，任何bump后该Run的completeRun必被拒，eager FAILED只是诚实释放slot；HTTP及时停止仍由owner清扫负责。无Run时该UPDATE为幂等空操作。
+- [sessions/AgentHistory.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/sessions/AgentHistory.kt)：契约新增`ActiveRunView`/`SessionDeletionReport`（cancelledActiveRuns/discardedProposals/proposalsWithRetainedOperations/deletedRuns/deletedMessages/`SessionOperationCensus`四态计数——F2删除披露UI的数据源）、`activeRun(sessionId)`、`deleteSession(sessionId, processOwnerId)`、错误`UnsafeSessionContent`。
+- [storage/RoomAgentHistoryService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomAgentHistoryService.kt)：`deleteSession`单事务（B0 §8）：requireGeneration+当前owner校验→activeRun内联failRun(CANCELLED)（取消与删除同commit/rollback）→逐提案核对operation状态，任一不可解析即`UnsafeSessionContent`整事务拒绝（未知Operation绝不级联删）→按子到父序删引用→消息→提案→Run→会话行（全FK RESTRICT，漏删即abort非孤儿）→返回report。`commit_operation`行永不触碰（B0 §86“核查输入完整独立”），删除后迟到startRun/completeRun/failRun一律NotFound、无任何行可复活（B0 §98不留可upsert复活行）。回执丢失尾部`DELETION_COMMITTED`沿house pattern映射OutcomeUnknown，重读即NotFound可推断已删。新checkpoint：DELETION_VERIFIED/SESSION_DELETED/DELETION_COMMITTED。
+- DAO增量（[SessionDao](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/SessionDao.kt)/[ProposalDao](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/ProposalDao.kt)）：`failAllRunningForAuthorization`、五个按session删除/计数查询、`proposalsForSession`。Schema v1无实体/字段/索引/外键变更。
+
+### 32.2 运行合同
+
+- **host：** `AgentRunOwnerContractTest` 10项（选择器`com.paherdin.record2.ai.runs.AgentRunOwnerContractTest`）+既有`AgentRunHostContractTest` 15项（其中2项断言按E2语义更新，见32.3）。
+- **设备：** `SessionLifecycleContractTest` 8项（真实Room：UI作用域死亡不取消Run、用户取消落CANCELLED释放slot拒迟到写、revoke/AI-OFF原子失效+owner停外发、含活动Run/EDITABLE/Pending/Applied的删除协议全形状+跨会话范围+同ID重试仍可用、未知状态拒绝+数据驱动恢复、删除检查点故障回滚、中断后新Run重验授权且不含被中断输入）；回归批Schema/SessionRun/Proposal/Commit/Note/AiSecurity/AiSecurityInitialization；进程矩阵`E2ProcessRecoveryContractTest#prepare/#verify`由`tools/verify-e2-process.py`驱动（gate状态键`e2_ready`）。
+- **进程矩阵：** #prepare以阻塞transport把Run留在飞行中并落盘请求计数文件`files/e2/requests.log`（gate含库/会话/请求数）→驱动`am force-stop`（pid消失）→重启MainActivity（新pid+前台）→#verify冷启动断言：请求计数文件在所有权门禁前后均不变（零自动模型/工具调用，SES-03）、遗留Run=INTERRUPTED且slot释放、被中断输入保持可读、显式新Run完成后其请求体不含被中断输入且计数恰+1。凭据链为合成sentinel+真实Keystore，无真实Key/网络。
+- **构建命令：** 工作树内`JAVA_HOME=C:/Users/p3148/tools/jdk/jdk-17.0.20+8`、`ANDROID_HOME=C:/Users/p3148/AppData/Local/Android/Sdk`，wrapper显式`-p D:/record/.worktrees/e2-run-lifecycle/record2`运行`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`；未写`local.properties`或任何环境文件。
+
+### 32.3 实际结果与证据
+
+- **构建/host/lint PASS：** 任务组BUILD SUCCESSFUL；host JUnit Debug 108项/Release同（新增AgentRunOwnerContractTest 10项），fail/error/skip均0；lint 0错误/7警告（全部既有基线类别）。Schema v1未变（无实体/表/索引/外键改动）。最终APK：debug`1e94075e…`、release-unsigned`65011f1a…`、androidTest`3c2aca33…`（[apk-hashes.txt](../../../../record2/build/e2/apk-hashes.txt)）。
+- **设备合同 PASS（最终APK一次全过`OK (94 tests)`）：** `SessionLifecycleContractTest` 8/8 + 回归批（Schema 10+SessionRun 15+Proposal 18+Commit 16+Note 13+AiSecurity 8+Initialization 3）86项，安装前后test APK摘要均为`3c2aca33…`。首轮8项中6失败如实保留：其中1项为**真实生产缺陷**——删除事务先删Run后删提案违反change_proposal→agent_run外键（已改为引用→消息→提案→Run→会话序）；其余为测试缺陷（快照比较窗口含合法终态写入、SQL损坏本身即delta、撤销后requirePermit必然拒绝、AI-OFF竞态需门闩、execute从不置fresh、消息sessionId列序号）。
+- **进程矩阵 PASS：** `RUN_LIFECYCLE: PASS`：prepare gate`requests=1`→force-stop（old_pid`29813`消失）→重启MainActivity（new_pid`29878`前台）→verify`OK (1 test)`：门禁前后请求计数均为1（冷启动零自动调用），遗留Run=INTERRUPTED/slot空/输入可读，显式新Run回复`RECOVERED-731`、请求体不含被中断输入、计数恰2。两次先行失败为测试缺陷（verify阶段transport未写计数文件；Kotlin字符串转义），证据目录保留。
+- **E1测试段更新（语义变更声明）：** `SessionRunContractTest`撤销段现断言revoke后Run立即FAILED/AUTHORIZATION/slot释放、迟到completeRun为RunInvalidated、后续failRun为already-terminal no-op（E1原断言RUNNING保持+AuthorizationRequired）；host两处“完成回执丢失”断言改为failRuns为空+COMPLETED保持（与真实Room failRun幂等一致，原fake行为是不忠实记录）。E1 §27交付事实不变，本段由E2行为变更驱动。
+- **共享AVD干扰事件（如实记录）：** 本批与D1批次在`record2-schema-api34`/emulator-5580上发生APK互相替换（约00:21–00:33本机时间）：本批install -r中断过D1的`RecordToolsContractTest`两轮（其7/9、5/9失败或含本批影响），D1亦两次kill本批回归run。负责人裁定D1改用专属AVD后，本批以最终APK一次性复验94/94通过、安装身份前后一致；D1侧复验由其批次自行完成，不以本批记录代替。
+- **设备库清单：** 新增仅`e2-contract-<UUID>.db`（每测试私有，@Before断言缺失）与`e2-process-run-lifecycle-<UUID>.db`矩阵库；回归批各前缀库为批内自建；record2.db仍为0。未wipe/uninstall/停AVD。
+
+### 32.4 未覆盖项与验收边界
+
+- **归F2：** Application/MainActivity生产接线与owner绑定、删除披露/告知文案与确认交互（report数据已就绪）、两AI模式设置UI、聊天面板/角色呈现；SES-16的换Provider“迟到结果不能改失效会话/提案”已由epoch+eager失效在服务层证明，UI层旅程归J-E2E6。
+- **归D1：** 工具执行点的取消交错（tools在Run内执行时epoch失效如何中断工具循环）与真实Record Tools预算；归G0/G1：ZIP/代际恢复对Run/Operation的失效与保留语义（本批不动代际字段）；归G2：TP/SES/J-E2E最终联合验收（SES-03/04/08/13/16服务层与真进程证据已备，不以本批抵扣联合验收）。
+- `AgentRunDefaults`（窗口40/步数50）仍为D0测试上界参考，产品预算不冻结；无后台常驻Service的约束对F2同样生效。
+- 本批未修改record1、CI、环境与备份规则；未操作真实用户数据、Provider凭据或网络。
+
+### 32.5 提交、推送与PR
+
+负责人“完成issue e2继续”按C0/C1/E1先例覆盖本分支必要Git提交、分支推送与创建PR；不关闭issue #13、不合并PR、不动F1/D1分支或其工作树。共享文件冲突（AgentRunCoordinator.kt与D1、plan.md与F1）按实际占用在PR合并时协调。
+
