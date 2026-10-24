@@ -135,14 +135,13 @@ internal object ProposalCodec {
         val document = json.decodeFromString<ProposalPayloadDocument>(canonicalJson)
         require(document.formatVersion == ProposalBudget.FORMAT_VERSION)
         require(document.operations.isNotEmpty() && document.operations.size <= ProposalBudget.MAX_OPERATIONS)
-        document.operations.forEach { operation ->
-            when (operation) {
-                is ProposalOperation.LinkRecords -> requirePairs(operation.pairs)
-                is ProposalOperation.UnlinkRecords -> requirePairs(operation.pairs)
-                else -> Unit
-            }
-        }
+        validatePersisted(document.operations)
+        // A row written by this service is canonical by construction; anything that survives the
+        // semantic checks but still differs from its own canonical form is a foreign payload.
+        require(canonical(document.operations) == canonicalJson)
         document.operations
+    } catch (error: ProposalException) {
+        throw ProposalException(ProposalError.RecoveryRequired, error)
     } catch (error: RuntimeException) {
         throw ProposalException(ProposalError.RecoveryRequired, error)
     }
@@ -151,6 +150,106 @@ internal object ProposalCodec {
     // corrupt row; canonical output never emits one.
     private fun requirePairs(pairs: List<RecordPair>) {
         require(pairs.isNotEmpty() && pairs.size <= ProposalBudget.MAX_LINK_PAIRS)
+    }
+
+    /**
+     * Re-establishes every closed-set invariant normalize() guarantees, but for already resolved
+     * persisted values: reference declaration/kind, slot typing, identity/version shapes, field
+     * budgets, merge uniqueness and LINK/UNLINK exclusivity. Fresh input keeps using normalize();
+     * anything failing here is a recovery condition, never re-entered as if it were new input.
+     */
+    private fun validatePersisted(operations: List<ProposalOperation>) {
+        val declared = HashMap<String, Boolean>()
+        val updatedTransactions = HashSet<String>()
+        val updatedNotes = HashSet<String>()
+        val linked = HashSet<String>()
+        val unlinked = HashSet<String>()
+        var linkOperations = 0
+        var unlinkOperations = 0
+        for (operation in operations) when (operation) {
+            is ProposalOperation.CreateTransaction -> {
+                localRef(operation.localRef)
+                require(declared.putIfAbsent(operation.localRef, true) == null)
+                persistedTransactionFields(operation)
+            }
+            is ProposalOperation.UpdateTransaction -> {
+                identity(operation.id)
+                version(operation.expectedVersion)
+                require(updatedTransactions.add(operation.id))
+                persistedTransactionFields(operation)
+            }
+            is ProposalOperation.CreateNote -> {
+                localRef(operation.localRef)
+                require(declared.putIfAbsent(operation.localRef, false) == null)
+                persistedBody(operation.body)
+            }
+            is ProposalOperation.UpdateNote -> {
+                identity(operation.id)
+                version(operation.expectedVersion)
+                require(updatedNotes.add(operation.id))
+                persistedBody(operation.body)
+            }
+            is ProposalOperation.LinkRecords -> {
+                requirePairs(operation.pairs)
+                linkOperations++
+                operation.pairs.forEach {
+                    require(linked.add(endpointKey(it)))
+                    persistedPair(it, declared)
+                }
+            }
+            is ProposalOperation.UnlinkRecords -> {
+                requirePairs(operation.pairs)
+                unlinkOperations++
+                operation.pairs.forEach {
+                    require(unlinked.add(endpointKey(it)))
+                    persistedPair(it, declared)
+                }
+            }
+        }
+        // normalize() folds same-kind relation intents into one operation and keeps the two
+        // directions mutually exclusive; a persisted payload must not widen that contract.
+        require(linkOperations <= 1 && unlinkOperations <= 1)
+        require(linked.none { it in unlinked })
+    }
+
+    private fun persistedTransactionFields(operation: TransactionChange) {
+        // Money semantics admit only positive minor amounts; canonical bytes never carry zero.
+        require(operation.amountMinor in 1..Long.MAX_VALUE)
+        identity(operation.accountId)
+        version(operation.accountVersion)
+        require((operation.categoryId == null) == (operation.categoryVersion == null))
+        operation.categoryId?.let { identity(it) }
+        operation.categoryVersion?.let { version(it) }
+        require(operation.memo.length <= ProposalBudget.MAX_MEMO_CHARS)
+    }
+
+    private fun persistedBody(body: String) {
+        require(body.isNotBlank() && body.length <= ProposalBudget.MAX_NOTE_BODY_CHARS)
+    }
+
+    private fun persistedPair(pair: RecordPair, declared: Map<String, Boolean>) {
+        persistedEndpoint(pair.transaction, pair.transactionVersion, transaction = true, declared)
+        persistedEndpoint(pair.note, pair.noteVersion, transaction = false, declared)
+    }
+
+    private fun persistedEndpoint(ref: RecordRef, value: Long, transaction: Boolean, declared: Map<String, Boolean>) {
+        when (ref) {
+            is RecordRef.Local -> {
+                localRef(ref.localRef)
+                require(value == 1L)
+                require(declared[ref.localRef] == transaction)
+            }
+            is RecordRef.Transaction -> {
+                require(transaction)
+                identity(ref.id)
+                version(value)
+            }
+            is RecordRef.Note -> {
+                require(!transaction)
+                identity(ref.id)
+                version(value)
+            }
+        }
     }
 
     private fun checkedPairs(pairs: List<RecordPair>): List<RecordPair> {

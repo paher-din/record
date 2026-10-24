@@ -503,6 +503,8 @@ class ProposalServiceContractTest {
         val oversized = ProposalCodec.canonical(
             ProposalCodec.normalize(listOf(fixture.createNote(body = "字".repeat(ProposalBudget.MAX_NOTE_BODY_CHARS))), proposalClock),
         ) + " ".repeat(ProposalBudget.MAX_PAYLOAD_BYTES)
+        // Structurally canonical with a matching digest, but its LINK consumes an undeclared localRef.
+        val semanticallyForeign = goldenCanonical.replace("""{"type":"LOCAL","localRef":"#t1"}""", """{"type":"LOCAL","localRef":"#t9"}""")
         val corruptions = listOf(
             listOf("UPDATE change_proposal SET payloadJson='{}'"),
             listOf("UPDATE change_proposal SET payloadJson=?", """{"formatVersion":1,"operations":[{"type":"DELETE_RECORD"}]}"""),
@@ -515,6 +517,9 @@ class ProposalServiceContractTest {
             listOf("UPDATE change_proposal SET updatedAt=createdAt-1"),
             listOf("UPDATE change_proposal SET state='UNRECOGNIZED'"),
             listOf("UPDATE change_proposal SET payloadJson=?, payloadDigest=?", oversized, sha256(oversized)),
+            // A well-formed unique creation identity that no longer binds to its origin run.
+            listOf("UPDATE change_proposal SET creationRequestId=?", UUID.randomUUID().toString()),
+            listOf("UPDATE change_proposal SET payloadJson=?, payloadDigest=?", semanticallyForeign, sha256(semanticallyForeign)),
         )
         for (corruption in corruptions) {
             sql(corruption.first(), *corruption.drop(1).toTypedArray())
@@ -530,6 +535,10 @@ class ProposalServiceContractTest {
         expectProposalError(ProposalError.RecoveryRequired) { service.activeProposal(fixture.generation, fixture.session.id) }
         restore(original)
         assertEquals(view, service.activeProposal(fixture.generation, fixture.session.id))
+        // A well-formed creation identity that no longer binds to its origin run fails every read.
+        sql("UPDATE change_proposal SET creationRequestId=?", UUID.randomUUID().toString())
+        expectProposalError(ProposalError.RecoveryRequired) { service.activeProposal(fixture.generation, fixture.session.id) }
+        restore(original)
         // Identity corruption keeps the row findable by primary key but unreadable as a proposal.
         sql("UPDATE change_proposal SET creationRequestId='not-a-uuid'")
         val orphanedRequest = snapshot()

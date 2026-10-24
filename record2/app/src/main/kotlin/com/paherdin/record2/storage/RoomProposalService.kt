@@ -258,6 +258,11 @@ internal class RoomProposalService(
         for (identity in listOf(id, sessionId, originRunId, lastWriterRunId, creationRequestId, dataGeneration)) {
             if (!ProposalBudget.IDENTITY.matches(identity)) fail(ProposalError.RecoveryRequired)
         }
+        // B0 §5.1: the creation identity belongs to the originating run. A well-formed but
+        // mismatched binding must fail closed instead of masking the row as an ordinary read
+        // or letting the original create mint a second identity.
+        val originRun = sessions.run(originRunId) ?: fail(ProposalError.RecoveryRequired)
+        if (originRun.proposalCreationRequestId != creationRequestId) fail(ProposalError.RecoveryRequired)
         if (ProposalCodec.digest(payloadJson) != payloadDigest) fail(ProposalError.RecoveryRequired)
         val operations = ProposalCodec.decode(payloadJson)
         ProposalCodec.decode(creationPayloadJson)

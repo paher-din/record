@@ -325,6 +325,56 @@ class ProposalCodecTest {
         }
     }
 
+    @Test
+    fun decodeValidatesPersistedSemanticsBeyondTheWireFormat() {
+        val time = ProposalTime(1792729800000L, "Asia/Shanghai", "2026-10-23T12:30", 28800)
+        val transaction = ProposalOperation.CreateTransaction("#t1", FinanceDirection.EXPENSE, 5800, account, 1, null, null, "", time)
+        val note = ProposalOperation.CreateNote("#n1", "正文", time)
+        val update = ProposalOperation.UpdateTransaction(storedTransaction, 3, FinanceDirection.EXPENSE, 5800, account, 1, null, null, "", time)
+        fun link(vararg pairs: RecordPair) = ProposalOperation.LinkRecords(pairs.toList())
+        fun unlink(vararg pairs: RecordPair) = ProposalOperation.UnlinkRecords(pairs.toList())
+        // The golden payload itself keeps decoding after the stricter gate.
+        assertEquals(3, ProposalCodec.decode(goldenCanonical).size)
+        // A structurally valid canonical payload whose LINK consumes an undeclared localRef.
+        expect(ProposalError.RecoveryRequired) {
+            ProposalCodec.decode(goldenCanonical.replace("""{"type":"LOCAL","localRef":"#t1"}""", """{"type":"LOCAL","localRef":"#t9"}"""))
+        }
+        // Canonical form folds same-kind relation intents into one operation and keeps the two
+        // directions mutually exclusive; a persisted payload must not widen that contract.
+        expect(ProposalError.RecoveryRequired) {
+            ProposalCodec.decode(ProposalCodec.canonical(listOf(
+                transaction, note, link(localPair()), link(RecordPair(RecordRef.Transaction(storedTransaction), 3, RecordRef.Note(storedNote), 7)),
+            )))
+        }
+        expect(ProposalError.RecoveryRequired) {
+            ProposalCodec.decode(ProposalCodec.canonical(listOf(transaction, note, link(localPair()), unlink(localPair()))))
+        }
+        // Repeated updates of one target are folded away by normalize(); persisted twice is foreign.
+        expect(ProposalError.RecoveryRequired) { ProposalCodec.decode(ProposalCodec.canonical(listOf(update, update))) }
+        // Declared kind must match the slot the reference is consumed in. canonical() itself
+        // rejects this shape, so the foreign bytes are written by hand.
+        expect(ProposalError.RecoveryRequired) {
+            ProposalCodec.decode(goldenCanonical.replace(
+                """"transaction":{"type":"LOCAL","localRef":"#t1"}""",
+                """"transaction":{"type":"LOCAL","localRef":"#n1"}""",
+            ))
+        }
+        // A fabricated baseline on a LOCAL endpoint, a non-positive amount, an oversized memo and
+        // a blank body all pass the wire format but were never producible by normalize().
+        expect(ProposalError.RecoveryRequired) {
+            ProposalCodec.decode(ProposalCodec.canonical(listOf(
+                transaction, note, link(RecordPair(RecordRef.Local("#t1"), 2, RecordRef.Local("#n1"), 1)),
+            )))
+        }
+        expect(ProposalError.RecoveryRequired) { ProposalCodec.decode(ProposalCodec.canonical(listOf(transaction.copy(amountMinor = 0)))) }
+        expect(ProposalError.RecoveryRequired) { ProposalCodec.decode(ProposalCodec.canonical(listOf(transaction.copy(memo = "记".repeat(ProposalBudget.MAX_MEMO_CHARS + 1))))) }
+        expect(ProposalError.RecoveryRequired) { ProposalCodec.decode(ProposalCodec.canonical(listOf(note.copy(body = "  ")))) }
+        // Well-formed JSON outside the canonical field order is a foreign payload.
+        expect(ProposalError.RecoveryRequired) {
+            ProposalCodec.decode(goldenCanonical.replace("\"direction\":\"EXPENSE\",\"amountMinor\":5800", "\"amountMinor\":5800,\"direction\":\"EXPENSE\""))
+        }
+    }
+
     private fun depth(json: String): Int {
         var depth = 0
         var maximum = 0
