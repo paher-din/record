@@ -16,12 +16,18 @@ import com.paherdin.record2.proposals.ProposalException
 import com.paherdin.record2.proposals.ProposalIntent
 import com.paherdin.record2.proposals.ProposalView
 import java.util.UUID
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -709,6 +715,88 @@ class CommitContractTest {
         }
         reopen()
         assertEquals(CommitStatus.Applied, service().inspect(CommitGolden.OPERATION)!!.status)
+    }
+
+    /** Parks every dispatch until drained, so a test can cancel exactly at a return boundary. */
+    private class HeldDispatcher : CoroutineDispatcher() {
+        private val queue = ConcurrentLinkedQueue<Runnable>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            queue.add(block)
+        }
+
+        fun drain() {
+            while (true) (queue.poll() ?: return).run()
+        }
+    }
+
+    private suspend fun awaitDurable(check: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 20_000
+        while (!check()) {
+            check(System.currentTimeMillis() < deadline) { "Target state never became durable" }
+            delay(20)
+        }
+    }
+
+    @Test
+    fun committedConfirmationCancelledAtTheReturnBoundaryIsReceiptLoss() = runBlocking {
+        val view = proposals.prepare(context, goldenIntents)
+        val dispatcher = HeldDispatcher()
+        val scope = CoroutineScope(dispatcher + Job())
+        val deferred = scope.async { service(CommitGolden.ids()).confirm(command(view)) }
+        // Run to the io suspension; the confirm body commits on Dispatchers.IO while its
+        // completion stays parked in the held dispatcher.
+        dispatcher.drain()
+        awaitDurable { operations().isNotEmpty() }
+        // The operation is durable and the caller has not resumed yet: this cancellation races
+        // the withContext return, which must discard the value without losing the classification.
+        deferred.cancel()
+        val error = cancelAtReturnBoundaryAndAwait(deferred, dispatcher)
+        assertTrue(error is CommitReceiptLossException)
+        assertEquals("Pending", operations().single()[7])
+        assertEquals("LOCKED", rowOf("change_proposal", 0, view.id)[11])
+        val reconciled = service().confirm(command(view))
+        assertEquals(CommitGolden.OPERATION, reconciled.operationId)
+        assertFalse(reconciled.fresh)
+        assertEquals(CommitStatus.Pending, reconciled.status)
+    }
+
+    @Test
+    fun committedExecutionCancelledAtTheReturnBoundaryIsReceiptLoss() = runBlocking {
+        val view = proposals.prepare(context, goldenIntents)
+        service(CommitGolden.ids()).confirm(command(view))
+        val dispatcher = HeldDispatcher()
+        val scope = CoroutineScope(dispatcher + Job())
+        val deferred = scope.async { service().execute(CommitGolden.OPERATION) }
+        dispatcher.drain()
+        awaitDurable { operations().isNotEmpty() && operations().single()[7] == "Applied" }
+        deferred.cancel()
+        val error = cancelAtReturnBoundaryAndAwait(deferred, dispatcher)
+        assertTrue(error is CommitReceiptLossException)
+        // The facts committed exactly once; a later idempotent re-execution returns the same result.
+        assertEquals(2L, rowOf("record_transaction", 0, CommitGolden.NEW_TRANSACTION)[8])
+        assertEquals(2L, rowOf("note", 0, CommitGolden.NEW_NOTE)[3])
+        val after = snapshot()
+        val reapplied = service().execute(CommitGolden.OPERATION)
+        assertEquals(CommitStatus.Applied, reapplied.status)
+        assertEquals(after, snapshot())
+    }
+
+    /** Resumes the parked caller (the cancellation race) and keeps draining its follow-ups. */
+    private suspend fun <T> cancelAtReturnBoundaryAndAwait(
+        deferred: kotlinx.coroutines.Deferred<T>,
+        dispatcher: HeldDispatcher,
+    ): Throwable? = kotlinx.coroutines.coroutineScope {
+        val drainer = launch(Dispatchers.Default) {
+            while (!deferred.isCompleted) {
+                dispatcher.drain()
+                delay(5)
+            }
+            dispatcher.drain()
+        }
+        val error = runCatching { deferred.await() }.exceptionOrNull()
+        drainer.cancel()
+        error
     }
 
     private fun seededTransactionCount() = snapshot().getValue("record_transaction").size

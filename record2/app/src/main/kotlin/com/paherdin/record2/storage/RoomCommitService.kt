@@ -27,6 +27,7 @@ import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -48,21 +49,31 @@ internal class RoomCommitService(
     private val records = database.records()
 
     override suspend fun confirm(command: ConfirmationCommand): CommitOutcome {
-        val outcome = io {
-            try {
-                database.withTransaction { confirmNew(command) }
-            } catch (error: SQLiteConstraintException) {
-                // A unique-index race (double click) rolls this attempt back; the winner is then
-                // re-checked by identity instead of minting a second operation.
-                database.withTransaction { existingOutcome(command) ?: throw error }
+        val outcome = try {
+            io {
+                try {
+                    database.withTransaction { confirmNew(command) }
+                } catch (error: SQLiteConstraintException) {
+                    // A unique-index race (double click) rolls this attempt back; the winner is then
+                    // re-checked by identity instead of minting a second operation.
+                    database.withTransaction { existingOutcome(command) ?: throw error }
+                }
             }
+        } catch (error: CancellationException) {
+            // The Room transaction may already be committed when a prompt-cancellation discards
+            // the returning value; the persisted identity decides, never the cancelled caller.
+            throw reconcileConfirmation(command, error)
         }
         if (outcome.fresh) afterCommit(CommitCheckpoint.A_COMMITTED)
         return outcome
     }
 
     override suspend fun execute(operationId: String): CommitOutcome {
-        val (outcome, performed) = io { database.withTransaction { executeOnce(operationId) } }
+        val (outcome, performed) = try {
+            io { database.withTransaction { executeOnce(operationId) } }
+        } catch (error: CancellationException) {
+            throw reconcileExecution(operationId, error)
+        }
         if (performed) afterCommit(CommitCheckpoint.B_COMMITTED)
         return outcome
     }
@@ -363,6 +374,51 @@ internal class RoomCommitService(
     }
 
     // ---- row and state validation ----
+
+    /**
+     * Post-commit cancellation reconciliation. A cancelled withContext may discard an already
+     * committed result, so the durable operation state — read under NonCancellable — classifies
+     * the outcome: committed means receipt loss, unchanged means a plain cancellation, and an
+     * unreadable database means the outcome cannot be determined.
+     */
+    private suspend fun reconcileConfirmation(command: ConfirmationCommand, cause: CancellationException): Nothing {
+        val committed: Boolean? = withContext(NonCancellable + Dispatchers.IO) {
+            try {
+                database.withTransaction {
+                    validate(command)
+                    proposals.operationForProposal(command.proposalId) != null
+                }
+            } catch (error: SQLiteException) {
+                null
+            }
+        }
+        when (committed) {
+            null -> throw CommitException(CommitError.OutcomeUnknown, cause)
+            true -> throw CommitReceiptLossException(cause)
+            false -> throw cause
+        }
+    }
+
+    private suspend fun reconcileExecution(operationId: String, cause: CancellationException): Nothing {
+        val committed: Boolean? = withContext(NonCancellable + Dispatchers.IO) {
+            try {
+                database.withTransaction {
+                    identity(operationId)
+                    when (proposals.operation(operationId)?.status()) {
+                        CommitStatus.Pending, null -> false
+                        else -> true
+                    }
+                }
+            } catch (error: SQLiteException) {
+                null
+            }
+        }
+        when (committed) {
+            null -> throw CommitException(CommitError.OutcomeUnknown, cause)
+            true -> throw CommitReceiptLossException(cause)
+            false -> throw cause
+        }
+    }
 
     private fun displayed(row: ChangeProposalEntity, command: ConfirmationCommand): String {
         if (row.revision < 1 || row.payloadFormatVersion != ProposalBudget.FORMAT_VERSION) fail(CommitError.RecoveryRequired)
