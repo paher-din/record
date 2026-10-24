@@ -1,6 +1,6 @@
 # ADR 0019：R2 逻辑备份 ZIP 与单事务原子恢复
 
-**Status: Proposed**；2026-10-24；仅适用于 Record 2.0。批准来源、设计和实际状态由 [V1 Plan §31](../../specs/record2/v1/plan.md#31-g0正式逻辑-zip代际协议设计审核issue-18) 与 [G0 设计审查包](../record2-g0-backup-restore-design.md) 拥有；本 ADR 只记录长期协议选择，不授权 G1 实现、设备/SAF 测试、Schema 变更或发布。
+**Status: Accepted**；2026-10-24（设计），2026-10-25 负责人最终批准；仅适用于 Record 2.0。批准来源、设计和实际状态由 [V1 Plan §31.7](../../specs/record2/v1/plan.md#317-负责人最终批准与-adr-accepted2026-10-25) 与 [G0 设计审查包](../record2-g0-backup-restore-design.md) 拥有；本 ADR 接受长期协议选择，不授权 G1 实现、设备/SAF 测试、Schema 变更或发布。
 
 **Rev2（2026-10-25，PR #28 审阅修订）：** 总体架构与决定 1–6 保留，细化导出只读快照、门禁事务前零写入、receipt 缺失可检测性及 C0/C1 时间字段对齐；不新增持久化标记、不改 Schema/源码。
 

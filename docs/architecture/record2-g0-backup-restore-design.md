@@ -1,6 +1,6 @@
 # Record 2.0 G0 逻辑 ZIP / 代际恢复设计审查包
 
-2026-10-24（Asia/Shanghai）。**版本：设计候选；待负责人审查批准。G1/G2 未实现、未运行。** 本文拥有 ZIP 格式、逻辑数据清单、资源限额、恢复/回退/启动协议与故障矩阵；任务授权、实际验证和批准事实由 [V1 Plan §31](../specs/record2/v1/plan.md#31-g0正式逻辑-zip代际协议设计审核issue-18) 拥有；实现和真实设备证据归 G1。本文不改变冻结业务/Schema，不实现旧格式兼容，不复制旧 Vault，不运行任何“先导出看看”的数据实验。
+2026-10-24（Asia/Shanghai）。**版本：Rev2.1，负责人批准（2026-10-25，[Plan §31.7](../specs/record2/v1/plan.md#317-负责人最终批准与-adr-accepted2026-10-25)）。G1/G2 未实现、未运行。** 本文拥有 ZIP 格式、逻辑数据清单、资源限额、恢复/回退/启动协议与故障矩阵；任务授权、实际验证和批准事实由 [V1 Plan §31](../specs/record2/v1/plan.md#31-g0正式逻辑-zip代际协议设计审核issue-18) 拥有；实现和真实设备证据归 G1。本文不改变冻结业务/Schema，不实现旧格式兼容，不复制旧 Vault，不运行任何“先导出看看”的数据实验。
 
 依据：[Spec §6](../specs/record2/v1/spec.md)、[B0 §9](record2-b0-data-model-design.md#9-完整备份代际与恢复接缝)、[ADR 0018](decisions/0018-record2-data-concurrency-and-history.md)、[C1 证据](../engineering/evidence/2026-10-24-c1.md)、[E1 证据](../engineering/evidence/2026-10-24-e1.md)、[F0-C3 D-SAFE](../design/record2-f0-c3-review.md#8-d-safe授权历史备份与恢复)。冻结统一架构、Spec 行为、B0 数据语义和 C1/E1 状态机不被本文重开；本文只在 G0 授权内冻结恢复格式与协议。
 
@@ -519,4 +519,4 @@ G0 只冻结合同；以下由 G1 在获批源码/设备范围执行，G2 做最
 
 - 行为/AC owner：[Spec §6/§7](../specs/record2/v1/spec.md)；数据语义 owner：[B0](record2-b0-data-model-design.md)；执行/任务状态 owner：[V1 Plan §31](../specs/record2/v1/plan.md#31-g0正式逻辑-zip代际协议设计审核issue-18)；长期恢复决定：[ADR 0019](decisions/0019-record2-logical-backup-restore-protocol.md)。
 - C1 冻结/回执状态、E1 历史/所有权、E0 授权/凭据、F0-C3 D-SAFE 分别由原 owner 拥有；本文只引用，不覆盖。
-- 本文为设计审查包，未修改源码、Schema、普通数据库、构建、环境/凭据/CI；所有 G1/G2 行为均 NOT RUN。
+- 本文为负责人已批准的G0设计审查包（Plan §31.7），未修改源码、Schema、普通数据库、构建、环境/凭据/CI；所有 G1/G2 行为均 NOT RUN。

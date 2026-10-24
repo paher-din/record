@@ -1411,7 +1411,7 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 ### 31.2 当前状态与批准边界
 
-- **状态：** 设计候选完成并已按PR #28审阅意见完成Rev2修订（门禁零写入、receipt可检测性、时间校验对齐、只读导出快照），**待负责人对G0-D1～D14及Rev2细化（尤其原子导入、门禁零写入、只读快照、草稿策略、限额、时钟容差、receipt缺失限制、无Schema变更）再次明确批准**。ADR 0019 仍为 Proposed；issue #18 保持 OPEN；G1 未启动。
+- **状态：** 负责人2026-10-25第三轮审阅最终**APPROVE**；G0-D1～D14及Rev2/Rev2.1细化通过，ADR 0019 为 **Accepted**；PR #28合并与issue #18按completed关闭按§31.7执行。G1未启动。
 - **未运行：** 未构建/安装Android、未打开/创建数据库、未运行任何导出/恢复/SAF/进程终止/Provider/设备测试；T0仅为文档/静态检查，不抵扣 BK1～5、SD-P4、SES-09/14、TP-08 或 G2 联合验收。
 - **下游责任：** G1 拥有ZIP/SAF/预检/导入/启动/临时文件清理及真实Room/设备证据，须另获源码/设备/数据操作授权；涉及Schema的变更如出现必须停止并另取G-SCHEMA同意（本设计不需要）；F0/F1/F2拥有D-SAFE最终界面/文案，G2拥有最终联合验收。
 - **不做：** 不合并main、不关闭issue #18、不发布/部署；批准后是否关闭issue及G1何时启动由负责人决定。提交/推送/PR仅作为本轮设计审阅交付，不改变上述状态。
@@ -1462,4 +1462,14 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - **范围：** 修改[G0设计](../../../architecture/record2-g0-backup-restore-design.md)、[ADR 0019](../../../architecture/decisions/0019-record2-logical-backup-restore-protocol.md)与本节；G0-D1～D14/总体架构不变；ADR仍为Proposed。无Schema/源码/构建/环境/凭据/CI修改，无数据库/设备/SAF/Provider操作。
 - **T0 Rev2.1 PASS（仅文档）：** 2026-10-25静态检查，修改3份文件（G0设计/ADR 0019/本Plan）；设计/ADR/Plan新增与受影响30个本地链接/锚点全部解析通过；新文档UTF-8无BOM/LF/无行尾空白/围栏成对；内容断言覆盖空段`STORED`/0/0、禁止`DEFLATE`空块、空段往返测试、`authEpoch`上限拒绝及`MAX`不写入测试。`git diff --check`退出0（仅既有CRLF提示）；`record2/`、`record1/`、Gradle根、Schema源码/生成JSON无tracked diff，Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。未构建/安装Android、未打开数据库、未操作设备/SAF/Provider/网络；G1/G2 NOT RUN。设计自查，无独立Agent审查。
 - **Rev2.1提交/PR：** 设计提交`b68239769fd0ccf5394174f69886d87babda8b56`，已推送`codex/g0-backup-restore`并更新[PR #28](https://github.com/paher-din/record/pull/28)；PR head以GitHub当前引用为准。
-- **状态：** 等待负责人最终批准/合并。issue #18保持OPEN；G1/G2 NOT RUN；G1的真实Room/SAF/故障/性能验收仍必须单独完成。
+- **状态：** 最终批准见§31.7；PR #28合并与issue #18关闭按§31.7执行。G1/G2 NOT RUN；G1的真实Room/SAF/故障/性能验收仍必须单独完成。
+
+### 31.7 负责人最终批准与 ADR Accepted（2026-10-25）
+
+负责人2026-10-25第三轮审阅对PR #28（审阅HEAD `6b6c902ffdc3b92f613cdc551a94243e27ca6e70`）裁定 **APPROVE**：确认Rev2.1两项P1已修复（空段STORED/0/0、authEpoch不再写入MAX）；确认12段数据清单、单事务导入/回滚、Run/Proposal/Operation转换、旧Pending不可执行、零持久化写入、receipt边界、C0/C1时间/版本约束、只读WAL快照、限额与文档一致性；未发现新的阻断级设计问题。恢复失败后旧Run的迟到回调隔离保留为G1强制验收。
+
+- **批准范围：** G0-D1～D14及Rev2/Rev2.1细化设计正式通过；ADR 0019 转为 **Accepted**；G0设计任务完成。
+- **合并/关闭：** 按负责人授权合并PR #28，并将issue #18按completed关闭；实际merge commit/closedAt由GitHub回执，本文不预填。
+- **未授权/未运行：** G1真实ZIP/SAF/恢复/进程终止/性能、Schema/源码修改、设备/真机、发布均未启动或未授权；G0批准不抵扣G1/G2。恢复失败后的旧Run迟到写回隔离是G1强制门禁（§10.4A）。
+- **状态更新T0 PASS（仅文档）：** 本轮只改状态/批准文本（ADR Accepted、设计头/尾状态、Plan §31.2/§31.6/§31.7、index路由），无格式/限额/协议行为变化。4份文件、31个新增/受影响链接/锚点通过；UTF-8/围栏/无行尾空白通过；`git diff --check`退出0（仅既有CRLF提示）；`record2/`、`record1/`、Gradle根、Schema源码/生成JSON无tracked diff，Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。未构建/安装Android、未打开数据库、未操作设备/SAF/Provider；G1/G2 NOT RUN。设计自查，无独立Agent审查。
+- **结束边界：** G0设计验收到此结束，不再为尚未执行的G1设备测试修改G0设计；G1须另获源码/设备/数据操作授权后启动。
