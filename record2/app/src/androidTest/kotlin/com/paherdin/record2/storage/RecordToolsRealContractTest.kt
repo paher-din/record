@@ -1,24 +1,30 @@
 package com.paherdin.record2.storage
 
 import androidx.test.platform.app.InstrumentationRegistry
-import com.paherdin.record2.ai.D0BatchBudget
 import com.paherdin.record2.ai.D0RunBudget
-import com.paherdin.record2.ai.D0TestLimits
-import com.paherdin.record2.ai.RecordingHttpClient
+import com.paherdin.record2.ai.RecordingFactory
+import com.paherdin.record2.ai.recordingFactory
 import com.paherdin.record2.ai.runs.AgentRunCoordinator
 import com.paherdin.record2.ai.runs.AgentRunException
 import com.paherdin.record2.ai.tools.RecordToolDeps
+import com.paherdin.record2.ai.tools.RecordToolRegistry
+import com.paherdin.record2.proposals.ProposalOperation
 import com.paherdin.record2.records.FinanceDirection
 import com.paherdin.record2.records.FinanceInput
+import com.paherdin.record2.sessions.AgentSessionMessage
 import com.paherdin.record2.sessions.MessageResultKind
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -45,9 +51,14 @@ internal class RecordToolsRealContractTest {
     private val owner get() = fixture.owner
     private lateinit var generation: String
 
-    @Before fun open() = runBlocking {
-        generation = finance.initialize().generation
-        fixture.initialize()
+    @Before fun open() {
+        runBlocking {
+            generation = finance.initialize().generation
+            fixture.initialize()
+            // D1ToolsFixture initializes with a synthetic sentinel credential for the scripted
+            // suites; the real e2e replaces it through the E0 path before any request.
+            security.replaceCredential(apiKey!!.toCharArray())
+        }
     }
 
     @After fun close() {
@@ -60,34 +71,35 @@ internal class RecordToolsRealContractTest {
         cursor.getLong(0).toInt()
     }
 
-    private fun coordinator(recorder: RecordingHttpClient): AgentRunCoordinator {
+    private fun coordinator(recorder: RecordingFactory): AgentRunCoordinator {
         return AgentRunCoordinator(
             security = security,
             history = history,
             processOwnerId = owner,
             recordTools = RecordToolDeps(security, history, fixture.timeline, fixture.proposals, finance),
-            httpClientFactory = object : ai.koog.http.client.KoogHttpClient.Factory {
-                override fun create(
-                    clientName: String, baseUrl: String, headers: Map<String, String>,
-                    queryParameters: Map<String, String>, requestTimeoutMillis: Long,
-                    connectTimeoutMillis: Long, socketTimeoutMillis: Long, json: Json,
-                ): ai.koog.http.client.KoogHttpClient = recorder
-            },
+            // RecordingFactory forwards the client headers (including the E0-provided bearer
+            // credential) to the real transport; a factory that discards them would 401.
+            httpClientFactory = recorder,
             clock = fixture.clock,
         )
     }
 
-    private fun recorder(budget: D0RunBudget): RecordingHttpClient {
-        val real = ai.koog.http.client.ktor.KtorKoogHttpClient.Factory().create(
-            clientName = "record2-d1-real",
-            baseUrl = com.paherdin.record2.ai.DeepSeekProtocol.BASE_URL,
-            headers = emptyMap(), queryParameters = emptyMap(),
-            requestTimeoutMillis = D0TestLimits.REQUEST_TIMEOUT_MS,
-            connectTimeoutMillis = D0TestLimits.CONNECT_TIMEOUT_MS,
-            socketTimeoutMillis = D0TestLimits.REQUEST_TIMEOUT_MS,
-            json = Json,
-        )
-        return RecordingHttpClient(real, budget, D0BatchBudget)
+    /**
+     * Every real request must carry the fixed Flash model, explicit thinking=disabled and exactly
+     * the four spec tools, and no request body may contain the API key (CTX-07/AI-AC10).
+     */
+    private fun assertRealRequestContract(recorder: RecordingFactory) {
+        assertTrue("expected at least one real request", recorder.requests.isNotEmpty())
+        recorder.requests.forEach { body ->
+            assertFalse("API key leaked into a request body", body.contains(apiKey!!))
+            val request = Json.parseToJsonElement(body).jsonObject
+            assertEquals("deepseek-flash", request["model"]!!.jsonPrimitive.content)
+            assertEquals("disabled", request["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+            val tools = request["tools"]!!.jsonArray
+                .map { it.jsonObject["function"]!!.jsonObject["name"]!!.jsonPrimitive.content }
+                .sorted()
+            assertEquals(RecordToolRegistry.TOOL_NAMES.sorted(), tools)
+        }
     }
 
     private fun evidence(stage: String, budget: D0RunBudget, requests: Int) {
@@ -103,8 +115,7 @@ internal class RecordToolsRealContractTest {
     }
 
     @Test fun realPrepareReviseKeepsProposalIdentityWithoutBusinessWrites() = runBlocking {
-        val budget = D0RunBudget().also { it.reset() }
-        val recorder = recorder(budget)
+        val recorder = recordingFactory()
         val runner = coordinator(recorder)
         var preparedSession: String? = null
         var attempts = 0
@@ -147,23 +158,53 @@ internal class RecordToolsRealContractTest {
         )
         assertTrue("no formal business facts before confirmation", count("record_transaction") == 0 && count("note") == 0)
 
-        // Second turn in the same session revises the same proposal identity (AI-AC3 seam).
-        val revise = runCatching { runner.run(preparedSession, "把那笔午饭改成 40 元，其他都不变。") }
-        val reviseFinal = history.sessionMessages(preparedSession).last()
+        // Second turn in the same session revises the same proposal identity (AI-AC3). Like the
+        // create turn this allows a bounded, counted retry for model non-compliance; a revision
+        // that changes identity or fails to reach revision 2 is never accepted.
+        var reviseFinal: AgentSessionMessage? = null
+        var reviseAttempts = 0
+        var lastReviseProblem: String? = null
+        while (reviseFinal == null && reviseAttempts < 3) {
+            reviseAttempts += 1
+            val attempt = runCatching {
+                runner.run(preparedSession, "把那笔午饭改成 40 元，其他都不变。")
+            }
+            val candidate = history.sessionMessages(preparedSession).last()
+            if (candidate.resultKind == MessageResultKind.ProposalReady &&
+                candidate.proposalId == proposalId &&
+                candidate.proposalRevision == 2L
+            ) {
+                reviseFinal = candidate
+            } else {
+                lastReviseProblem = attempt.exceptionOrNull()?.message
+                    ?: "resultKind=${candidate.resultKind} proposal=${candidate.proposalId} revision=${candidate.proposalRevision}"
+            }
+        }
+        val revised = checkNotNull(reviseFinal) {
+            "model never revised the proposal in $reviseAttempts attempts: $lastReviseProblem"
+        }
         println(
             "D1-REAL-REVISE: " + buildJsonObject {
-                put("runCompleted", revise.isSuccess)
-                put("resultKind", reviseFinal.resultKind.name)
-                put("proposalId", reviseFinal.proposalId)
-                put("revision", reviseFinal.proposalRevision)
+                put("attempts", reviseAttempts)
+                put("resultKind", revised.resultKind.name)
+                put("proposalId", revised.proposalId)
+                put("revision", revised.proposalRevision)
             }.toString(),
         )
-        assertTrue("revise run failed: ${revise.exceptionOrNull()?.message}", revise.isSuccess)
-        assertEquals(MessageResultKind.ProposalReady, reviseFinal.resultKind)
-        assertEquals(proposalId, reviseFinal.proposalId)
-        assertEquals(2L, reviseFinal.proposalRevision)
+        val revisedView = fixture.proposals.proposal(proposalId)!!
+        assertEquals(2L, revisedView.revision)
+        assertEquals(
+            listOf("CreateNote", "CreateTransaction", "LinkRecords"),
+            revisedView.operations.map { it::class.simpleName!! }.sorted(),
+        )
+        assertTrue(
+            revisedView.operations.any {
+                it is ProposalOperation.CreateTransaction && it.amountMinor == 4000L
+            },
+        )
         assertTrue(count("record_transaction") == 0 && count("note") == 0)
-        evidence("prepare-revise", budget, recorder.requests.size)
+        assertRealRequestContract(recorder)
+        evidence("prepare-revise", recorder.budget, recorder.requests.size)
     }
 
     @Test fun realSearchAnswersFromRealDataWithoutProposals() = runBlocking {
@@ -179,8 +220,7 @@ internal class RecordToolsRealContractTest {
         )
         finance.saveDraft(catalog.generation, commute.id, commute.revision)
 
-        val budget = D0RunBudget().also { it.reset() }
-        val recorder = recorder(budget)
+        val recorder = recordingFactory()
         val runner = coordinator(recorder)
         val session = history.createSession("d1-real-search")
         val outcome = runCatching {
@@ -200,22 +240,24 @@ internal class RecordToolsRealContractTest {
         assertTrue(final.references.any { it.transactionId == coffeeReceipt.record.id })
         // No proposal appears for a pure read-only question.
         assertEquals(0, count("change_proposal"))
-        evidence("search", budget, recorder.requests.size)
+        assertRealRequestContract(recorder)
+        evidence("search", recorder.budget, recorder.requests.size)
     }
 
     @Test fun revokedBeforeRunMakesZeroRequests() = runBlocking {
-        val budget = D0RunBudget().also { it.reset() }
-        val recorder = recorder(budget)
+        val recorder = recordingFactory()
         val runner = coordinator(recorder)
         security.revoke()
         val session = history.createSession("d1-real-revoked")
         val outcome = runCatching { runner.run(session.id, "随便记一笔") }
         assertTrue(outcome.isFailure && outcome.exceptionOrNull() is AgentRunException)
-        assertEquals(0, budget.inputTokens + budget.outputTokens)
+        assertEquals(0, recorder.requests.size)
+        assertEquals(0, recorder.budget.inputTokens + recorder.budget.outputTokens)
     }
 
     companion object {
         private var keyFingerprint: String? = null
+        private var apiKey: String? = null
 
         @BeforeClass @JvmStatic fun loadKey() {
             val file = File(
@@ -226,6 +268,7 @@ internal class RecordToolsRealContractTest {
             val key = file.readText().trim()
             file.delete()
             check(key.startsWith("sk-") && key.length >= 20) { "files/d1/deepseek.key is not a DeepSeek key" }
+            apiKey = key
             keyFingerprint = MessageDigest.getInstance("SHA-256")
                 .digest(key.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it) }

@@ -273,6 +273,43 @@ internal class RecordToolsHostTest {
     }
 
     @Test
+    fun systemPromptCarriesEditableProposalFocusOnlyWhileEditable() {
+        val catalog = FinanceCatalog(
+            "gen-1",
+            com.paherdin.record2.records.FinanceSeeds.account,
+            com.paherdin.record2.records.FinanceSeeds.categories,
+        )
+        fun view(state: ProposalState) = ProposalView(
+            id = "11111111-1111-4111-8111-111111111111",
+            sessionId = "session-1",
+            originRunId = "run-1",
+            lastWriterRunId = "run-2",
+            creationRequestId = "creation-1",
+            revision = 3,
+            state = state,
+            payloadFormatVersion = 1,
+            payloadDigest = "digest",
+            dataGeneration = "gen-1",
+            operations = emptyList(),
+            createdAt = 0,
+            updatedAt = 0,
+        )
+        val editable = RecordToolRegistry.systemPrompt(
+            catalog, MutableClock(1_700_000_000_000), ZoneId.of("Asia/Shanghai"),
+            view(ProposalState.EDITABLE),
+        )
+        assertTrue(editable.contains("proposalId=11111111-1111-4111-8111-111111111111"))
+        assertTrue(editable.contains("expectedRevision=3"))
+        assertTrue(editable.contains("不要创建第二个提案"))
+
+        val locked = RecordToolRegistry.systemPrompt(
+            catalog, MutableClock(1_700_000_000_000), ZoneId.of("Asia/Shanghai"),
+            view(ProposalState.LOCKED),
+        )
+        assertFalse(locked.contains("当前会话有一个待确认提案"))
+    }
+
+    @Test
     fun searchEmptyResultIsSuccessNotFailure() = runBlocking {
         val harness = ToolHarness()
         harness.timeline.page = TimelinePage("gen-1", 0, emptyList(), null)

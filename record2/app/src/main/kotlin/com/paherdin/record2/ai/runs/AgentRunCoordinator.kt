@@ -24,6 +24,8 @@ import com.paherdin.record2.ai.tools.RecordToolDeps
 import com.paherdin.record2.ai.tools.RecordToolException
 import com.paherdin.record2.ai.tools.RecordToolFailure
 import com.paherdin.record2.ai.tools.RecordToolRegistry
+import com.paherdin.record2.proposals.ProposalError
+import com.paherdin.record2.proposals.ProposalException
 import com.paherdin.record2.records.FinanceError
 import com.paherdin.record2.records.FinanceException
 import com.paherdin.record2.sessions.AgentHistoryError
@@ -144,17 +146,27 @@ internal class AgentRunCoordinator(
         }
         var reply: String? = null
         var outcome: RunOutcome? = null
-        // D1: one tool context per run — entry guards, hard budgets and native handoff evidence.
-        // The system prompt is rebuilt per run so the model sees the current local time and the
-        // seeded catalog names; relative time is resolved by the model, tools only take absolutes.
-        val toolContext = recordTools?.let { RecordToolContext(it, permit, start, clock) }
-        val runSystemPrompt = if (recordTools != null) {
-            RecordToolRegistry.systemPrompt(recordTools.finance.initialize(), clock, ZoneId.systemDefault())
-        } else {
-            systemPrompt
-        }
-        val runToolRegistry = toolContext?.let(RecordToolRegistry::forRun) ?: toolRegistry
         try {
+            // D1: one tool context per run — entry guards, hard budgets and native handoff
+            // evidence. Construction stays inside the terminal-catching scope: a catalog or
+            // proposal-focus read failure must fail this run instead of stranding its slot.
+            val toolContext = recordTools?.let { RecordToolContext(it, permit, start, clock) }
+            val activeProposal = recordTools?.proposals
+                ?.activeProposal(start.dataGeneration, start.sessionId)
+            // The system prompt is rebuilt per run so the model sees the current local time, the
+            // seeded catalog names and the session's still-editable proposal (identity/revision
+            // only; Room history has no tool traffic, so a later run needs this focus to revise).
+            val runSystemPrompt = if (recordTools != null) {
+                RecordToolRegistry.systemPrompt(
+                    recordTools.finance.initialize(),
+                    clock,
+                    ZoneId.systemDefault(),
+                    activeProposal,
+                )
+            } else {
+                systemPrompt
+            }
+            val runToolRegistry = toolContext?.let(RecordToolRegistry::forRun) ?: toolRegistry
             // The plaintext exists only inside the E0 callback: build the client there, clear the
             // array, then run the agent. The client keeps its own copy for the network calls the
             // same way D0's seam does; mid-run revocation is enforced at every request by the
@@ -308,6 +320,12 @@ internal class AgentRunCoordinator(
         is FinanceException -> when (error.code) {
             FinanceError.GenerationMismatch -> AgentRunError.RunInvalidated
             FinanceError.RecoveryRequired -> AgentRunError.Internal
+            else -> AgentRunError.Internal
+        }
+        is ProposalException -> when (error.code) {
+            ProposalError.RunInvalidated, ProposalError.GenerationMismatch -> AgentRunError.RunInvalidated
+            ProposalError.RecoverableIO -> AgentRunError.RecoverableIO
+            ProposalError.StorageFull -> AgentRunError.StorageFull
             else -> AgentRunError.Internal
         }
         is AiSecurityException -> safeAuthorization(error)
