@@ -1185,6 +1185,73 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 - **制品/证据：** debug`5e95ec9c…`、release-unsigned`766dcb5e…`、androidTest`eb6535fd…`；设备安装的`.debug`/`.debug.test`摘要与构建产物一致。回执`build/e1/instrument-integrated-session.txt`、`instrument-integrated-b3-regression.txt`、`instrument-integrated-shared.txt`、`real-integrated-prepare.txt`、`real-integrated-verify.txt`、`e1-contract-real-integrated.db`、`logcat-integrated-real.txt`；原始文件被Git忽略。
 - **边界不变：** E2/D1/F2/G0/G1未启动；PR #24待再次审阅，未合并main、未关闭issue #12。
 
+## 28. C1 / issue #9：用户确认冻结、Transaction A/B 与未知结果恢复
+
+2026-10-24负责人要求“完成issue c1”，对应[GitHub #9](https://github.com/paher-din/record/issues/9)；前置C0 #8、B1 #4、B2 #5、B3 #6均已关闭。本批按§5 C1任务合同与G-CODE执行正式确认/提交服务与恢复协调，依据[B0 §5.2/§5.3](../../../architecture/record2-b0-data-model-design.md#52-transaction-a)；不新建Spec/ADR、不修改Schema v1物理结构、不提供Agent commit工具、不把LLM放进事务。B4的PR #26已占§29并留§28空闲，本批取§28。
+
+执行于独立工作树`D:/record/.worktrees/c1-confirmation-commit`（分支`codex/c1-confirmation-commit`，基于main `7a3913d`）。主工作树及B4工作树的进行中改动原样保留；本批全程未触碰`RecordDao.kt`（B4正在修改的共享文件），DAO增量全部落在C0已建立先例的`ProposalDao.kt`。
+
+### 28.1 实现交付
+
+| 对象 | 本批实际写入 | 语义 |
+|---|---|---|
+| 冻结模型 | [proposals/CommitOperation.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/CommitOperation.kt) | FrozenOperation六类封闭操作（CREATE携带确认时分配的稳定id、pair端点为真实id+基线版本）；CommitStatus四态持久名（Pending/Applied/RejectedConflict/RejectedInvalid）；CommitError含IdOccupied/ConfirmationMismatch/OutcomeUnknown |
+| 冻结编码 | [proposals/CommitCodec.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/CommitCodec.kt) | 冻结文档`{"formatVersion":1,"displayedDigest":…,"idAssignments":{localRef→稳定id按key排序},"operations":[…localRef替换后…]}`；canonical显式生成、SHA-256摘要、≤65536字节；decode重建全部封闭不变量（身份/版本/金额/时间自洽/配对预算/更新唯一/LINK与UNLINK互斥且各≤1/idAssignments与CREATE集合严格双射/key序规范）并要求重编码逐字节相等，否则RecoveryRequired |
+| Applied回执 | [proposals/CommitResult.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/CommitResult.kt) | `{"businessRevision":N,"outcomes":[每操作id+终版或count]}`规范编码；双执行/重开/inspect重读同字节，损坏RecoveryRequired |
+| 服务契约 | [proposals/CommitService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/CommitService.kt) | ConfirmationCommand(proposalId+displayedRevision+displayedPayloadDigest+dataGeneration)；confirm/execute/inspect；CommitOutcome携带fresh标志（仅首次创建为true，返回旧Pending不自动执行B）；CommitCheckpoint八个故障点 |
+| Room实现 | [storage/RoomCommitService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomCommitService.kt) | Transaction A/B/只读核查；稳定ID经可注入idFactory分配；A/B提交后回执边界映射CommitReceiptLossException（OutcomeUnknown） |
+| DAO增量 | [storage/ProposalDao.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/ProposalDao.kt) +18行 | `operation(id)`按身份读取、`lockProposal`CAS（EDITABLE+revision+slot→LOCKED保留slot）、`settleProposal`CAS（LOCKED→APPLIED/REJECTED_*并释放slot）；业务写入全部复用RecordDao既有方法 |
+| 测试 | host [CommitCodecTest](../../../../record2/app/src/test/kotlin/com/paherdin/record2/proposals/CommitCodecTest.kt) 7项；设备 [CommitContractFixture](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/CommitContractFixture.kt)、[CommitContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/CommitContractTest.kt) 14项、[CommitProcessContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/CommitProcessContractTest.kt)（#prepare/#verify×4场景）；进程runner [tools/verify-c1-process.py](../../../../record2/tools/verify-c1-process.py) | 独立oracle复用SchemaDiskObserver（独立只读连接、全14表、ORDER BY 1,2） |
+
+Transaction A按B0 §5.2顺序：先按proposalId查唯一Operation（不以Proposal当前状态或存在为前提），既有Operation同confirmedRevision+冻结文档内displayedDigest幂等返回原operationId与当前状态/结果（跨代际仅核查、不触发B、不重置不改动），异revision或异摘要一律ConfirmationMismatch；仅无既有Operation时走创建分支（Proposal行完整性fail-closed→EDITABLE+slot→payload字节/摘要复算→Session存在→revision/摘要与命令一致→Proposal行与命令的dataGeneration均等于当前代际），分配稳定ID、冻结、插入Pending并将Proposal CAS为LOCKED（保留活跃slot）；commit_operation.proposalId唯一索引拦截并发双击，约束异常先回滚再按身份重核，不另造身份。A不改业务表、不消费原生草稿。
+
+Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态一致性校验（Pending⇔finishedAt/resultJson/rejectionCode三null；Applied⇒result+finishedAt+无rejection；Rejected*⇒rejectionCode+finishedAt+无result），Applied/Rejected幂等返回原结果/原拒绝；Pending先核createdGeneration等于当前代际（否则GenerationMismatch零写入，跨代际旧Pending永远无执行资格）；单一事务内对预写基线全量校验——本payload声明的创建对象先以version 1虚拟行入基线，使同payload内LINK/UNLINK端点与既有事实在同一快照上校验——确定性拒绝（NotFound/NotVisible/VersionConflict/IdOccupied→RejectedConflict；Validation→RejectedInvalid，含冻结时刻与既有Note occurredAt不一致，Note发生时刻原生不可变）在任何业务写前写终态并settle仍为LOCKED的Proposal；通过后按冻结顺序写入全部事实/关系/版本（关系有效配对语义沿用B3：已链接的add与未链接的remove为no-op，每有效配对touch对应Note、每个受影响Transaction每操作touch一次），任一实际变化则businessRevision恰一次CAS+1，最后写Applied/result/finishedAt并settleProposal为APPLIED。写后异常/取消越过事务边界抛出整体回滚到Pending，不吞异常。无变化提交保持Applied且不递增任何版本。同代际进程中断的Pending由用户主动同ID重试（execute即该受控入口）；两个执行者由Room写事务串行化，后到者读Applied返回相同结果字节。
+
+### 28.2 冻结合同要点与金标准
+
+- 金标准冻结字节：C0金标准展示payload（711字节、摘要`ac2bbda5…8455fa3`）以固定idFactory（`10000000-0000-4000-8000-000000000001/0002`）冻结为972字节，摘要`de681c0462957c1f2a49033f39562a5b73208268428c80d42e71ba6a0a67867a`。摘要由host外`sha256sum`独立算出钉死；设备测试再用测试内独立`MessageDigest`复核落盘值。
+- host钉死：freeze逐字节=972字节金标准、decode往返、分配图双射、悬空/错型localRef消费（手工操作列表绕过normalize直达freeze自身校验）、15种损坏文档与stale端点版本的decode区分（后者可读且字节稳定——它属于B的执行期冲突，不是payload损坏）、Applied回执编解码封闭性。
+- 测试时钟/fixture沿用C0：UTC `2026-10-23T12:00:00Z`、发生时刻`2026-10-23T12:30 Asia/Shanghai`（epoch 1792729800000、offset 28800）、既有交易version=3（含餐饮分类）、可见Note version=7、软删除Note、既有关系、EDITING草稿、两会话两Run。
+
+### 28.3 运行合同
+
+- **host：** `CommitCodecTest` 7项，选择器`com.paherdin.record2.proposals.CommitCodecTest`。
+- **设备：** `com.paherdin.record2.storage.CommitContractTest` 14项；进程矩阵`CommitProcessContractTest#prepare/#verifyAfterHostRestart`×4场景由`tools/verify-c1-process.py`驱动（gate状态键`c1_ready`）。专用AVD `record2-schema-api34`（serial `emulator-5580`），运行前核boot/API34/包归属/无活动instrumentation；仅安装/更新`com.paherdin.record2.debug`与`.debug.test`并回拉base.apk核对摘要；每测试私有`c1-contract-<UUID>.db`、进程场景`c1-process-<scenario>-<UUID>.db`，`@Before`断言路径不存在；verify阶段先断言`path.isFile`不创建。
+- **故障点：** 8个checkpoint（DISPLAY_VERIFIED/OPERATION_WRITTEN/A_COMMITTED/PAYLOAD_VERIFIED/TARGETS_VALIDATED/BUSINESS_WRITTEN(带序号)/APPLIED_WRITTEN/B_COMMITTED）注入真实`SQLiteFullException`、真实协程取消（门闩+cancel）与回执通道异常；进程强停场景A_MID（A事务中）/A_AFTER（A提交后回执前）/B_MID（首个业务写后）/B_AFTER（B提交后回执前），host `am force-stop`（pid消失）→重启MainActivity→新pid前台→带baseline参数verify。进程runner与B2/B3不同点如实登记：C1的verify本身执行跨进程恢复（重开、身份重核、同ID重试），故每场景一次verify；不复制B3的两次verify协议。
+- **构建命令：** 工作树内`JAVA_HOME=C:/Users/p3148/tools/jdk/jdk-17.0.20+8`、`ANDROID_HOME=C:/Users/p3148/AppData/Local/Android/Sdk`，wrapper显式`-p D:/record/.worktrees/c1-confirmation-commit/record2`运行`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`；未写`local.properties`或任何环境文件。
+
+### 28.4 实际结果
+
+- **构建/host/lint PASS：** 最终任务组BUILD SUCCESSFUL（首轮1m19s、迭代轮27–30s，129项任务）；host JUnit Debug与Release各75项（本批新增CommitCodecTest 7项），fail/error/skip均0。lint 0错误/7警告，全部落在既有基线文件，无一指向C1源码；未降低或关闭门禁。
+- **Schema v1未变：** `app/schemas/…/1.json`与main规范化行尾后逐字节相同，SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`（工作树CRLF差异同C0记录，非内容变化）。本批无实体/表/索引/外键变更。
+- **设备合同测试三轮，最终`OK (14 tests)`：** 首轮14项4失败：3项为测试脚手架缺陷（跨代际用例把新提案prepare放在换代际之后被C0正确拒绝、冲突用例复用同一Run创建身份触发CreationRequestConflict、无变化用例遗漏既有交易的餐饮分类导致“无变化”实际改写了分类），1项为断言快照过滤不对称。第二轮2失败暴露1个**真实产品缺陷**：新ID占用检查（IdOccupied）位于plan的种子循环内、未被拒绝转换覆盖，会把应写RejectedConflict的确定性拒绝直接抛成异常；已把freeIdentity移入受转换保护的校验循环，同轮另修A快照过滤。第三轮与最终轮（最终APK）均`OK (14 tests)`，14个结束状态0、无skip。失败事实与修正全部保留于`build/c1/instrument-contract-initial/second.txt`。
+- **进程矩阵4/4 PASS：** 首轮A_MID失败（verify恢复confirm未注入确定身份，属测试缺陷）与B_AFTER失败（期望快照未按观察器ORDER BY 1,2排序，属测试缺陷）如实保留；修正后A_MID/A_AFTER/B_MID/B_AFTER全PASS（`build/c1/process-e296d9f5…/`）。覆盖断言：A事务中被杀→磁盘与写前基线完全一致、无operation、EDITABLE保留、重启后新确认全链Applied一次；A提交后被杀→Pending+LOCKED持久、重复确认幂等返回原身份、执行Applied且operation恰一行；B首个业务写后被杀→全量回滚零业务、同ID重试Applied恰好一次、再试幂等字节不变；B提交后被杀→完整事实集+Applied回执持久（独立快照逐字段等于期望）、re-execute与inspect同结果、快照零变化。kill链路：gate→`am force-stop`→pid空→重启MainActivity→新pid+前台（B3同款检查）。
+- **共享回归 PASS：** `RecordSchemaContractTest,ProposalServiceContractTest,NoteServiceContractTest`共41项`OK (41 tests)`（Schema 10+C0 Proposal 18+B2 Note 13），无失败/skip。
+- **范围保护：** 设备库清单前后逐前缀核对——新增仅`c1-contract-<UUID>.db` 56份（14测试×4轮，每测试一份私有库）与`c1-process-*` 8份（两轮矩阵×4场景）；b2-contract +13、c0-contract +18、schema-contract +10全部来自本批授权共享回归自身新建库；b1/b3/b4/e0/e1各前缀计数不变、未读改；普通`record2.db`计数0。未wipe/uninstall/清包/删文件/停AVD（本批结束时emulator-5580仍在运行，留负责人决定）。B4批次曾在此AVD运行（存在b4-*库），本批每步操作前核验无活动instrumentation、安装前后回拉摘要一致，未与其并发。
+- **最终APK：** debug`58d05c20…`、release-unsigned`d45b7fb0…`、androidTest`d9a28d5b…`；设备安装的`.debug`/`.debug.test`base.apk摘要与构建产物逐项一致（`build/c1/apk-hashes.txt`）。
+
+### 28.5 未覆盖项与验收边界
+
+设备证据实际覆盖的断言：A冻结字节=972字节金标准且落盘digest经测试内独立MessageDigest复核、LOCKED保留slot、A零业务/零草稿写入；Pending/Applied/RejectedConflict/RejectedInvalid四态重复确认均返回原operationId/状态/结果，异revision或异摘要一律ConfirmationMismatch且零写入（RejectedInvalid为直接SQL合成——合法冻结payload按构造无法确定性Invalid，如实登记不以合成冒充自然路径）；确认与修订双连接竞争恰一胜者（确认胜→败方ProposalFrozen且payload不被败者内容覆盖；修订胜→确认ConfirmationMismatch、当前revision仍可确认）；双击恰一operation恰一fresh；六类操作组合提交all-or-none且独立连接逐字段核对（新交易v2=创建+link touch、既有交易v3→更新→unlink touch v5、Note同理、关系增删、businessRevision恰+1、resultJson逐字节、Proposal APPLIED+slot释放），重复执行与重开同结果；VersionConflict/NotVisible/IdOccupied三类确定性冲突零业务修改、Proposal同步REJECTED_*释放slot、rejectionCode持久化、payload逐字节未被解锁或改写；跨代际Pending拒绝执行且状态不变、身份路径跨代际仍可核查、恢复创建代际后同ID重试成功；B各checkpoint注入StorageFull×4与真实协程取消×2整体回滚到Pending、同ID重试恰好一次；A/B回执丢失映射OutcomeUnknown且按持久状态收敛（重复确认/inspect/重执行幂等）；双连接并发执行同operation恰一业务结果、businessRevision+1恰一次；父链删除（Proposal/Run/Session直接SQL，E2拥有真实入口）后身份确认/执行/核查均自包含可用；非法命令形状/未知提案/异display/退役代际/损坏Proposal与Operation全fail-closed零写入；无变化提交保持版本与businessRevision不变仍Applied；inspect只读、未知身份null、畸形身份Validation。
+
+明确不属于本批、仍归原任务：F2的原生确认展示/重复确认交互/四结果呈现与最终文案；E2的Session删除真实入口与Run取消/删除矩阵（本批仅直接SQL合成删除以证明Operation自包含）；D1的Record Tools与Agent行为；G0/G1的ZIP/代际恢复真实路径（本批仅直接SQL换代际以证明资格门禁）；B4的时间线汇总展示。TP-03～08已在服务层以真实Room/真实强停证明（TP-03=A/B各边界强停、TP-04=双执行、TP-05=旧提案B时端点版本CAS拒绝、TP-06=修订后确认锁定与B冲突保留旧事实、TP-07=B内异常/取消整体回滚、TP-08=跨代际不自动重复提交），但TP最终PASS仍按门禁归G2联合验收，不以本批抵扣F2验收。测试中RejectedInvalid、跨代际换代与父链删除均为合成写入，不声称恢复或删除产品路径已就绪。
+
+关于“RejectedInvalid自然路径”：封闭六类操作的规范化+冻结保证payload自身确定合法，B的Invalid类拒绝仅剩“UpdateNote冻结时刻与既有occurredAt不一致”一类（Note发生时刻原生不可变）；该映射已在实现与host测试锚定，无变化用例证明时刻一致路径，单列自然触发用例按未覆盖如实登记。
+
+### 28.6 提交、推送与PR
+
+负责人“完成issue c1”按C0/E1先例覆盖本分支必要Git提交、分支推送与创建PR；不关闭issue #9、不合并PR、不动B4分支或其工作树。本节为首版记录；PR审阅修复（如有）将在后续小节追加。
+
+### 28.7 2026-10-24 第一轮PR #27审阅修复（REQUEST CHANGES）
+
+负责人对PR #27（提交`5ae29f4`）给出REQUEST CHANGES：1项P1（C1首次确认绕过C0创建身份绑定校验）、2项P2（Applied回执未与冻结操作交叉校验；强停矩阵未覆盖逐业务写入边界）。§28.1–28.6首轮交付事实保留不变；本节记录修复与重验。
+
+- **P1 创建身份绑定（修复）：** `displayed()`在身份规范检查后、状态解析前新增与C0 `view()`一致的不变量：按`originRunId`读取持久Run行（缺失RecoveryRequired），其`proposalCreationRequestId`必须等于Proposal行的`creationRequestId`，否则RecoveryRequired。格式合法但被改绑的提案行在C0读取与本C1确认两条路径同样fail-closed。新增设备测试`mismatchedCreationIdentityFailsClosedBeforeAnyFreeze`：SQL改绑后confirm返回RecoveryRequired、全14表快照零变化、不创建Operation、Proposal保持EDITABLE+slot，C0 `proposal()`同报RecoveryRequired。
+- **P2 Applied回执对应关系（修复）：** `CommitResultCodec`新增`validateAgainst(result, operations)`——回执与冻结操作逐位置校验：数量相等、类型序列一致、CREATE/UPDATE稳定id相等（CREATE版本恒1、UPDATE版本为expectedVersion或+1）、LINK/UNLINK计数不超过冻结配对数；`frozen()`的Applied分支在读取resultJson后执行该校验。Rejected分支新增拒绝码组合校验：rejectionCode必须是已知CommitError名且`rejectionStatusOf`映射与持久状态一致（如RejectedConflict+Validation、未知码名均为RecoveryRequired）。不校验当前业务表与历史结果一致（Applied后允许合法再编辑）。新增设备测试`appliedReceiptsThatDoNotCorrespondToTheFrozenOperationsFailClosed`（数量不足/身份互换/计数超限的合法回执与三类拒绝码组合矛盾在confirm/execute/inspect三路径均RecoveryRequired且零写入，恢复后原Applied仍可读）与host测试`appliedReceiptsMustCorrespondOneToOneWithTheFrozenOperations`（合法对应通过、六类不对应拒绝、UPDATE双版本语义）。
+- **P2 逐业务写入强停矩阵（补全）：** 组合载荷（六类操作）的B共11次业务写入：insertTransaction、insertNote、editTransaction、updateNoteBody、LINK的touchNote/insertLink/touchTransaction、UNLINK的touchNote/removeLink/touchTransaction、advanceBusinessRevision。新增场景`B_W_1`～`B_W_11`按`BUSINESS_WRITTEN`的写入序号逐个强停，断言与B_MID同构：未提交→磁盘与确认后基线完全一致、operation仍Pending；重启后用户同ID重试Applied恰好一次，六类事实/版本/关系/resultJson由独立观察器逐字段核对（`assertComboAppliedFacts`），再试幂等快照零变化。
+- **重验（最终审阅APK）：** debug`083cb84f…`、release-unsigned`9d8d2d02…`、androidTest`834e2893…`，安装后回拉一致（build/c1/apk-hashes-review.txt）。构建任务组PASS；host Debug/Release各76项（新增1项）fail/error/skip=0。设备`CommitContractTest` 16/16 `OK (16 tests)`（14项既有+2项新增）。进程矩阵15/15 PASS：A_MID/A_AFTER/B_MID/B_AFTER+B_W_1..B_W_11（build/c1/process-c6c2b39a…/）。共享回归`OK (41 tests)`。
+- **共享AVD观察：** 两轮C1会话之间B4批次在同一AVD执行了其设备验证（b4-contract +60、b4-perf +6及其共享回归造成的b1/b2/b3/c0/e0/e1/schema增长）；本批每个设备步骤前都执行安装身份校验（安装摘要==本批构建产物）且全部通过，无并发instrumentation、未读改任何b4-*或其他批次库。本批新增c1-contract 72份（首轮56+本轮16）与c1-process 23份（首轮8+本轮15），record2.db仍为0。
+
 ## 29. B4：连续时间线、真实检索与确定性汇总（issue #7）
 
 2026-10-24负责人要求“完成issueb4”，对应[GitHub #7](https://github.com/paher-din/record/issues/7)。本批按§4 B4合同、[B0 §4.2](../../../architecture/record2-b0-data-model-design.md#42-查询分页与汇总)、Spec §3/§5.1及B-AC5/CTX-02/CTX-09执行正式时间线/检索/详情读取/确定性汇总服务及测试；沿用B1–B3与Schema v1，不新增ADR、Spec、Schema或索引，不注册`aggregate_finances`工具，不接F1页面、AI、ZIP或备份。执行于独立工作树`D:/record/.worktrees/b4-timeline-search`（分支`codex/b4-timeline-search`，基线`7a3913d`）；主工作树开始时无本批改动并保持只读。main工作树当前有未提交的F0 §28，故本批使用§29，不重编号其他批次；并行worktree合并时按实际占用处理并保留双方记录。未操作真实用户数据、Provider、网络、凭据或发布。
@@ -1247,3 +1314,30 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 - **测试对应commit：** `6973d57c859a687e52f04430dd64b1d7ae69b577`（仅该commit源码/测试；此后仅Plan回执）。
 - **结果：** [build-review3](../../../../record2/build/b4/build-review3.log) 50秒、129项中24执行/105 up-to-date；host Debug/Release各90项（新增2项连续意图交错），fail/error/skip均0；[B4 Room合同](../../../../record2/build/b4/instrumentation-contract-review3.txt) 10/10、4.936秒；[性能](../../../../record2/build/b4/instrumentation-perf-review3.txt) 2/2、29.851秒（典型首屏22ms/单页max17ms/检索12ms/汇总80ms；高量65/25/26/524ms，均低于批准阈值）；[共享回归](../../../../record2/build/b4/instrumentation-regression-review3.txt) 104/104、48.375秒。最终APK SHA-256：debug`4a3be6c742739caeebbca969f943ab9857caa4565eacdea4875b8136171e4c4a`、release-unsigned`e8895a26d12ecb16beb6a74795e81ff26bd83fd582207526c36c7e1330ab43f0`、androidTest`e91228273e66d4a9db380c0c0b2a644c871c6211b5f75ed7e3cc5146f6a91bbb`；安装摘要与构建一致；lint 0错误/7警告；Schema LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
 - **未覆盖项不变：** 仍是同一JVM内单个`TimelineBrowser`的确定性交错，不覆盖多进程、Compose主线程调度或真实数据库写并发；cursor HMAC进程绑定；D1工具/F1页面/G2真机与最终AC未变。未合并PR、未关闭issue #7。
+
+### 28.8 2026-10-24 第二轮PR #27审阅修复与main集成
+
+负责人第二轮审阅结论REQUEST CHANGES：上轮1项P1+2项P2全部通过；新增1项P1（提交成功后的协程取消在`withContext`返回边界存在结果丢失窗口——已提交事务可能被误表现为普通取消）与主线冲突（main已推进至`a3f46e3`含B4 §29）。§28.1–28.7事实保留不变。
+
+- **P1 返回边界取消竞态（修复）：** `confirm`/`execute`现捕获io边界抛出的`CancellationException`并按持久身份重分类：终态operation（A的operation存在、B的operation为Applied/Rejected）抛`CommitReceiptLossException`（已提交、收据丢失）；状态未变（A无operation、B仍Pending）原样重抛普通取消；数据库不可读抛`OutcomeUnknown`。事务体保持完全可取消，未把A/B包进NonCancellable，回滚语义不变。实现要点：重分类读取用`runBlocking(Dispatchers.IO)`同步完成——kotlinx的prompt cancellation会把完成回跳进已取消调用者帧的结果丢弃（`resumeCancellableWith`按已取消Job替换为取消），`withContext(NonCancellable)`只保护块执行、不能把返回值带回已取消帧（E1 §27.5的NonCancellable模式正因只做副作用才成立），因此任何挂起式读取都会再次被吞；同步返回的runBlocking在任意线程（含主线程恢复路径）安全完成单条索引读。
+- **针对性测试（新增2项，与审阅要求一一对应）：** `committedConfirmationCancelledAtTheReturnBoundaryIsReceiptLoss`与`committedExecutionCancelledAtTheReturnBoundaryIsReceiptLoss`用自定义`HeldDispatcher`把withContext完成调度停在队列中，等待磁盘出现已提交事实后在恢复前取消，由后台drainer恢复——确定性触发返回调度竞争。断言：协程内调用点捕获的是`CommitReceiptLossException`（cause为原取消）而非普通取消（被取消Job对外部await者只呈现取消，这是协程语义；调用点catch才是调用方可见的分类），A场景持久态为Pending+LOCKED且同命令重复确认幂等返回原身份，B场景事实恰好一次且重执行字节不变。诊断过程中两次中间失败（外部await观察口径错误、挂起式reconcile被再次吞掉）已定位为上述协程语义并按此收敛，失败事实保留在build/c1/。
+- **同步main：** 普通merge `origin/main`=`a3f46e3`（含B4 §29及Timeline交付）；冲突仅plan.md一处，按§28在前、§29在后保留双方全部记录；Kotlin无冲突（本批未触碰RecordDao/Timeline文件）。
+- **集成后全量重验（最终APK debug`1375e328…`、release-unsigned`b03ba40c…`、androidTest`6ec51034…`，安装回拉一致）：** 构建任务组PASS（1m54s，129项中23执行）；host Debug/Release各98项（本批76+B4集成22）fail/error/skip=0；设备`CommitContractTest` 18/18 `OK (18 tests)`（16项既有+2项新增竞态）；进程矩阵15/15 PASS（A_MID/A_AFTER/B_MID/B_AFTER+B_W_1..11，build/c1/process-338b3620…/）；扩展共享回归（Schema 10+C0 Proposal 18+B2 Note 13+B4 Timeline 10）`OK (51 tests)`。
+- **范围保护：** 设备库新增仅c1-contract（累计125）与c1-process（累计39）文件；b4-contract的+10为本轮共享回归自建；record2.db仍为0。未wipe/uninstall/清包/删文件；AVD仍在运行留负责人决定。
+
+### 28.9 2026-10-24 第三轮PR #27审阅修复（取消恢复的线程与身份语义）
+
+负责人第三轮审阅：前两轮4项全部通过、main集成冲突已解决（GitHub mergeable=clean）；新增1项P1（`runBlocking`恢复读取会同步阻塞调用线程——若取消恢复发生在主线程协程即卡顿/ANR风险）与1项P2（确认取消恢复只看"operation存在"，未核对与本次命令的revision/摘要匹配，异display确认的取消会被误报为本次确认已提交）。§28.1–28.8事实保留不变。
+
+- **P1 纯挂起恢复（修复）：** 取消恢复改为`withContext(NonCancellable) { withContext(Dispatchers.IO) { 查询 } }`嵌套形态——外层不切换dispatcher（unispatched/ATOMIC完成，值不会被已取消原Job的cancellable resume丢弃），内层IO承载阻塞查询且不占用调用线程。上一轮单层`withContext(NonCancellable + Dispatchers.IO)`失败与`runBlocking`可用但阻塞的机理由此统一解释：单层形态在外层发生dispatcher切换、完成回跳走`resumeCancellableWith`被已取消Job替换为取消；`runBlocking`同步返回绕过了该机制但以阻塞调用线程为代价；嵌套形态两者兼得。Transaction A/B本体不变、仍完全可取消。
+- **P2 恢复身份匹配（修复）：** `reconcileConfirmation`现按与`verify`相同的口径核对：读`operationForProposal`行并执行完整`frozen()`完整性校验（损坏→RecoveryRequired原样上抛），`confirmedRevision == command.displayedRevision`且冻结文档`displayedDigest == command.displayedPayloadDigest`才判"本次已提交"（回执丢失）；不匹配判`ConfirmationMismatch`——即该命令在无取消时本应得到的确定性答复；行不存在仍判普通取消；SQLite不可读判OutcomeUnknown。`reconcileExecution`同样换为嵌套挂起形态（身份即operationId，无display匹配问题）。
+- **新增回归：** `mismatchedConfirmationCancelledAtTheReturnBoundaryStaysAMismatch`——既有revision1/摘要A的operation后，分别以revision2与异摘要命令在返回边界取消，调用点分类均为`ConfirmationMismatch`而非回执丢失，快照零变化。既有两处已提交竞态测试不变并通过，证明嵌套形态对COMMITTED/ROLLED_BACK两分支保持§28.8语义。
+- **重验（最终APK debug`eb43f6d0…`、release-unsigned`1b7475ad…`、androidTest`51f2ae93…`，安装回拉一致，build/c1/apk-hashes-round3.txt）：** 构建任务组PASS；host Debug/Release各98项fail/error/skip=0；设备`CommitContractTest` 19/19 `OK (19 tests)`（18项既有+1项新增）；进程矩阵15/15 PASS（build/c1/process-d3c7ba1a…/）；扩展共享回归（Schema+C0+B2 Note+B4 Timeline）`OK (51 tests)`。
+- **未变边界：** Schema v1、事务框架、强停矩阵范围均未改动；主线程响应性由纯挂起实现保证，未新增专项UI响应测试（如实登记，非本批验收面）。
+
+### 28.10 2026-10-24 第四轮审阅APPROVE与合并
+
+负责人第四轮审阅结论：**APPROVE，建议按HEAD`2606c17`合并**。复查确认第三轮P1（嵌套`withContext(NonCancellable)`+内层IO的纯挂起恢复，不再阻塞调用线程、结果不再被已取消Job丢弃）与P2（`reconcileConfirmation`的`frozen()`完整性校验+confirmedRevision/displayedDigest匹配，异display取消判ConfirmationMismatch）均通过，Transaction A/B主体未扩大不可取消范围；GitHub `mergeable_state=clean`；未发现新增阻断问题。四轮审阅发现的具体缺陷均已修复并有针对性测试覆盖。
+
+- **下游边界（审阅确认）：** C1作为独立模块收口；F2仍需原生确认界面与未知结果提示，E2负责删除/取消真实联调，G0/G1负责备份恢复与代际处理——均为既定任务边界，不阻C1。
+- **执行：** 本节记录批准后，PR #27按仓库merge-commit惯例合并进main；合并后的集成为F2与后续联合验收的基线。issue #9关闭与C0/E1先例一致归负责人。
