@@ -3,8 +3,8 @@
   "date": "2026-10-24",
   "scope": "Browser synthetic review only, not Android or business acceptance",
   "acceptanceFollowup": {
-    "status": "design accepted; see Plan 28.2",
-    "changesAfterBrowserRun": "Only review badge text and token status metadata changed; no layout, interaction or color values changed.",
+    "status": "design accepted; see Plan 30.2",
+    "changesAfterBrowserRun": "Only review badge text, token status metadata and owning Plan references (F0 moved to section 30 during main integration) changed; no layout, interaction or color values changed.",
     "verification": "Static verification rerun and source hashes refreshed. Existing browser results retained without an unnecessary full rerun."
   },
   "command": "npx --yes --package @playwright/cli playwright-cli -s=record-f0-c3 run-code --filename docs/design/f0-c3/verify-preview.js",

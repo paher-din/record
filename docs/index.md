@@ -14,9 +14,10 @@ Read [root rules](../AGENTS.md), then the [single R2 Engineering Policy](enginee
 | B1 seeds / finance services / native draft persistence | [V1 Plan §21](specs/record2/v1/plan.md#21-b1种子基线与收支草稿服务实施), including approved seed content, execution boundaries and actual verification |
 | B2 Note autosave / CAS / soft deletion | [V1 Plan §22](specs/record2/v1/plan.md#22-b2note自动保存cas与软删除issue-5), including issue #5 scope, fault selectors and device coordination |
 | B3 bidirectional links / hidden relations / versions | [V1 Plan §26](specs/record2/v1/plan.md#26-b3双向关联隐藏关系与版本并发issue-6), including issue #6 scope, selectors, process and failure evidence |
+| B4 continuous timeline / search / deterministic aggregation | [V1 Plan §29](specs/record2/v1/plan.md#29-b4连续时间线真实检索与确定性汇总issue-7), including issue #7 scope, cursor/order decisions, selectors, performance proposal and evidence |
 | Provider authorization / BYOK / Keystore | [V1 Plan §23](specs/record2/v1/plan.md#23-e0-授权凭据与发送接缝), including the controlled receiver identity, initialization ownership, authorization state matrix, actual Keystore/Room/device evidence and remaining D0/D1/F2 responsibilities |
 | Product and acceptance provenance/C1 identity | [Self-contained decision baseline](product/record2-v1-decision-baseline.md) |
-| UI | Spec §5.4 / Plan F0–F2；[F0 授权/审阅状态 §28](specs/record2/v1/plan.md#28-f0设计指导与候选审阅issue-15)、[F0-C3 六组完整审阅包](design/record2-f0-c3-review.md)、[执行契约差异](design/record2-f0-c3-contract-delta.md)，以负责人对应组批准为准；旧 C1/C2 保留历史 |
+| UI | Spec §5.4 / Plan F0–F2；[F0 授权/审阅状态 §30](specs/record2/v1/plan.md#30-f0设计指导与候选审阅issue-15)、[F0-C3 六组完整审阅包](design/record2-f0-c3-review.md)、[执行契约差异](design/record2-f0-c3-contract-delta.md)，以负责人对应组批准为准；旧 C1/C2 保留历史 |
 | Collaboration, task/risk levels, permissions, verification | Engineering Policy; per-task commands/results in the relevant Plan/Verification |
 
 Approval belongs to Spec metadata/Plan approval record, not a duplicated router table. No product task or Spec is activated by adopting governance. Multiple independent Majors are coordinated by write/contract/resource ownership; the router's current focus is not a global lock.

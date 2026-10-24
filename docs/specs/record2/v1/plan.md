@@ -3,7 +3,7 @@
 - **Status:** `in-progress`；revision `R1`；2026-10-24（Asia/Shanghai）。**Execution:** 目录重构/A1及G3本批隔离见§17，B0审查见§19，Schema v1交付见§20，B1业务内核/接受见§21，B2实施与验证见§22，E0非视觉授权/凭据接缝见§23，D0 Koog/DeepSeek协议接缝及2026-10-24两轮复审修复见§24；本批未启动其他产品任务。
 - **Spec approved / Plan approved:** 均于2026-10-23获负责人正式批准，原话及范围见§13；**Schema / migration consent:** 仅§20初始Schema获批，B1/B2/E0/D0沿用Schema v1；迁移/ZIP恢复未授权；**Active spec:** R2 V1，B1已收口，B2笔记内核、E0非视觉授权/凭据接缝及D0协议接缝（含复审修复）已完成实现与验证，非完整M1/V1。
 - **行为与验收来源：** [spec.md](spec.md)与[自包含来源基线](../../../product/record2-v1-decision-baseline.md)；Spec E01～E12保留调查历史和外部C1核实边界。本文只拥有任务、依赖、范围、测试接缝和门禁，不形成另一份行为Spec。
-- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21，B2服务/合成库与设备故障测试见§22，E0非视觉授权/Keystore及专用AVD合成测试见§23，D0合成协议验证见§24；F0设计授权与候选审阅见§28，其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
+- **产品执行授权：** G3/A0及已完成的目录重构/A1见§15–17，B0设计见§19，初始Schema见§20，B1服务/构建/专用设备合成库及强停验证见§21，B2服务/合成库与设备故障测试见§22，E0非视觉授权/Keystore及专用AVD合成测试见§23，D0合成协议验证见§24；F0设计授权与候选审阅见§30，其他代码/设备/API/数据库/发布仍按具体授权执行。§11–12保留草案编制历史，产品批准见§13，治理流程修订见§14；文档纳管和治理生效不授权额外产品任务。
 - **设计权限：** `DESIGN-OWNER：待负责人指导与确认`。负责人提供方向 → 候选方案 → 负责人审查调整 → 明确批准 → Codex 实现；未经批准不冻结视觉/交互，不以默认 Material 页面通过最终验收。
 
 ## 1. 工程判断与实施入口
@@ -282,7 +282,7 @@ R0查阅的公开依据：[Koog quickstart](https://docs.koog.ai/quickstart/)、
 
 ### F0 — 设计指导、候选与明确批准（贯穿里程碑）
 
-- **目标/依赖：** G-DESIGN后可与A0/B0并行；负责人可立即指导总体视觉、布局、图标资源、角色/面板、交互动画，不等工程结构结论。只在负责人指导下组织候选，不把线框/Material/旧主题/C1页当批准；原草案编制轮不产视觉稿/图标/原型，后续具体设计授权及交付见§28。
+- **目标/依赖：** G-DESIGN后可与A0/B0并行；负责人可立即指导总体视觉、布局、图标资源、角色/面板、交互动画，不等工程结构结论。只在负责人指导下组织候选，不把线框/Material/旧主题/C1页当批准；原草案编制轮不产视觉稿/图标/原型，后续具体设计授权及交付见§30。
 - **范围：** 后续经授权的设计材料/确认记录/资源；任何最终布局、组件外观、色彩/字体/间距、图标插画、角色表情、动效、反馈、未确认交互均由负责人决定。
 - **验收/测试：** 每组记录设计方向→候选→调整→明确批准的版本/范围/日期，覆盖空/加载/错误/冲突/失败/恢复和可访问性；技术可读性检查不能取代负责人设计接受。
 - **风险/回退：** 先写默认 UI 容易把临时方案冻结；无批准就停该视觉实现/最终 UI 验收，继续非视觉服务/状态/导航合同测试，不减功能。变更按负责人反馈调整，不删用户素材。
@@ -1185,24 +1185,181 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 - **制品/证据：** debug`5e95ec9c…`、release-unsigned`766dcb5e…`、androidTest`eb6535fd…`；设备安装的`.debug`/`.debug.test`摘要与构建产物一致。回执`build/e1/instrument-integrated-session.txt`、`instrument-integrated-b3-regression.txt`、`instrument-integrated-shared.txt`、`real-integrated-prepare.txt`、`real-integrated-verify.txt`、`e1-contract-real-integrated.db`、`logcat-integrated-real.txt`；原始文件被Git忽略。
 - **边界不变：** E2/D1/F2/G0/G1未启动；PR #24待再次审阅，未合并main、未关闭issue #12。
 
-## 28. F0：设计指导与候选审阅（issue #15）
+## 28. C1 / issue #9：用户确认冻结、Transaction A/B 与未知结果恢复
+
+2026-10-24负责人要求“完成issue c1”，对应[GitHub #9](https://github.com/paher-din/record/issues/9)；前置C0 #8、B1 #4、B2 #5、B3 #6均已关闭。本批按§5 C1任务合同与G-CODE执行正式确认/提交服务与恢复协调，依据[B0 §5.2/§5.3](../../../architecture/record2-b0-data-model-design.md#52-transaction-a)；不新建Spec/ADR、不修改Schema v1物理结构、不提供Agent commit工具、不把LLM放进事务。B4的PR #26已占§29并留§28空闲，本批取§28。
+
+执行于独立工作树`D:/record/.worktrees/c1-confirmation-commit`（分支`codex/c1-confirmation-commit`，基于main `7a3913d`）。主工作树及B4工作树的进行中改动原样保留；本批全程未触碰`RecordDao.kt`（B4正在修改的共享文件），DAO增量全部落在C0已建立先例的`ProposalDao.kt`。
+
+### 28.1 实现交付
+
+| 对象 | 本批实际写入 | 语义 |
+|---|---|---|
+| 冻结模型 | [proposals/CommitOperation.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/CommitOperation.kt) | FrozenOperation六类封闭操作（CREATE携带确认时分配的稳定id、pair端点为真实id+基线版本）；CommitStatus四态持久名（Pending/Applied/RejectedConflict/RejectedInvalid）；CommitError含IdOccupied/ConfirmationMismatch/OutcomeUnknown |
+| 冻结编码 | [proposals/CommitCodec.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/CommitCodec.kt) | 冻结文档`{"formatVersion":1,"displayedDigest":…,"idAssignments":{localRef→稳定id按key排序},"operations":[…localRef替换后…]}`；canonical显式生成、SHA-256摘要、≤65536字节；decode重建全部封闭不变量（身份/版本/金额/时间自洽/配对预算/更新唯一/LINK与UNLINK互斥且各≤1/idAssignments与CREATE集合严格双射/key序规范）并要求重编码逐字节相等，否则RecoveryRequired |
+| Applied回执 | [proposals/CommitResult.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/CommitResult.kt) | `{"businessRevision":N,"outcomes":[每操作id+终版或count]}`规范编码；双执行/重开/inspect重读同字节，损坏RecoveryRequired |
+| 服务契约 | [proposals/CommitService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/proposals/CommitService.kt) | ConfirmationCommand(proposalId+displayedRevision+displayedPayloadDigest+dataGeneration)；confirm/execute/inspect；CommitOutcome携带fresh标志（仅首次创建为true，返回旧Pending不自动执行B）；CommitCheckpoint八个故障点 |
+| Room实现 | [storage/RoomCommitService.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomCommitService.kt) | Transaction A/B/只读核查；稳定ID经可注入idFactory分配；A/B提交后回执边界映射CommitReceiptLossException（OutcomeUnknown） |
+| DAO增量 | [storage/ProposalDao.kt](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/ProposalDao.kt) +18行 | `operation(id)`按身份读取、`lockProposal`CAS（EDITABLE+revision+slot→LOCKED保留slot）、`settleProposal`CAS（LOCKED→APPLIED/REJECTED_*并释放slot）；业务写入全部复用RecordDao既有方法 |
+| 测试 | host [CommitCodecTest](../../../../record2/app/src/test/kotlin/com/paherdin/record2/proposals/CommitCodecTest.kt) 7项；设备 [CommitContractFixture](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/CommitContractFixture.kt)、[CommitContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/CommitContractTest.kt) 14项、[CommitProcessContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/CommitProcessContractTest.kt)（#prepare/#verify×4场景）；进程runner [tools/verify-c1-process.py](../../../../record2/tools/verify-c1-process.py) | 独立oracle复用SchemaDiskObserver（独立只读连接、全14表、ORDER BY 1,2） |
+
+Transaction A按B0 §5.2顺序：先按proposalId查唯一Operation（不以Proposal当前状态或存在为前提），既有Operation同confirmedRevision+冻结文档内displayedDigest幂等返回原operationId与当前状态/结果（跨代际仅核查、不触发B、不重置不改动），异revision或异摘要一律ConfirmationMismatch；仅无既有Operation时走创建分支（Proposal行完整性fail-closed→EDITABLE+slot→payload字节/摘要复算→Session存在→revision/摘要与命令一致→Proposal行与命令的dataGeneration均等于当前代际），分配稳定ID、冻结、插入Pending并将Proposal CAS为LOCKED（保留活跃slot）；commit_operation.proposalId唯一索引拦截并发双击，约束异常先回滚再按身份重核，不另造身份。A不改业务表、不消费原生草稿。
+
+Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态一致性校验（Pending⇔finishedAt/resultJson/rejectionCode三null；Applied⇒result+finishedAt+无rejection；Rejected*⇒rejectionCode+finishedAt+无result），Applied/Rejected幂等返回原结果/原拒绝；Pending先核createdGeneration等于当前代际（否则GenerationMismatch零写入，跨代际旧Pending永远无执行资格）；单一事务内对预写基线全量校验——本payload声明的创建对象先以version 1虚拟行入基线，使同payload内LINK/UNLINK端点与既有事实在同一快照上校验——确定性拒绝（NotFound/NotVisible/VersionConflict/IdOccupied→RejectedConflict；Validation→RejectedInvalid，含冻结时刻与既有Note occurredAt不一致，Note发生时刻原生不可变）在任何业务写前写终态并settle仍为LOCKED的Proposal；通过后按冻结顺序写入全部事实/关系/版本（关系有效配对语义沿用B3：已链接的add与未链接的remove为no-op，每有效配对touch对应Note、每个受影响Transaction每操作touch一次），任一实际变化则businessRevision恰一次CAS+1，最后写Applied/result/finishedAt并settleProposal为APPLIED。写后异常/取消越过事务边界抛出整体回滚到Pending，不吞异常。无变化提交保持Applied且不递增任何版本。同代际进程中断的Pending由用户主动同ID重试（execute即该受控入口）；两个执行者由Room写事务串行化，后到者读Applied返回相同结果字节。
+
+### 28.2 冻结合同要点与金标准
+
+- 金标准冻结字节：C0金标准展示payload（711字节、摘要`ac2bbda5…8455fa3`）以固定idFactory（`10000000-0000-4000-8000-000000000001/0002`）冻结为972字节，摘要`de681c0462957c1f2a49033f39562a5b73208268428c80d42e71ba6a0a67867a`。摘要由host外`sha256sum`独立算出钉死；设备测试再用测试内独立`MessageDigest`复核落盘值。
+- host钉死：freeze逐字节=972字节金标准、decode往返、分配图双射、悬空/错型localRef消费（手工操作列表绕过normalize直达freeze自身校验）、15种损坏文档与stale端点版本的decode区分（后者可读且字节稳定——它属于B的执行期冲突，不是payload损坏）、Applied回执编解码封闭性。
+- 测试时钟/fixture沿用C0：UTC `2026-10-23T12:00:00Z`、发生时刻`2026-10-23T12:30 Asia/Shanghai`（epoch 1792729800000、offset 28800）、既有交易version=3（含餐饮分类）、可见Note version=7、软删除Note、既有关系、EDITING草稿、两会话两Run。
+
+### 28.3 运行合同
+
+- **host：** `CommitCodecTest` 7项，选择器`com.paherdin.record2.proposals.CommitCodecTest`。
+- **设备：** `com.paherdin.record2.storage.CommitContractTest` 14项；进程矩阵`CommitProcessContractTest#prepare/#verifyAfterHostRestart`×4场景由`tools/verify-c1-process.py`驱动（gate状态键`c1_ready`）。专用AVD `record2-schema-api34`（serial `emulator-5580`），运行前核boot/API34/包归属/无活动instrumentation；仅安装/更新`com.paherdin.record2.debug`与`.debug.test`并回拉base.apk核对摘要；每测试私有`c1-contract-<UUID>.db`、进程场景`c1-process-<scenario>-<UUID>.db`，`@Before`断言路径不存在；verify阶段先断言`path.isFile`不创建。
+- **故障点：** 8个checkpoint（DISPLAY_VERIFIED/OPERATION_WRITTEN/A_COMMITTED/PAYLOAD_VERIFIED/TARGETS_VALIDATED/BUSINESS_WRITTEN(带序号)/APPLIED_WRITTEN/B_COMMITTED）注入真实`SQLiteFullException`、真实协程取消（门闩+cancel）与回执通道异常；进程强停场景A_MID（A事务中）/A_AFTER（A提交后回执前）/B_MID（首个业务写后）/B_AFTER（B提交后回执前），host `am force-stop`（pid消失）→重启MainActivity→新pid前台→带baseline参数verify。进程runner与B2/B3不同点如实登记：C1的verify本身执行跨进程恢复（重开、身份重核、同ID重试），故每场景一次verify；不复制B3的两次verify协议。
+- **构建命令：** 工作树内`JAVA_HOME=C:/Users/p3148/tools/jdk/jdk-17.0.20+8`、`ANDROID_HOME=C:/Users/p3148/AppData/Local/Android/Sdk`，wrapper显式`-p D:/record/.worktrees/c1-confirmation-commit/record2`运行`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`；未写`local.properties`或任何环境文件。
+
+### 28.4 实际结果
+
+- **构建/host/lint PASS：** 最终任务组BUILD SUCCESSFUL（首轮1m19s、迭代轮27–30s，129项任务）；host JUnit Debug与Release各75项（本批新增CommitCodecTest 7项），fail/error/skip均0。lint 0错误/7警告，全部落在既有基线文件，无一指向C1源码；未降低或关闭门禁。
+- **Schema v1未变：** `app/schemas/…/1.json`与main规范化行尾后逐字节相同，SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`（工作树CRLF差异同C0记录，非内容变化）。本批无实体/表/索引/外键变更。
+- **设备合同测试三轮，最终`OK (14 tests)`：** 首轮14项4失败：3项为测试脚手架缺陷（跨代际用例把新提案prepare放在换代际之后被C0正确拒绝、冲突用例复用同一Run创建身份触发CreationRequestConflict、无变化用例遗漏既有交易的餐饮分类导致“无变化”实际改写了分类），1项为断言快照过滤不对称。第二轮2失败暴露1个**真实产品缺陷**：新ID占用检查（IdOccupied）位于plan的种子循环内、未被拒绝转换覆盖，会把应写RejectedConflict的确定性拒绝直接抛成异常；已把freeIdentity移入受转换保护的校验循环，同轮另修A快照过滤。第三轮与最终轮（最终APK）均`OK (14 tests)`，14个结束状态0、无skip。失败事实与修正全部保留于`build/c1/instrument-contract-initial/second.txt`。
+- **进程矩阵4/4 PASS：** 首轮A_MID失败（verify恢复confirm未注入确定身份，属测试缺陷）与B_AFTER失败（期望快照未按观察器ORDER BY 1,2排序，属测试缺陷）如实保留；修正后A_MID/A_AFTER/B_MID/B_AFTER全PASS（`build/c1/process-e296d9f5…/`）。覆盖断言：A事务中被杀→磁盘与写前基线完全一致、无operation、EDITABLE保留、重启后新确认全链Applied一次；A提交后被杀→Pending+LOCKED持久、重复确认幂等返回原身份、执行Applied且operation恰一行；B首个业务写后被杀→全量回滚零业务、同ID重试Applied恰好一次、再试幂等字节不变；B提交后被杀→完整事实集+Applied回执持久（独立快照逐字段等于期望）、re-execute与inspect同结果、快照零变化。kill链路：gate→`am force-stop`→pid空→重启MainActivity→新pid+前台（B3同款检查）。
+- **共享回归 PASS：** `RecordSchemaContractTest,ProposalServiceContractTest,NoteServiceContractTest`共41项`OK (41 tests)`（Schema 10+C0 Proposal 18+B2 Note 13），无失败/skip。
+- **范围保护：** 设备库清单前后逐前缀核对——新增仅`c1-contract-<UUID>.db` 56份（14测试×4轮，每测试一份私有库）与`c1-process-*` 8份（两轮矩阵×4场景）；b2-contract +13、c0-contract +18、schema-contract +10全部来自本批授权共享回归自身新建库；b1/b3/b4/e0/e1各前缀计数不变、未读改；普通`record2.db`计数0。未wipe/uninstall/清包/删文件/停AVD（本批结束时emulator-5580仍在运行，留负责人决定）。B4批次曾在此AVD运行（存在b4-*库），本批每步操作前核验无活动instrumentation、安装前后回拉摘要一致，未与其并发。
+- **最终APK：** debug`58d05c20…`、release-unsigned`d45b7fb0…`、androidTest`d9a28d5b…`；设备安装的`.debug`/`.debug.test`base.apk摘要与构建产物逐项一致（`build/c1/apk-hashes.txt`）。
+
+### 28.5 未覆盖项与验收边界
+
+设备证据实际覆盖的断言：A冻结字节=972字节金标准且落盘digest经测试内独立MessageDigest复核、LOCKED保留slot、A零业务/零草稿写入；Pending/Applied/RejectedConflict/RejectedInvalid四态重复确认均返回原operationId/状态/结果，异revision或异摘要一律ConfirmationMismatch且零写入（RejectedInvalid为直接SQL合成——合法冻结payload按构造无法确定性Invalid，如实登记不以合成冒充自然路径）；确认与修订双连接竞争恰一胜者（确认胜→败方ProposalFrozen且payload不被败者内容覆盖；修订胜→确认ConfirmationMismatch、当前revision仍可确认）；双击恰一operation恰一fresh；六类操作组合提交all-or-none且独立连接逐字段核对（新交易v2=创建+link touch、既有交易v3→更新→unlink touch v5、Note同理、关系增删、businessRevision恰+1、resultJson逐字节、Proposal APPLIED+slot释放），重复执行与重开同结果；VersionConflict/NotVisible/IdOccupied三类确定性冲突零业务修改、Proposal同步REJECTED_*释放slot、rejectionCode持久化、payload逐字节未被解锁或改写；跨代际Pending拒绝执行且状态不变、身份路径跨代际仍可核查、恢复创建代际后同ID重试成功；B各checkpoint注入StorageFull×4与真实协程取消×2整体回滚到Pending、同ID重试恰好一次；A/B回执丢失映射OutcomeUnknown且按持久状态收敛（重复确认/inspect/重执行幂等）；双连接并发执行同operation恰一业务结果、businessRevision+1恰一次；父链删除（Proposal/Run/Session直接SQL，E2拥有真实入口）后身份确认/执行/核查均自包含可用；非法命令形状/未知提案/异display/退役代际/损坏Proposal与Operation全fail-closed零写入；无变化提交保持版本与businessRevision不变仍Applied；inspect只读、未知身份null、畸形身份Validation。
+
+明确不属于本批、仍归原任务：F2的原生确认展示/重复确认交互/四结果呈现与最终文案；E2的Session删除真实入口与Run取消/删除矩阵（本批仅直接SQL合成删除以证明Operation自包含）；D1的Record Tools与Agent行为；G0/G1的ZIP/代际恢复真实路径（本批仅直接SQL换代际以证明资格门禁）；B4的时间线汇总展示。TP-03～08已在服务层以真实Room/真实强停证明（TP-03=A/B各边界强停、TP-04=双执行、TP-05=旧提案B时端点版本CAS拒绝、TP-06=修订后确认锁定与B冲突保留旧事实、TP-07=B内异常/取消整体回滚、TP-08=跨代际不自动重复提交），但TP最终PASS仍按门禁归G2联合验收，不以本批抵扣F2验收。测试中RejectedInvalid、跨代际换代与父链删除均为合成写入，不声称恢复或删除产品路径已就绪。
+
+关于“RejectedInvalid自然路径”：封闭六类操作的规范化+冻结保证payload自身确定合法，B的Invalid类拒绝仅剩“UpdateNote冻结时刻与既有occurredAt不一致”一类（Note发生时刻原生不可变）；该映射已在实现与host测试锚定，无变化用例证明时刻一致路径，单列自然触发用例按未覆盖如实登记。
+
+### 28.6 提交、推送与PR
+
+负责人“完成issue c1”按C0/E1先例覆盖本分支必要Git提交、分支推送与创建PR；不关闭issue #9、不合并PR、不动B4分支或其工作树。本节为首版记录；PR审阅修复（如有）将在后续小节追加。
+
+### 28.7 2026-10-24 第一轮PR #27审阅修复（REQUEST CHANGES）
+
+负责人对PR #27（提交`5ae29f4`）给出REQUEST CHANGES：1项P1（C1首次确认绕过C0创建身份绑定校验）、2项P2（Applied回执未与冻结操作交叉校验；强停矩阵未覆盖逐业务写入边界）。§28.1–28.6首轮交付事实保留不变；本节记录修复与重验。
+
+- **P1 创建身份绑定（修复）：** `displayed()`在身份规范检查后、状态解析前新增与C0 `view()`一致的不变量：按`originRunId`读取持久Run行（缺失RecoveryRequired），其`proposalCreationRequestId`必须等于Proposal行的`creationRequestId`，否则RecoveryRequired。格式合法但被改绑的提案行在C0读取与本C1确认两条路径同样fail-closed。新增设备测试`mismatchedCreationIdentityFailsClosedBeforeAnyFreeze`：SQL改绑后confirm返回RecoveryRequired、全14表快照零变化、不创建Operation、Proposal保持EDITABLE+slot，C0 `proposal()`同报RecoveryRequired。
+- **P2 Applied回执对应关系（修复）：** `CommitResultCodec`新增`validateAgainst(result, operations)`——回执与冻结操作逐位置校验：数量相等、类型序列一致、CREATE/UPDATE稳定id相等（CREATE版本恒1、UPDATE版本为expectedVersion或+1）、LINK/UNLINK计数不超过冻结配对数；`frozen()`的Applied分支在读取resultJson后执行该校验。Rejected分支新增拒绝码组合校验：rejectionCode必须是已知CommitError名且`rejectionStatusOf`映射与持久状态一致（如RejectedConflict+Validation、未知码名均为RecoveryRequired）。不校验当前业务表与历史结果一致（Applied后允许合法再编辑）。新增设备测试`appliedReceiptsThatDoNotCorrespondToTheFrozenOperationsFailClosed`（数量不足/身份互换/计数超限的合法回执与三类拒绝码组合矛盾在confirm/execute/inspect三路径均RecoveryRequired且零写入，恢复后原Applied仍可读）与host测试`appliedReceiptsMustCorrespondOneToOneWithTheFrozenOperations`（合法对应通过、六类不对应拒绝、UPDATE双版本语义）。
+- **P2 逐业务写入强停矩阵（补全）：** 组合载荷（六类操作）的B共11次业务写入：insertTransaction、insertNote、editTransaction、updateNoteBody、LINK的touchNote/insertLink/touchTransaction、UNLINK的touchNote/removeLink/touchTransaction、advanceBusinessRevision。新增场景`B_W_1`～`B_W_11`按`BUSINESS_WRITTEN`的写入序号逐个强停，断言与B_MID同构：未提交→磁盘与确认后基线完全一致、operation仍Pending；重启后用户同ID重试Applied恰好一次，六类事实/版本/关系/resultJson由独立观察器逐字段核对（`assertComboAppliedFacts`），再试幂等快照零变化。
+- **重验（最终审阅APK）：** debug`083cb84f…`、release-unsigned`9d8d2d02…`、androidTest`834e2893…`，安装后回拉一致（build/c1/apk-hashes-review.txt）。构建任务组PASS；host Debug/Release各76项（新增1项）fail/error/skip=0。设备`CommitContractTest` 16/16 `OK (16 tests)`（14项既有+2项新增）。进程矩阵15/15 PASS：A_MID/A_AFTER/B_MID/B_AFTER+B_W_1..B_W_11（build/c1/process-c6c2b39a…/）。共享回归`OK (41 tests)`。
+- **共享AVD观察：** 两轮C1会话之间B4批次在同一AVD执行了其设备验证（b4-contract +60、b4-perf +6及其共享回归造成的b1/b2/b3/c0/e0/e1/schema增长）；本批每个设备步骤前都执行安装身份校验（安装摘要==本批构建产物）且全部通过，无并发instrumentation、未读改任何b4-*或其他批次库。本批新增c1-contract 72份（首轮56+本轮16）与c1-process 23份（首轮8+本轮15），record2.db仍为0。
+
+## 29. B4：连续时间线、真实检索与确定性汇总（issue #7）
+
+2026-10-24负责人要求“完成issueb4”，对应[GitHub #7](https://github.com/paher-din/record/issues/7)。本批按§4 B4合同、[B0 §4.2](../../../architecture/record2-b0-data-model-design.md#42-查询分页与汇总)、Spec §3/§5.1及B-AC5/CTX-02/CTX-09执行正式时间线/检索/详情读取/确定性汇总服务及测试；沿用B1–B3与Schema v1，不新增ADR、Spec、Schema或索引，不注册`aggregate_finances`工具，不接F1页面、AI、ZIP或备份。执行于独立工作树`D:/record/.worktrees/b4-timeline-search`（分支`codex/b4-timeline-search`，基线`7a3913d`）；主工作树开始时无本批改动并保持只读。main工作树当前有未提交的F0 §28，故本批使用§29，不重编号其他批次；并行worktree合并时按实际占用处理并保留双方记录。未操作真实用户数据、Provider、网络、凭据或发布。
+
+### 29.1 查询合同与实现
+
+- [TimelineService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/TimelineService.kt)：提供原生与未来Tools共用的`RecordKind`、`TimelineRange`/`TimelineQuery`/`TimelineCursor`、`TimelineEntry`/`TimelinePage`、`RecordRef`/`RecordDetail`、`FinanceCategoryScope`/`FinanceAggregate`及`TimelineError`。时间线全序固定为`occurredAt DESC, TRANSACTION先于NOTE, id ASC`（同类型UUID按二进制文本序）；这是B0 §4.2未指定类型先后时本批的查询语义决定，D1/oracle必须沿用。`TimelineTime`以调用方ZoneId求本地日`[start,nextStart)`，用`atStartOfDay`处理DST gap/overlap和23h/25h日，拒绝倒置/空范围；`timelineBefore`的`beforeExclusive`是“跳到某日并继续向更早分页”的锚点，不是单日过滤。`TimelineQueryRules`把空白关键词视为无过滤，非空白关键词做ASCII大小写折叠、按字面`instr`匹配（中文/换行/`%`/`_`均非通配），并以1000 code point安全上限拒绝异常长关键词（D1仍可设更小Token预算）。
+- 分页cursor绑定代际、businessRevision、过滤摘要（kind/关键词/范围/时区）及最后排序键；`cursorDigest`使用进程内随机密钥的HMAC-SHA256覆盖排序键、代际和revision。任何业务写、过滤/时区变化或cursor字段改动都返回`CursorExpired`，不跨不同revision拼接页面；进程重启后旧cursor按失效处理，需重建当前页。这样同时拒绝旧请求迟到、篡改和“编辑日期后继续旧分页”的静默漏重。
+- [RoomTimelineService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomTimelineService.kt)：在单个Room事务内校验代际/limit/cursor，按两张表各取`limit+1`并以与SQL谓词一致的全序合并；同一时刻的cross-type边界由`TRANSACTION`/`NOTE`条件精确处理。页面批量读取可见关联数量（Transaction只计未删除Note，Note计其收支关系），供F0/F1时间线行展示。`detail`重验可见性：Transaction详情只返回未删除Note，Note详情对已删除Note返回`NotVisible`；恢复后原关系重新可见。`aggregateFinances`只读取`record_transaction`，按半开范围与`All/Category(id)/Uncategorized`分类范围逐行以`Math.addExact`累加收入/支出及计数；溢出返回`AggregateOverflow`且不返回部分结果，未知分类`NotFound`，非法范围`Validation`。草稿/Proposal不在正式交易表中，结构上不进入汇总；未使用SQLite浮点/未检查SUM。
+- [RecordDao](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RecordDao.kt)只新增时间线两表keyset查询、汇总投影与可见关联计数；无实体/字段/索引/外键或Schema JSON变化。`(occurredAt,id)`等既有索引为ASC/ASC，极端同刻大组的`id ASC`末项可能触发临时B-tree；本批不新增混合方向索引（需G-SCHEMA批准），以固定高量合成库基线记录实际影响。
+- [TimelineBrowser](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/TimelineBrowser.kt)为F1提供非视觉状态：筛选/关键词/日期范围/锚点、连续下一页、失败保留已有可读页、迟到请求丢弃。`loadMore`在筛选变更尚未重试时被阻断，避免用旧页成功掩盖新筛选失败；cursor过期保留旧页并要求`refresh`，`GenerationMismatch`标记必须重建浏览器；`retry`按上一次browse/loadMore分别重试。最终页面、分组、滚动位置和返回动画仍归F0/F1，本批不新增Compose/UI/导航/文案。
+
+### 29.2 实际验证与证据（2026-10-24）
+
+- **构建/host PASS：** [最终构建](../../../../record2/build/b4/build-final4.log)使用JDK17.0.20+8、Gradle 8.13、AGP 8.12.3、Kotlin 2.3.10、Room 2.8.4；`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`成功（2分7秒，129项中8执行/121 up-to-date）。Debug/Release各86项host（新增B4 18项：`TimelineTimeTest` 8项+`TimelineBrowserTest` 10项；其余68项既有回归），fail/error/skip均0。lint 0错误/7项既有类别警告，未关闭检查。
+- **真实Room合同 PASS：** 复用专用`record2-schema-api34`（serial`emulator-5580`，API34 x86_64，fingerprint`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`；运行前核对boot/包归属/无活动instrumentation）。仅安装本批`.debug`/`.debug.test`，安装后拉回`base.apk`与构建产物逐项一致（debug`6cbe0ed8…`、test`fa2fd849…`）。[TimelineServiceContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/TimelineServiceContractTest.kt) 10项`OK (10 tests)`、3.347秒，覆盖：同刻cross-type全序与双向页边界、中文/换行/ASCII大小写/`%`/`_`/空白关键词、关键词同刻跨页、删除Note在时间线/搜索/before锚点/详情关联全部隐藏及恢复原关系、半开日界/时区/午夜、cursor在业务写/过滤/时区/代际/字段篡改后的过期、真实FinanceService编辑日期后的移动与旧cursor失效、锚点连续跨日、汇总半开/分类/未分类/空结果/BigInteger独立oracle、草稿不入汇总、Long累加溢出/精确边界、可见关联计数；回执[contract-approved](../../../../record2/build/b4/instrumentation-contract-approved.txt)。
+- **固定高量合成库 PASS（已按批准阈值断言）：** `TimelinePerformanceContractTest` 2项`OK (2 tests)`、28.388秒；典型5,000收支+2,000 Note、高量30,000收支+10,000 Note，冷重开后测首屏、连续翻页、关键词检索与全年汇总，并按§29.3批准值断言首屏/单页/检索/汇总；原始数值见下节及[perf-logcat-approved](../../../../record2/build/b4/perf-logcat-approved.txt)、[typical](../../../../record2/build/b4/perf-typical-approved.txt)、[high](../../../../record2/build/b4/perf-high-approved.txt)。
+- **共享回归 PASS：** 同AVD执行B4 10项+Finance 14+Note 13+Link 13+Schema 10+Proposal 18+SessionRun 15+AiSecurity 8+AiSecurityInitialization 3，共104项`OK (104 tests)`、38.476秒，无fail/error/skip；见[instrumentation-regression-approved](../../../../record2/build/b4/instrumentation-regression-approved.txt)。Schema v1物理结构/Git diff未变，LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`（工作树CRLF原始字节`2ceae115…`，不代表内容变化）。最终APK SHA-256：debug`6cbe0ed85daec85c06d2a43031d493591fbec00d6b1917eb8831a358e36e5e0a`、release-unsigned`f90d6a99a8013b7787519c2c181628c671e7bff5911f514696789cdddcdb38e0`、androidTest`fa2fd84974d8477ef2395f58a38ad8fb775c4500be2aca4c0338d22b1e6418de`。
+- **失败与修订保留：** 首轮合同8/9失败于初版测试夹具把“上海10月23日00:30”误当作UTC 10月23日范围；实际该时刻为UTC 10月22日16:30。修正夹具为“上海10月24日00:30（UTC 10月23日16:30）”后重跑；生产逻辑未改，原始[首轮回执](../../../../record2/build/b4/instrumentation-contract.txt)与修正后[fixed回执](../../../../record2/build/b4/instrumentation-contract-fixed.txt)保留。独立子代理static review此前对两表cursor谓词做300组随机数据集对照（1–5行页、同刻cross-type、删除Note、关键词、新到旧/锚点），无漏重/乱序；其P2项（cursor排序键完整性、关键词规范化/上限、浏览器pending/重试、GenerationMismatch、锚点边界、可见关联计数及测试缺口）已按上节修正并重跑，未用审查结论代替设备回执。
+- **证据位置：** [本机B4目录](../../../../record2/build/b4/)保留build-final/final2/final3/final4、contract/perf/regression各轮回执（含approved轮）、安装hash与perf文件；该目录被Git忽略，不承诺跨机存在；正式Kotlin测试可纳管重建。测试合成库保留，未wipe/uninstall/清库或操作其他设备。
+
+### 29.3 性能基线、批准预算与结果
+
+- **参考环境/数据：** `record2-schema-api34`/`emulator-5580`/API34 x86_64/debug构建；典型5,000收支+2,000 Note（约35/42天），高量30,000收支+10,000 Note（约208天）；每轮冷重开数据库后测首屏50条，再连续翻页（典型10页、高量20页），关键词`needle`（典型2条、高量10条），汇总覆盖数据库全量收支。该环境是参考模拟器，不等于获批真机硬件性能。
+- **实测（2026-10-24最终轮）：** 典型first 24ms、10页scroll合计143ms（单页max 22ms）、search 11ms、aggregate 66ms；高量first 59ms、20页scroll合计332ms（单页max 28ms）、search 14ms、aggregate 443ms。高量汇总在单事务内读取30k行，是当前最大单项；D1必须在后台线程调用，不得置于主线程。
+- **批准预算与结果（2026-10-24）：** 负责人批准以下“API34参考AVD功能上限”：典型首屏/单页滚动/关键词各≤100ms、汇总≤250ms；高量首屏≤200ms、单页滚动≤100ms、关键词≤150ms、汇总≤1000ms；任一场景不得ANR/OOM，runner必须完整完成。`TimelinePerformanceContractTest` 已写入这些阈值并在最终test APK（`fa2fd849…`）上重跑`OK (2 tests)`；B4参考AVD性能门禁已满足。该数值是同步测量，不冒充获批真机硬件结论；真机结论仍由G2按获批环境取证，D1仍需在获批的运行环境中复核工具级超时/费用/无进展预算。
+
+### 29.4 未执行边界与下游责任
+
+- D1仍拥有`search_records`/`get_record_detail`/`aggregate_finances`的封闭参数解析、授权/Run/代际检查、cursor opaque化/防伪、长正文分段、Token/时间/费用/无进展预算、结果摘要与“必要关联”投影；B4性能门禁已满足，但D1仍须完成自己的工具合同、真实Agent验收和预算后才注册`aggregate_finances`。B4只提供真实服务与页级可见关联数量，不是工具注册或Agent实现。模型提供的cursor不得直接信任排序字段；B4的HMAC只保证进程内结构完整性，跨进程需重新查询。
+- F1仍拥有时间线分组/布局/视觉/滚动/返回动画；B4的`TimelineBrowser`只是非视觉状态合同。F1/D1必须用`TimelineTime`按ZoneId求日界，不得假设24小时或退回旧单日LIMIT列表。
+- G1/G2仍拥有ZIP/恢复、最终B-AC5/M1/V1联合验收和真机性能；本批不声称最终原生页面、M1或V1完成，不把服务层PASS外推为产品AC PASS。未接旧搜索中心/FTS/向量/投影事实，未新增Schema/索引/迁移，未修改构建/依赖/Manifest/普通Host/R1/冻结Spec/架构。
+- 本批未操作真实用户数据、Provider/Key/网络、备份或发布；未清库/卸载/wipe；未创建ADR或新Spec。
+
+### 29.5 Git 交付状态
+
+2026-10-24负责人明确选择“提交+推送分支+PR”，覆盖本任务实现、测试、Plan §29与路由文件的提交、推送分支`codex/b4-timeline-search`及创建PR；不合并main、不关闭issue #7、不发布。实际提交、远端引用与PR身份由Git/GitHub回执证明，本Plan不预填；本机构建证据/合成库/AVD仍被Git忽略。
+
+### 29.6 PR交付（2026-10-24）
+
+源码/测试/Plan/路由提交为`406edc6959f80005b29b8a85d91b0c780e519975`，已推送`codex/b4-timeline-search`并创建[PR #26](https://github.com/paher-din/record/pull/26)（base `main`、head `codex/b4-timeline-search`）。PR包含本任务12个文件及§29证据；未合并main、未关闭issue #7。本节文档回执不改变源码或已测APK；审查、合并与issue收口由负责人决定。
+
+### 29.7 PR #26 审阅修复（2026-10-24，REQUEST CHANGES）
+
+负责人对PR #26给出REQUEST CHANGES，暂不合并；本轮只修P1 `TimelineBrowser`并发状态一致性、P2 cursor错误分类及对应测试，不修改Schema、索引、最终UI、AI工具注册或其他任务语义，不自动合并/关闭issue #7。
+
+- **P1线性化：** 请求注册（token递增、pending、loading/error）与响应提交（token核对后才更新entries/query/anchor/next/error/flags）现在各自在同一短`synchronized(lock)`临界区完成；数据库查询在锁外，不持长锁。`loadMore`在锁内重读当前`next/loading/pending`，因此并发两次页请求最多注册一次；新browse/筛选使旧token失效，旧响应即使最后返回也只丢弃。`clearLoading`仅在token仍当前时生效；`retry`优先重试pending Browse，不再因旧的`requiresReload`丢弃新的筛选失败。新增host并发回归：`concurrentLoadMoreRegistrationsIssueOneQueryAndAppendOnePage`与`concurrentFilterChangesKeepTheLastRegisteredQuery`，使用`Dispatchers.Default`和可控门控制造交错，断言service只调用一次、旧NOTE响应晚到不覆盖新TRANSACTION结果、无重复页。
+- **P2错误分类：** `RoomTimelineService.validateCursor`对非法UUID cursor id统一返回`CursorExpired`，不再先触发`Validation`；与代际/revision/过滤摘要/HMAC排序键校验使用同一损坏/篡改游标错误。合同测试新增`"not-a-uuid"`与空id两种篡改输入，均断言`CursorExpired`。`TimelineBrowser`对`CursorExpired`保留已有可读页、清空next、置`requiresReload=true`，`refresh`成功后恢复，由`cursorExpiryKeepsReadableEntriesAndRefreshReloads`覆盖。
+- **测试对应commit：** `af87fa262ece0cd7aaab344e69e47d8f7f5f2247`（源码/测试只来自该commit；此后仅Plan回执，不改源码）。
+- **验证结果（commit `af87fa2`）：** [build-review-fixes2](../../../../record2/build/b4/build-review-fixes2.log) 50秒、129项中22执行/107 up-to-date；host Debug/Release各88项（新增2项并发），fail/error/skip均0；[B4 Room合同](../../../../record2/build/b4/instrumentation-contract-review-fixes2.txt) 10/10、3.724秒；[性能](../../../../record2/build/b4/instrumentation-perf-review-fixes2.txt) 2/2、27.324秒（典型首屏38ms/单页max20ms/检索10ms/汇总89ms；高量51/19/12/372ms，均低于批准阈值）；[共享回归](../../../../record2/build/b4/instrumentation-regression-review-fixes2.txt) 104/104、45.299秒。最终APK SHA-256：debug`f7c3aeb51584c47df5b89055816c2bb73d3e761bc93247d2612fcfcbd6ca0f25`、release-unsigned`cd29080e924a3bd06d5caf5f536e88b7a168e0406bfe6b0d8c24282bc2d5f904`、androidTest`e91228273e66d4a9db380c0c0b2a644c871c6211b5f75ed7e3cc5146f6a91bbb`；安装后设备摘要与构建一致；lint 0错误/7警告；Schema LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
+- **失败与修订：** P1首版修复后host 5项失败，根因是新`commitError`在写入错误状态后仍返回`true`，调用方把失败当成功；改为固定返回`false`后重跑88/88。失败由测试正确暴露，未改断言或放宽门禁；该失败轮不作为PASS，最终结果只引用commit `af87fa2`。
+- **未覆盖项：** 并发测试是同一JVM内单个`TimelineBrowser`实例的确定性交错，不覆盖多进程、Compose主线程调度或真实数据库写并发；cursor HMAC仍为进程内密钥，跨进程需重新查询。D1工具注册/授权、F1页面、G2真机与最终AC不受本轮影响，仍未完成。未操作真实用户数据、Provider/网络/凭据、Schema/索引、备份或发布；未合并PR、未关闭issue #7。
+
+### 29.8 PR #26 第三轮审阅修复（2026-10-24）
+
+负责人确认上轮P1/P2通过源码复核，但指出连续修改不同筛选字段会丢失待执行意图：`browseFromCurrent`只基于最后提交的页面状态，`setKind(NOTE)`未返回时再`setKeyword("午餐")`可能丢掉NOTE。本轮只修这一P1及对应host交错测试，保持token线性化、迟到丢弃、失败保留可读页和retry语义；不扩展Schema、索引、最终UI或AI Tools。
+
+- **修复：** `browseFromCurrent`在同一个短锁内选择基线：若存在`Pending.Browse`，以它的query+anchor为最新待执行意图；否则以最后提交的`TimelineState`。随后的字段transform、规范化、锚点计算和请求注册仍在该临界区一次完成，因此连续`setKind`/`setKeyword`/`setRange`会叠加到同一最新意图，而不是回退到旧页面状态。`retry`仍按pending原意图精确重试；旧响应仍按token丢弃，失败仍保留可读页。
+- **交错测试：** 新增`consecutiveKindAndKeywordChangesMergePendingIntent`与`consecutiveRangeAndKindChangesMergePendingIntent`：用`Dispatchers.Default`和门控让第一个请求悬停，第二个筛选字段在返回前注册；断言第二次提交的`TimelineQuery`同时含kind+keyword或range+kind，且第一个迟到响应不能覆盖。
+- **测试对应commit：** `6973d57c859a687e52f04430dd64b1d7ae69b577`（仅该commit源码/测试；此后仅Plan回执）。
+- **结果：** [build-review3](../../../../record2/build/b4/build-review3.log) 50秒、129项中24执行/105 up-to-date；host Debug/Release各90项（新增2项连续意图交错），fail/error/skip均0；[B4 Room合同](../../../../record2/build/b4/instrumentation-contract-review3.txt) 10/10、4.936秒；[性能](../../../../record2/build/b4/instrumentation-perf-review3.txt) 2/2、29.851秒（典型首屏22ms/单页max17ms/检索12ms/汇总80ms；高量65/25/26/524ms，均低于批准阈值）；[共享回归](../../../../record2/build/b4/instrumentation-regression-review3.txt) 104/104、48.375秒。最终APK SHA-256：debug`4a3be6c742739caeebbca969f943ab9857caa4565eacdea4875b8136171e4c4a`、release-unsigned`e8895a26d12ecb16beb6a74795e81ff26bd83fd582207526c36c7e1330ab43f0`、androidTest`e91228273e66d4a9db380c0c0b2a644c871c6211b5f75ed7e3cc5146f6a91bbb`；安装摘要与构建一致；lint 0错误/7警告；Schema LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
+- **未覆盖项不变：** 仍是同一JVM内单个`TimelineBrowser`的确定性交错，不覆盖多进程、Compose主线程调度或真实数据库写并发；cursor HMAC进程绑定；D1工具/F1页面/G2真机与最终AC未变。未合并PR、未关闭issue #7。
+
+### 28.8 2026-10-24 第二轮PR #27审阅修复与main集成
+
+负责人第二轮审阅结论REQUEST CHANGES：上轮1项P1+2项P2全部通过；新增1项P1（提交成功后的协程取消在`withContext`返回边界存在结果丢失窗口——已提交事务可能被误表现为普通取消）与主线冲突（main已推进至`a3f46e3`含B4 §29）。§28.1–28.7事实保留不变。
+
+- **P1 返回边界取消竞态（修复）：** `confirm`/`execute`现捕获io边界抛出的`CancellationException`并按持久身份重分类：终态operation（A的operation存在、B的operation为Applied/Rejected）抛`CommitReceiptLossException`（已提交、收据丢失）；状态未变（A无operation、B仍Pending）原样重抛普通取消；数据库不可读抛`OutcomeUnknown`。事务体保持完全可取消，未把A/B包进NonCancellable，回滚语义不变。实现要点：重分类读取用`runBlocking(Dispatchers.IO)`同步完成——kotlinx的prompt cancellation会把完成回跳进已取消调用者帧的结果丢弃（`resumeCancellableWith`按已取消Job替换为取消），`withContext(NonCancellable)`只保护块执行、不能把返回值带回已取消帧（E1 §27.5的NonCancellable模式正因只做副作用才成立），因此任何挂起式读取都会再次被吞；同步返回的runBlocking在任意线程（含主线程恢复路径）安全完成单条索引读。
+- **针对性测试（新增2项，与审阅要求一一对应）：** `committedConfirmationCancelledAtTheReturnBoundaryIsReceiptLoss`与`committedExecutionCancelledAtTheReturnBoundaryIsReceiptLoss`用自定义`HeldDispatcher`把withContext完成调度停在队列中，等待磁盘出现已提交事实后在恢复前取消，由后台drainer恢复——确定性触发返回调度竞争。断言：协程内调用点捕获的是`CommitReceiptLossException`（cause为原取消）而非普通取消（被取消Job对外部await者只呈现取消，这是协程语义；调用点catch才是调用方可见的分类），A场景持久态为Pending+LOCKED且同命令重复确认幂等返回原身份，B场景事实恰好一次且重执行字节不变。诊断过程中两次中间失败（外部await观察口径错误、挂起式reconcile被再次吞掉）已定位为上述协程语义并按此收敛，失败事实保留在build/c1/。
+- **同步main：** 普通merge `origin/main`=`a3f46e3`（含B4 §29及Timeline交付）；冲突仅plan.md一处，按§28在前、§29在后保留双方全部记录；Kotlin无冲突（本批未触碰RecordDao/Timeline文件）。
+- **集成后全量重验（最终APK debug`1375e328…`、release-unsigned`b03ba40c…`、androidTest`6ec51034…`，安装回拉一致）：** 构建任务组PASS（1m54s，129项中23执行）；host Debug/Release各98项（本批76+B4集成22）fail/error/skip=0；设备`CommitContractTest` 18/18 `OK (18 tests)`（16项既有+2项新增竞态）；进程矩阵15/15 PASS（A_MID/A_AFTER/B_MID/B_AFTER+B_W_1..11，build/c1/process-338b3620…/）；扩展共享回归（Schema 10+C0 Proposal 18+B2 Note 13+B4 Timeline 10）`OK (51 tests)`。
+- **范围保护：** 设备库新增仅c1-contract（累计125）与c1-process（累计39）文件；b4-contract的+10为本轮共享回归自建；record2.db仍为0。未wipe/uninstall/清包/删文件；AVD仍在运行留负责人决定。
+
+### 28.9 2026-10-24 第三轮PR #27审阅修复（取消恢复的线程与身份语义）
+
+负责人第三轮审阅：前两轮4项全部通过、main集成冲突已解决（GitHub mergeable=clean）；新增1项P1（`runBlocking`恢复读取会同步阻塞调用线程——若取消恢复发生在主线程协程即卡顿/ANR风险）与1项P2（确认取消恢复只看"operation存在"，未核对与本次命令的revision/摘要匹配，异display确认的取消会被误报为本次确认已提交）。§28.1–28.8事实保留不变。
+
+- **P1 纯挂起恢复（修复）：** 取消恢复改为`withContext(NonCancellable) { withContext(Dispatchers.IO) { 查询 } }`嵌套形态——外层不切换dispatcher（unispatched/ATOMIC完成，值不会被已取消原Job的cancellable resume丢弃），内层IO承载阻塞查询且不占用调用线程。上一轮单层`withContext(NonCancellable + Dispatchers.IO)`失败与`runBlocking`可用但阻塞的机理由此统一解释：单层形态在外层发生dispatcher切换、完成回跳走`resumeCancellableWith`被已取消Job替换为取消；`runBlocking`同步返回绕过了该机制但以阻塞调用线程为代价；嵌套形态两者兼得。Transaction A/B本体不变、仍完全可取消。
+- **P2 恢复身份匹配（修复）：** `reconcileConfirmation`现按与`verify`相同的口径核对：读`operationForProposal`行并执行完整`frozen()`完整性校验（损坏→RecoveryRequired原样上抛），`confirmedRevision == command.displayedRevision`且冻结文档`displayedDigest == command.displayedPayloadDigest`才判"本次已提交"（回执丢失）；不匹配判`ConfirmationMismatch`——即该命令在无取消时本应得到的确定性答复；行不存在仍判普通取消；SQLite不可读判OutcomeUnknown。`reconcileExecution`同样换为嵌套挂起形态（身份即operationId，无display匹配问题）。
+- **新增回归：** `mismatchedConfirmationCancelledAtTheReturnBoundaryStaysAMismatch`——既有revision1/摘要A的operation后，分别以revision2与异摘要命令在返回边界取消，调用点分类均为`ConfirmationMismatch`而非回执丢失，快照零变化。既有两处已提交竞态测试不变并通过，证明嵌套形态对COMMITTED/ROLLED_BACK两分支保持§28.8语义。
+- **重验（最终APK debug`eb43f6d0…`、release-unsigned`1b7475ad…`、androidTest`51f2ae93…`，安装回拉一致，build/c1/apk-hashes-round3.txt）：** 构建任务组PASS；host Debug/Release各98项fail/error/skip=0；设备`CommitContractTest` 19/19 `OK (19 tests)`（18项既有+1项新增）；进程矩阵15/15 PASS（build/c1/process-d3c7ba1a…/）；扩展共享回归（Schema+C0+B2 Note+B4 Timeline）`OK (51 tests)`。
+- **未变边界：** Schema v1、事务框架、强停矩阵范围均未改动；主线程响应性由纯挂起实现保证，未新增专项UI响应测试（如实登记，非本批验收面）。
+
+### 28.10 2026-10-24 第四轮审阅APPROVE与合并
+
+负责人第四轮审阅结论：**APPROVE，建议按HEAD`2606c17`合并**。复查确认第三轮P1（嵌套`withContext(NonCancellable)`+内层IO的纯挂起恢复，不再阻塞调用线程、结果不再被已取消Job丢弃）与P2（`reconcileConfirmation`的`frozen()`完整性校验+confirmedRevision/displayedDigest匹配，异display取消判ConfirmationMismatch）均通过，Transaction A/B主体未扩大不可取消范围；GitHub `mergeable_state=clean`；未发现新增阻断问题。四轮审阅发现的具体缺陷均已修复并有针对性测试覆盖。
+
+- **下游边界（审阅确认）：** C1作为独立模块收口；F2仍需原生确认界面与未知结果提示，E2负责删除/取消真实联调，G0/G1负责备份恢复与代际处理——均为既定任务边界，不阻C1。
+- **执行：** 本节记录批准后，PR #27按仓库merge-commit惯例合并进main；合并后的集成为F2与后续联合验收的基线。issue #9关闭与C0/E1先例一致归负责人。
+
+## 30. F0：设计指导与候选审阅（issue #15）
 
 2026-10-24 负责人要求“现在完成issue f0”，给定浅/深主题各七项背景/品牌/强调/文字色值；随后明确选择“时间线单首页”和“简洁抽象角色”。本次授权覆盖 F0 设计候选、审阅材料及相关文档同步，不自动启动 F1/F2/G1 产品实现，也不构成对尚未展示的六组最终视觉与交互的批准。
 
-- **当前状态：** F0 设计任务 `completed`，版本 `F0-C3` 六组已获负责人最终接受，批准范围、实际交付与远端回执见 §28.2。F1/F2/G1 的实现/业务/Android验收未因此启动或通过；`F0-C1` 被否决与C2未选事实保留，下文原C1检查只属历史。
+- **当前状态：** F0 设计任务 `completed`，版本 `F0-C3` 六组已获负责人最终接受，批准范围、实际交付与远端回执见 §30.2。F1/F2/G1 的实现/业务/Android验收未因此启动或通过；`F0-C1` 被否决与C2未选事实保留，下文原C1检查只属历史。
 - **此前确认方向（本轮重新开放探索）：** 色值原样保留于 [F0 设计审阅稿](../../../design/record2-f0-design-review.md) §2；当时为连续时间线单首页、顶部类型筛选与设置、底部记账/写笔记及蓝色抽象角色。这些材料保留历史，不再约束本轮候选的视觉探索；冻结业务/权限/Agent 合同继续适用。
-- **设计范围：** D-SYS 主题/可读性/排版/组件/动效，D-TIME 时间线/详情/关联，D-FIN 记账/D5/保存，D-NOTE 阅读/自动保存/软删除恢复，D-AI 全局入口/工作区/输出/最少补问，D-SAFE 设置/授权/历史/备份。当前C3内容由§28.2引用的审阅包拥有；[原C1交互稿](../../../design/record2-f0-preview.html)只保留历史。所有预览均为合成状态，不接业务库/Provider/文件恢复。
+- **设计范围：** D-SYS 主题/可读性/排版/组件/动效，D-TIME 时间线/详情/关联，D-FIN 记账/D5/保存，D-NOTE 阅读/自动保存/软删除恢复，D-AI 全局入口/工作区/输出/最少补问，D-SAFE 设置/授权/历史/备份。当前C3内容由§30.2引用的审阅包拥有；[原C1交互稿](../../../design/record2-f0-preview.html)只保留历史。所有预览均为合成状态，不接业务库/Provider/文件恢复。
 - **验证范围：** T0 文档链接/围栏/差异与色值/对比度；本地审阅稿页面/主题/状态/窄屏与交互检查。Android 编译/安装、真实业务落盘、AI/Key/API、备份恢复、最终可访问性及实现对齐不在本设计任务中，不以 HTML 模拟抵扣。
 - **已执行检查（C1）：** JavaScript 语法检查、HTML 无网络调用/无外部资源、基础色对比度计算和 HTML 设计检测（0 项）通过；本地浏览器遍历 13 类页面、77 个状态 × 浅/深主题 = 154 组，320dp 预览与 125% 文字下控件状态切换/内容存在检查通过。草稿返回确认及输入保留、Note 特殊字符与输入保留、提案提交禁用返回/重复动作已检查；浅深首页及深色大字体冲突页已目视检查。修正了截图发现的角色底色 CSS 覆盖问题。这些结果仅是候选技术证据，不抵扣负责人视觉拒绝或 Android/业务验收。原始状态记录及截图在本机忽略目录 `record2/build/f0/`。
-- **后续反馈历史：** 已生成两个 F0-C2 首页方向草图（时间轴、按日分组），均未获选择或批准。负责人随后要求“先停止具体的设计吧，我会给你提供一组skills，你们根据这一组skills来重新设计”，当时停止扩展候选。既有稿保留，不作为已批准基线；本轮恢复范围见 §28.1。
+- **后续反馈历史：** 已生成两个 F0-C2 首页方向草图（时间轴、按日分组），均未获选择或批准。负责人随后要求“先停止具体的设计吧，我会给你提供一组skills，你们根据这一组skills来重新设计”，当时停止扩展候选。既有稿保留，不作为已批准基线；本轮恢复范围见 §30.1。
 
-### 28.1 Skills 集成与高级 UI/UX 升级研究（2026-10-24）
+### 30.1 Skills 集成与高级 UI/UX 升级研究（2026-10-24）
 
 负责人明确下达“Record 2.0 — 高品质 Android UI/UX 设计与 Skills 集成任务”：调研六仓库、安装验证适用 Skills、区分实际能力审查 UI、至少 A/B/C 三方向、专属设计系统/页面方案/原型和后续验收规划。本轮不大规模重写 UI，不变更业务、Room Schema、持久化和 Koog 契约。对既往配色、单首页和蓝色助手是否保留的澄清，负责人回答“全部作为候选，可提出替代方案”。这允许替代设计探索，不构成任何最终视觉或冻结产品行为变更的批准。
 
 - **交付内容 owner：** [高级 UI/UX 设计升级方案](../../../design/record2-uiux-upgrade-proposal-20261024.md)；[六仓库研究](../../../design/record2-uiux-skill-research-20261024.md)；[安装验证与冲突处理](../../../design/record2-uiux-skill-integration-20261024.md)；[视觉探索图稿](../../../design/record2-uiux-visual-exploration-20261024.md)。`record2/PRODUCT.md` 和项目 `skills/record-android-design` Skill 只路由现有权威，不覆盖 AGENTS/Spec/架构或建立第二套批准状态。
 - **写入边界：** 本轮新设计/研究材料、项目 Skill 入口、个人 Skills 安装和本节任务记录。旧 F0 稿/图片、已有 index 修改及其他并行开发内容保留；不改正式 Kotlin、构建、Schema、环境/凭据/CI，不使用设备或真实 Provider，不提交/推送/发布。
-- **阶段认可与批准边界：** 本阶段 S1 首页/S2 对话的正向反馈用于收敛主方向，当时不代表六组最终接受；后续完整 F0-C3 的正式接受由 §28.2 拥有。设计认可不自动启动 F1/F2/G1 或抵扣 Android/业务验收。
+- **阶段认可与批准边界：** 本阶段 S1 首页/S2 对话的正向反馈用于收敛主方向，当时不代表六组最终接受；后续完整 F0-C3 的正式接受由 §30.2 拥有。设计认可不自动启动 F1/F2/G1 或抵扣 Android/业务验收。
 - **本轮视觉反馈与探索状态：** 首批 A/B/C 均被负责人否决；第二批 E/F/G 被否决，D 获“还可以”的候选反馈，**不是批准**。负责人进一步明确“D只是作为候选方案之一，但不先不要沿着D设计，继续生成不同的风格”。因此继续横向生成 H–L 独立风格，不把 D 当主方向或据其收敛设计系统。图稿均为合成内容的 ImageGen 概念参考，不是 Android 产品或动效/可访问性证据。最终视觉方向尚未选定，保持本任务开放。
 - **首页结构进一步开放（同日）：** 负责人明确“没有必要一定要遵循我们之前的首页放完整时间线这种模式”，要求放开设计，可学习 iMessage/Telegram，配色更高级、设计更大胆。本轮因此授权探索记录入口、对话式捕获、会话/内容索引、精选内容等不同首页架构，完整时间线可作为二级目的地而非强制首页。这里不批准任何具体图稿，不新增社交联系人/消息服务或数据模型；记账/Note/AI 的权限、确认及持久事实边界保持原合同。若候选涉及其他冻结行为变化，须明确标注后由负责人决定，不能借“随便设计”自动改产品实现。
 - **融合方向反馈（同日）：** 负责人表示“N的消息式捕获很有意思，D的美术风格我比较喜欢”。据此制作 N 的捕获结构 × D 的黑白/朱红/精密账页排版融合候选，并用首页、记账输入、AI 提案确认三个独立页面验证跨页一致性。此反馈是方向线索，不是这三个尚未展示页面的批准；不启动正式 Compose 实现、不把 D 原图附加字段或 N 的海景装饰一起纳入。
@@ -1212,9 +1369,9 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 - **自主裁决与补问形式（同日）：** 负责人明确要求“agent非必要不询问”，只有信息确实不足才简洁补问，问题需容易理解并能简单回答；随后补充“不要把record助手当成真的对话框”，必要提问可用弹窗，避免过多干扰主内容区。据此将主区域定义为记录、上下文与执行结果工作区；自然语言输入统一保留，必要补问用紧凑任务弹窗处理，不生成冗长问答气泡。问题优先点选/数字/短句，利用已有上下文和已约定默认值，不追问可选字段或要求重述任务；具体规则由升级方案 §13.4–13.5 拥有。对话的消息保存/任务恢复仍须正式接缝设计，不借减少视觉噪声丢弃权威历史。
 - **本轮已执行验证：** 四项个人 Skills 与项目 router 由本机 Codex `skills/list(forceReload=true)` 实际发现且 enabled；固定源内容逐文件比较通过，保留许可证、缓存和未选图。文档 UTF-8/围栏/本地链接与 `git diff --check` 通过；任务前 369 份保护文件除本 Plan 授权内容外未改，Git index 未变。未构建/安装 Android、运行真实 Provider 或改数据库，不抵扣 F1/F2/G1 验收；最终视觉选择、完整 token 几何和跨页图稿仍开放。
 
-### 28.2 F0-C3 完整设计交付与最终审阅（2026-10-24）
+### 30.2 F0-C3 完整设计交付与最终审阅（2026-10-24）
 
-负责人要求“好的，现在你基于这个来完场issue f0吧”。本批据§28.1已明确的视觉/交互方向，完成六组配套设计、精确Token、完整状态审阅器和技术差异清单；没有把该要求当作对尚未展示的新页面/状态的预先批准，也没有开始F1/F2产品实现。
+负责人要求“好的，现在你基于这个来完场issue f0吧”。本批据§30.1已明确的视觉/交互方向，完成六组配套设计、精确Token、完整状态审阅器和技术差异清单；没有把该要求当作对尚未展示的新页面/状态的预先批准，也没有开始F1/F2产品实现。
 
 - **交付 owner：** [F0-C3完整审阅包](../../../design/record2-f0-c3-review.md)拥有页面/状态/视觉/动效合同；[Token](../../../design/f0-c3/design-tokens.json)拥有两主题各48个ColorScheme roles及排版/空间/形状等精确值；[交互审阅器](../../../design/record2-f0-c3-preview.html)覆盖12类页面与85个合成状态；[执行契约差异](../../../design/record2-f0-c3-contract-delta.md)记录直接执行、最少补问和入口组织对正式来源的影响。旧图、旧审阅稿和历史PASS/FAIL保留。
 - **配套视觉：** 新增手动记账、笔记编辑、关联选择、设置、Provider告知、整体恢复、深色首页7个独立屏，按S1体系延伸；生成来源/提示词随包保留。生成图是参考，不直接作正式资产或Android截图；细圆角/色值等以可审阅Token/交互稿为准。
@@ -1233,6 +1390,8 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 | D-AI | 统一工作区/入口、直接执行回执、最小补问Dialog、历史/取消/未知/旧任务 | F0-C3 accepted；正式执行契约另同步 |
 | D-SAFE | 设置、两模式/接收方告知/BYOK、历史/删除、ZIP/整体恢复各阶段 | F0-C3 accepted |
 
-### 28.3 F0 远程交付授权（2026-10-24）
+### 30.3 F0 远程交付授权（2026-10-24）
 
 负责人在F0六组接受、issue #15关闭后明确要求“推送到远程仓库吧”，授权本轮F0设计/Skills研究集成材料、保留的探索与旧候选、`record2/PRODUCT.md`、`skills/record-android-design`及文档路由/本Plan记录的Git纳管、提交与推送。基于当前本地main交付，不含Android业务代码、Schema/迁移、环境/凭据/CI、生产部署或历史改写；`.playwright-cli/`本机浏览器记录及已忽略的`record2/build/`证据不纳入。最终提交与远端身份以Git日志及push/远端核验回执为准，不要求提交SHA自引用。
+
+推送前同步远程`origin/main=e2ca1eb`（含C1 PR #27、B4 PR #26），普通merge保留全部远端提交及源码；冲突仅本Plan的追加段落。保留远端C1 §28、B4 §29全文，F0顺延为§30，并同步F0资料、Token状态元数据和路由链接。源代码/Schema相对远端零改动；原UI审查及验证按其执行时基线保留，不用新合并源码冒充重新验证。首轮fetch连接重置，HTTP/1.1重试成功；不强推、不改写历史。

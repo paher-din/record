@@ -1,6 +1,6 @@
 # Record 2.0 视觉方向探索
 
-2026-10-24（Asia/Shanghai）。**全部为内置 ImageGen 生成的合成内容概念参考，不是 Android 截图、实现、性能或无障碍证据。** 负责人反馈与批准事实归 [Plan §28.1](../specs/record2/v1/plan.md#281-skills-集成与高级-uiux-升级研究2026-10-24)，本文件只保存图稿和审查说明，不另建批准状态。
+2026-10-24（Asia/Shanghai）。**全部为内置 ImageGen 生成的合成内容概念参考，不是 Android 截图、实现、性能或无障碍证据。** 负责人反馈与批准事实归 [Plan §30.1](../specs/record2/v1/plan.md#301-skills-集成与高级-uiux-升级研究2026-10-24)，本文件只保存图稿和审查说明，不另建批准状态。
 
 应用 `imagegen-frontend-mobile` 和 `imagegen` Skills，以 Android-native premium 为平台模式。每个方向独立生成一张可读的手机图，不把多方向压成微缩拼板。所有源图保留，候选未覆盖既有 F0 文件。
 
@@ -41,7 +41,7 @@ H–L 为横向独立探索，不沿 D 深化。自查：I/K 的生成结果仍�
 
 ## 4. 第四轮：重新设计首页架构 M–P
 
-本轮范围依据 Plan §28.1 的最新指导：不再把首页完整时间线作为前提。参考 [Apple Messages 的输入/对话上下文](https://support.apple.com/en-ca/guide/iphone/iph82fb73ba3/ios)、[Telegram Android 的目的地导航](https://telegram.org/blog/crafting-android-design-and-more)及[话题组织](https://telegram.org/blog/topics-in-groups-collectible-usernames)，重新解释为个人内容索引与捕获。没有复制它们的 logo、联系人、社交功能或专有资产。
+本轮范围依据 Plan §30.1 的最新指导：不再把首页完整时间线作为前提。参考 [Apple Messages 的输入/对话上下文](https://support.apple.com/en-ca/guide/iphone/iph82fb73ba3/ios)、[Telegram Android 的目的地导航](https://telegram.org/blog/crafting-android-design-and-more)及[话题组织](https://telegram.org/blog/topics-in-groups-collectible-usernames)，重新解释为个人内容索引与捕获。没有复制它们的 logo、联系人、社交功能或专有资产。
 
 | 编号 | 首页的主任务 / 配色 | 图稿 |
 |---|---|---|
@@ -58,7 +58,7 @@ H–L 为横向独立探索，不沿 D 深化。自查：I/K 的生成结果仍�
 
 ## 5. 当前收敛候选 S1 / S2
 
-方向/交互指导与 S1/S2 正向审阅反馈由 Plan §28.1 拥有，当前完整设计内容见[升级方案 §12](record2-uiux-upgrade-proposal-20261024.md#12-当前融合候选d-首页统一-agent-对话)。两张图作为当前主方向与后续配套设计基准；其余页面/状态与 Android 实现验收不由这两张图代替。
+方向/交互指导与 S1/S2 正向审阅反馈由 Plan §30.1 拥有，当前完整设计内容见[升级方案 §12](record2-uiux-upgrade-proposal-20261024.md#12-当前融合候选d-首页统一-agent-对话)。两张图作为当前主方向与后续配套设计基准；其余页面/状态与 Android 实现验收不由这两张图代替。
 
 | 图稿 | 内容 |
 |---|---|
@@ -73,7 +73,7 @@ Q/R 为此前生成中的过渡尝试，已被最新具体指导替代，不用�
 
 ## 6. 最新流程 T1 / U1：直接执行，必要时轻量补问
 
-新产品要求及其与现有正式写入契约的差异归 Plan §28.1；具体决策规则见[升级方案 §13](record2-uiux-upgrade-proposal-20261024.md#13-最新产品变更明确指令直接执行)。保留 S1 首页和 S2 的黑白朱红美术；原 S2 的独立提案确认不是最新交互目标。
+新产品要求及其与现有正式写入契约的差异归 Plan §30.1；具体决策规则见[升级方案 §13](record2-uiux-upgrade-proposal-20261024.md#13-最新产品变更明确指令直接执行)。保留 S1 首页和 S2 的黑白朱红美术；原 S2 的独立提案确认不是最新交互目标。
 
 | 图稿 | 用途与边界 |
 |---|---|

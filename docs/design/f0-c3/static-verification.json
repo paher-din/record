@@ -316,7 +316,7 @@
   ],
   "sourceHashes": {
     "docs/design/record2-f0-c3-preview.html": "53e3416cc080da13dc40f9434f03528c4b52a58fc08ae229afcafe6d3962bf96",
-    "docs/design/f0-c3/design-tokens.json": "fa3f6c430e5e782606dd2b791ad56997650f1de22e5549d055040ae55e370ca3",
+    "docs/design/f0-c3/design-tokens.json": "e6791d722c29e1084aa20e8557e236105d5b9006827a4497c261cbdd834bd79a",
     "docs/design/f0-c3/verify-preview.js": "699091905bafb23e2ea15c88809b4783f888ea49472dc6e4e019bba047e5d17e"
   }
 }
