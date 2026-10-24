@@ -244,28 +244,33 @@ class SessionRunContractTest {
         assertEquals(afterComplete, snapshot())
 
         // A run whose epoch was revoked mid-flight can neither complete nor be resurrected.
+        // E2 semantics: the revoke transaction itself fails every RUNNING run atomically
+        // (FAILED/AUTHORIZATION, slot freed), so the late writer faces a terminal row.
         val start = history.startRun(sessionId, "运行中的输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         security.revoke()
-        expectHistoryError(AgentHistoryError.AuthorizationRequired) {
+        expectHistoryError(AgentHistoryError.RunInvalidated) {
             history.completeRun(
                 start.runId, receiver.identity, permit.authEpoch, owner,
                 RunOutcome(MessageResultKind.Answer, "被撤销后的回复"),
             )
         }
         val afterRevoke = snapshot()
-        assertEquals("RUNNING", runRow(start.runId)[9])
+        assertEquals("FAILED", runRow(start.runId)[9])
+        assertEquals(null, runRow(start.runId)[10])
+        assertEquals("AUTHORIZATION", runRow(start.runId)[13])
         security.grant(receiver)
         val afterRegrant = snapshot()
-        expectHistoryError(AgentHistoryError.AuthorizationRequired) {
+        expectHistoryError(AgentHistoryError.RunInvalidated) {
             history.completeRun(
                 start.runId, receiver.identity, permit.authEpoch, owner,
                 RunOutcome(MessageResultKind.Answer, "被撤销后的回复"),
             )
         }
         assertEquals(afterRegrant, snapshot())
+        // The eager FAILED mark is the durable truth: a later cancel is an already-terminal no-op.
         val failed = history.failRun(start.runId, RunTerminal.CANCELLED, SafeRunErrorCode.AUTHORIZATION)
-        assertFalse(failed.alreadyTerminal)
-        assertEquals("CANCELLED", runRow(start.runId)[9])
+        assertTrue(failed.alreadyTerminal)
+        assertEquals("FAILED", runRow(start.runId)[9])
         assertEquals("AUTHORIZATION", runRow(start.runId)[13])
     }
 
