@@ -128,14 +128,16 @@ internal class LinkSelectionEditor(
     private fun validate(selection: LinkSelection) {
         val linkedIds = selection.linked.map { it.id }
         val candidateIds = selection.candidates.map { it.id }
+        val linkedIdSet = linkedIds.toSet()
+        val candidateIdSet = candidateIds.toSet()
         val invalid = selection.generation != generation ||
             selection.transaction.id != transactionId ||
             selection.transaction.version < 1 ||
             selection.linked.any { it.deletedAt != null || it.version < 1 } ||
             selection.candidates.any { it.deletedAt != null || it.version < 1 } ||
-            linkedIds.size != linkedIds.toSet().size ||
-            candidateIds.size != candidateIds.toSet().size ||
-            linkedIds.any { it in candidateIds.toSet() }
+            linkedIds.size != linkedIdSet.size ||
+            candidateIds.size != candidateIdSet.size ||
+            linkedIds.any { it in candidateIdSet }
         if (invalid) throw LinkException(LinkError.RecoveryRequired)
     }
 }

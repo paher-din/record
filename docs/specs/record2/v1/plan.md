@@ -937,8 +937,8 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 
 ### 26.1 B3运行合同（2026-10-24）
 
-- host：`LinkSelectionEditorTest` 6项；完整`check`包含既有Money/FinanceTime/NoteEditor及E0安全host回归。
-- 真实磁盘：`com.paherdin.record2.storage.LinkServiceContractTest` 12项；回归`NoteServiceContractTest` 13项+`RecordSchemaContractTest` 10项，共35项。每项新建`b3-contract-<UUID>.db`，固定Clock=`2026-10-24T12:00:00Z`，跨日发生时刻为2026-10-22/23/24；独立`SchemaDiskObserver`比较全14表，不以服务DTO或编译代替磁盘事实。
+- host：`LinkSelectionEditorTest` 8项（含审阅新增的取消与reload校验）；完整`check`包含既有Money/FinanceTime/NoteEditor及E0安全host回归。
+- 真实磁盘：`com.paherdin.record2.storage.LinkServiceContractTest` 13项（含审阅新增的提交后取消）；回归`NoteServiceContractTest` 13项+`RecordSchemaContractTest` 10项，共36项。每项新建`b3-contract-<UUID>.db`，固定Clock=`2026-10-24T12:00:00Z`，跨日发生时刻为2026-10-22/23/24；独立`SchemaDiskObserver`比较全14表，不以服务DTO或编译代替磁盘事实。
 - 进程：`LinkProcessContractTest#prepare`/`#verifyAfterHostRestart`，由[runner](../../../../record2/tools/verify-b3-process.py)驱动。LINK/REMOVE × BEFORE/AFTER共4场景：LINK在第一次`LINK_WRITTEN`后门控，AFTER在`LINKS_COMMITTED`后门控；每场景两次真实force-stop→旧PID消失→正式MainActivity新PID且前台→同库verify。BEFORE断言完整基线在两次重启后不变；AFTER断言完整关系集合/两端版本/businessRevision并验证旧版本重试必须冲突。使用D盘专用`record2-b2-api34`/`emulator-5584`/API34 x86_64；仅安装/更新R2 `.debug`/`.debug.test`及新`b3-process-<UUID>.db`，不wipe/uninstall/清库或操作其他设备。
 - 构建：自身wrapper显式`-p D:/record/.worktrees/b3-record-links/record2 check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`，沿用JDK17.0.20+8及现有Gradle/AGP/Kotlin/Room/KSP；证据归`record2/build/b3/`。
 
