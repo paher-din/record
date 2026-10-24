@@ -21,7 +21,8 @@ import kotlinx.coroutines.withContext
  * message) with the loaded history whenever it is non-empty, so load() must carry the system
  * message itself and bound the window here — the stock WindowSizePreProcessor would trim the
  * system message away on long histories. The system message is never persisted in Room; it is
- * rebuilt from the run configuration on every load.
+ * rebuilt from the run configuration on every load. The database scan itself is bounded by the
+ * same budget, so long histories cost neither unbounded reads nor trimmed-authoritative copies.
  *
  * store deliberately keeps nothing: Koog's stored window may already be trimmed, and a cache
  * that survives a crash before the final reply commits is how ghost replies happen. Room is
@@ -35,8 +36,14 @@ internal class RoomChatHistoryProvider(
     private val window: Int,
 ) : ChatHistoryProvider {
     override suspend fun load(conversationId: String): List<Message> = withContext(Dispatchers.IO) {
-        val keep = (window - 1).coerceAtLeast(0)
-        val entries = history.completedHistory(sessionId, boundarySequence).takeLast(keep)
+        // The window bounds the whole prompt: system + complete history pairs + the current user
+        // input (which joins through the run parameter). Budget an even slot count so trimming
+        // never splits a USER/ASSISTANT pair, and never let the window start with an assistant
+        // whose question was trimmed away.
+        val budget = ((window - 2).coerceAtLeast(0)) / 2 * 2
+        val entries = history.completedHistory(sessionId, boundarySequence, limit = budget + 1)
+            .dropWhile { it.role == SessionRole.ASSISTANT }
+            .takeLast(budget)
         buildList(entries.size + 1) {
             add(
                 Message.System(

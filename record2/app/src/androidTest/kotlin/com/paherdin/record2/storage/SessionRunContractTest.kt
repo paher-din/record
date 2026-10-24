@@ -13,9 +13,14 @@ import com.paherdin.record2.sessions.SafeRunErrorCode
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -24,6 +29,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -81,7 +87,7 @@ class SessionRunContractTest {
     private suspend fun completeSimpleRun(reply: String = "第一次回复"): Pair<String, String> {
         val session = history.createSession()
         val permit = security.requirePermit(receiver)
-        val start = history.startRun(session.id, "第一次输入", receiver.identity, permit.authEpoch, owner)
+        val start = history.startRun(session.id, "第一次输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         history.completeRun(
             start.runId, receiver.identity, permit.authEpoch, owner,
             RunOutcome(MessageResultKind.Answer, reply),
@@ -96,7 +102,7 @@ class SessionRunContractTest {
         val afterCreate = snapshot()
         assertEquals(before.filterKeys { it != "agent_session" }, afterCreate.filterKeys { it != "agent_session" })
         val permit = security.requirePermit(receiver)
-        val start = history.startRun(session.id, "记一笔午饭 32 元", receiver.identity, permit.authEpoch, owner)
+        val start = history.startRun(session.id, "记一笔午饭 32 元", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         val disk = rows("agent_session").single()
         assertEquals(listOf(session.id, "采购清单", sessionClock.millis(), sessionClock.millis(), 1L, 1L), disk)
         assertEquals(
@@ -127,13 +133,13 @@ class SessionRunContractTest {
             val other = RoomAgentHistoryService(second, sessionClock)
             val outcomes = coroutineScope {
                 listOf(
-                    async { runCatching { history.startRun(session.id, "输入A", receiver.identity, permit.authEpoch, owner) } },
-                    async { runCatching { other.startRun(session.id, "输入B", receiver.identity, permit.authEpoch, owner) } },
+                    async { runCatching { history.startRun(session.id, "输入A", receiver.identity, permit.authEpoch, owner, history.newRunIdentity()) } },
+                    async { runCatching { other.startRun(session.id, "输入B", receiver.identity, permit.authEpoch, owner, other.newRunIdentity()) } },
                 ).awaitAll()
             }
             assertEquals(1, outcomes.count { it.isSuccess })
             expectHistoryError(AgentHistoryError.SessionBusy) {
-                history.startRun(session.id, "输入C", receiver.identity, permit.authEpoch, owner)
+                history.startRun(session.id, "输入C", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
             }
             assertEquals(1, rows("agent_run").size)
             assertEquals("RUNNING", rows("agent_run").single()[9])
@@ -164,7 +170,7 @@ class SessionRunContractTest {
     fun completionFaultsRollBackAndCommittedReceiptsReconcileByIdentity() = runBlocking {
         val session = history.createSession()
         val permit = security.requirePermit(receiver)
-        val start = history.startRun(session.id, "输入", receiver.identity, permit.authEpoch, owner)
+        val start = history.startRun(session.id, "输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         val afterStart = snapshot()
 
         fixture.reinstateHistory(checkpoint = {
@@ -238,7 +244,7 @@ class SessionRunContractTest {
         assertEquals(afterComplete, snapshot())
 
         // A run whose epoch was revoked mid-flight can neither complete nor be resurrected.
-        val start = history.startRun(sessionId, "运行中的输入", receiver.identity, permit.authEpoch, owner)
+        val start = history.startRun(sessionId, "运行中的输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         security.revoke()
         expectHistoryError(AgentHistoryError.AuthorizationRequired) {
             history.completeRun(
@@ -267,7 +273,7 @@ class SessionRunContractTest {
     fun ownershipGateInterruptsStaleRunsAndStaleWritersStayBlind() = runBlocking {
         val session = history.createSession()
         val permit = security.requirePermit(receiver)
-        val stale = history.startRun(session.id, "旧进程输入", receiver.identity, permit.authEpoch, owner)
+        val stale = history.startRun(session.id, "旧进程输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         val nextOwner = "$owner-next"
         val adopted = history.beginProcessOwnership(nextOwner)
         assertTrue(adopted.adopted)
@@ -289,7 +295,7 @@ class SessionRunContractTest {
         assertTrue(history.failRun(stale.runId, RunTerminal.FAILED, SafeRunErrorCode.INTERNAL).alreadyTerminal)
 
         // The new owner starts a fresh run with a fresh creation identity (B0 §5.1 re-entry).
-        val fresh = history.startRun(session.id, "新进程输入", receiver.identity, permit.authEpoch, nextOwner)
+        val fresh = history.startRun(session.id, "新进程输入", receiver.identity, permit.authEpoch, nextOwner, history.newRunIdentity())
         assertNotEquals(stale.proposalCreationRequestId, fresh.proposalCreationRequestId)
         assertEquals(2, rows("agent_message").size)
 
@@ -309,13 +315,16 @@ class SessionRunContractTest {
         assertEquals(16, rows("agent_message").size)
         coord.run(session.id, "输入8")
         val ninth = deviceRequestMessages(http.requests.last())
-        assertEquals(8, ninth.size)
+        // Window 7 = system + 2 complete pairs + the current input; pairs are never split.
+        assertEquals(6, ninth.size)
         assertEquals(
-            listOf("system") + List(3) { listOf("user", "assistant") }.flatten() + listOf("user"),
+            listOf("system") + List(2) { listOf("user", "assistant") }.flatten() + listOf("user"),
             ninth.map { it.deviceRole() },
         )
-        assertTrue(ninth.any { it.toString().contains("输入5") })
+        assertTrue(ninth.any { it.toString().contains("输入6") })
+        assertTrue(ninth.any { it.toString().contains("输入7") })
         assertFalse(ninth.any { it.toString().contains("输入0") })
+        assertFalse(ninth.any { it.toString().contains("输入5") })
         // The authoritative disk kept every exchange; the UI still reads the full history.
         assertEquals(18, rows("agent_message").size)
         val messages = history.sessionMessages(session.id)
@@ -361,14 +370,14 @@ class SessionRunContractTest {
     fun uiHistoryStaysReadableAcrossRunStatesAndReopen() = runBlocking {
         val session = history.createSession()
         val permit = security.requirePermit(receiver)
-        val first = history.startRun(session.id, "完成输入", receiver.identity, permit.authEpoch, owner)
+        val first = history.startRun(session.id, "完成输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         history.completeRun(
             first.runId, receiver.identity, permit.authEpoch, owner,
             RunOutcome(MessageResultKind.Answer, "完成回复"),
         )
-        val second = history.startRun(session.id, "失败输入", receiver.identity, permit.authEpoch, owner)
+        val second = history.startRun(session.id, "失败输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         history.failRun(second.runId, RunTerminal.FAILED, SafeRunErrorCode.PROVIDER_FAILURE)
-        val third = history.startRun(session.id, "中断输入", receiver.identity, permit.authEpoch, owner)
+        val third = history.startRun(session.id, "中断输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         history.beginProcessOwnership("$owner-next")
         assertEquals(4, history.sessionMessages(session.id).size)
 
@@ -392,7 +401,7 @@ class SessionRunContractTest {
         )
         val session = history.createSession()
         val permit = security.requirePermit(receiver)
-        val start = history.startRun(session.id, "引用输入", receiver.identity, permit.authEpoch, owner)
+        val start = history.startRun(session.id, "引用输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         expectHistoryError(AgentHistoryError.Validation) {
             history.completeRun(
                 start.runId, receiver.identity, permit.authEpoch, owner,
@@ -430,7 +439,7 @@ class SessionRunContractTest {
     fun runTerminalFaultsRollBackAndIdempotentRetriesStayTerminal() = runBlocking {
         val session = history.createSession()
         val permit = security.requirePermit(receiver)
-        val start = history.startRun(session.id, "将失败的输入", receiver.identity, permit.authEpoch, owner)
+        val start = history.startRun(session.id, "将失败的输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
         val afterStart = snapshot()
         fixture.reinstateHistory(checkpoint = {
             if (it == SessionCheckpoint.TERMINAL_WRITTEN) throw SQLiteFullException("Synthetic disk full")
@@ -451,6 +460,136 @@ class SessionRunContractTest {
         assertTrue(repeated.alreadyTerminal)
         assertEquals("FAILED", runRow(start.runId)[9])
         assertEquals("PROVIDER_FAILURE", runRow(start.runId)[13])
+    }
+
+    @Test
+    fun realCancellationDuringRunFreesTheSlotAndPersistsTerminalState() = runBlocking {
+        val session = history.createSession()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val http = ScriptedDeviceHttp { _, _ ->
+            entered.countDown()
+            check(release.await(10, TimeUnit.SECONDS))
+            chatDeviceResponse("不该出现的回复")
+        }
+        val coord = coordinator(http)
+        val scope = CoroutineScope(Dispatchers.Default + Job())
+        val job = scope.launch { coord.run(session.id, "被取消的输入") }
+        assertTrue(withContext(Dispatchers.IO) { entered.await(10, TimeUnit.SECONDS) })
+        // Cancel first, then unblock the responder: its latch wait is a blocking JDK call that
+        // does not observe coroutine cancellation on its own.
+        job.cancel()
+        release.countDown()
+        job.join()
+        assertTrue(job.isCancelled)
+        // The terminal marking ran under NonCancellable against real Room.
+        val runRow = rows("agent_run").single()
+        assertEquals("CANCELLED", runRow[9])
+        assertNull(runRow[10])
+        assertEquals("CANCELLED", runRow[13])
+        assertEquals(1, rows("agent_message").size)
+        assertEquals("被取消的输入", history.sessionMessages(session.id).single().body)
+        // The slot is free: a new run starts on the same session without a gate.
+        val permit = security.requirePermit(receiver)
+        val second = history.startRun(session.id, "取消后的新输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
+        assertEquals("RUNNING", rows("agent_run").single { it[0] == second.runId }[9])
+        scope.cancel()
+    }
+
+    @Test
+    fun startReceiptLossReconcilesTheCommittedOrphanByIdentity() = runBlocking {
+        val session = history.createSession()
+        fixture.reinstateHistory(checkpoint = {
+            if (it == SessionCheckpoint.RUN_START_COMMITTED) throw IllegalStateException("Synthetic lost start receipt")
+        })
+        val http = ScriptedDeviceHttp { _, _ -> chatDeviceResponse("R") }
+        val coord = coordinator(http)
+        try {
+            coord.run(session.id, "丢失启动回执的输入")
+            fail("run should surface the unknown start outcome")
+        } catch (error: com.paherdin.record2.ai.runs.AgentRunException) {
+            assertEquals(com.paherdin.record2.ai.runs.AgentRunError.OutcomeUnknown, error.code)
+        }
+        // The committed run was terminally reconciled by its pre-generated identity.
+        val runRow = rows("agent_run").single()
+        assertEquals("CANCELLED", runRow[9])
+        assertNull(runRow[10])
+        assertEquals(1, rows("agent_message").size)
+        assertEquals("丢失启动回执的输入", history.sessionMessages(session.id).single().body)
+        // The session accepts a fresh run with a fresh creation identity.
+        fixture.reinstateHistory()
+        val second = coordinator(http).run(session.id, "后续输入")
+        assertEquals("R", second.answer)
+        assertEquals(3, rows("agent_message").size)
+        val creationRequests = rows("agent_run").map { it[6] }
+        assertEquals(2, creationRequests.toSet().size)
+    }
+
+    @Test
+    fun coordinatorCompletionReceiptLossReconcilesToCommittedSuccess() = runBlocking {
+        val session = history.createSession()
+        val http = ScriptedDeviceHttp { _, _ -> chatDeviceResponse("已提交的回复") }
+        fixture.reinstateHistory(checkpoint = {
+            if (it == SessionCheckpoint.COMPLETION_COMMITTED) throw IllegalStateException("Synthetic lost completion receipt")
+        })
+        val coord = coordinator(http)
+        val result = coord.run(session.id, "输入")
+        // Room committed the final reply; the coordinator reconciles instead of failing.
+        assertEquals("已提交的回复", result.answer)
+        assertTrue(result.completion.alreadyCompleted)
+        assertEquals("COMPLETED", runRow(result.runId)[9])
+        assertEquals(2, rows("agent_message").size)
+        val messages = history.sessionMessages(session.id)
+        assertEquals(listOf("输入", "已提交的回复"), messages.map { it.body })
+        assertEquals(2, messages.count { it.runState == RunState.COMPLETED })
+    }
+
+    @Test
+    fun completionIdempotenceComparesTheFullOutcomeSemantics() = runBlocking {
+        val noteId = schemaId()
+        database.records().insertNote(
+            NoteEntity(noteId, "幂等比较笔记", sessionClock.millis(), 1, sessionClock.millis(), sessionClock.millis(), null),
+        )
+        val session = history.createSession()
+        val permit = security.requirePermit(receiver)
+        val start = history.startRun(session.id, "输入", receiver.identity, permit.authEpoch, owner, history.newRunIdentity())
+        val original = history.completeRun(
+            start.runId, receiver.identity, permit.authEpoch, owner,
+            RunOutcome(MessageResultKind.Answer, "回复", references = listOf(MessageReference(0, null, noteId))),
+        )
+        assertFalse(original.alreadyCompleted)
+        val committed = snapshot()
+
+        // Same body alone is not the same outcome: kind, proposal identity and references count.
+        expectHistoryError(AgentHistoryError.RunInvalidated) {
+            history.completeRun(
+                start.runId, receiver.identity, permit.authEpoch, owner,
+                RunOutcome(MessageResultKind.Navigate, "回复", references = listOf(MessageReference(0, null, noteId))),
+            )
+        }
+        expectHistoryError(AgentHistoryError.RunInvalidated) {
+            history.completeRun(
+                start.runId, receiver.identity, permit.authEpoch, owner,
+                RunOutcome(MessageResultKind.Answer, "回复", proposalId = schemaId(), proposalRevision = 1,
+                    references = listOf(MessageReference(0, null, noteId))),
+            )
+        }
+        expectHistoryError(AgentHistoryError.RunInvalidated) {
+            history.completeRun(
+                start.runId, receiver.identity, permit.authEpoch, owner,
+                RunOutcome(MessageResultKind.Answer, "回复"),
+            )
+        }
+        assertEquals(committed, snapshot())
+
+        // A fully identical redelivery reconciles to the original receipt.
+        val redelivered = history.completeRun(
+            start.runId, receiver.identity, permit.authEpoch, owner,
+            RunOutcome(MessageResultKind.Answer, "回复", references = listOf(MessageReference(0, null, noteId))),
+        )
+        assertTrue(redelivered.alreadyCompleted)
+        assertEquals(original.assistantMessageId, redelivered.assistantMessageId)
+        assertEquals(committed, snapshot())
     }
 
     private fun reopen() {

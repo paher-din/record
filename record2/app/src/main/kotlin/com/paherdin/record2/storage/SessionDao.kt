@@ -82,6 +82,24 @@ internal interface SessionDao {
     fun completedHistoryBefore(sessionId: String, beforeSequence: Long): List<CompletedHistoryRow>
 
     @Query(
+        "SELECT m.role AS role, m.body AS body FROM agent_message m " +
+            "JOIN agent_run r ON r.id = m.runId AND r.sessionId = m.sessionId " +
+            "WHERE m.sessionId = :sessionId AND m.sequence < :beforeSequence AND r.state = 'COMPLETED' " +
+            "ORDER BY m.sequence DESC LIMIT :limit",
+    )
+    fun completedHistoryBeforeLimited(
+        sessionId: String,
+        beforeSequence: Long,
+        limit: Int,
+    ): List<CompletedHistoryRow>
+
+    @Query(
+        "SELECT ref.* FROM agent_message_reference ref WHERE ref.messageId = :messageId " +
+            "ORDER BY ref.ordinal ASC",
+    )
+    fun referencesForMessage(messageId: String): List<AgentMessageReferenceEntity>
+
+    @Query(
         "SELECT m.*, r.state AS runState FROM agent_message m " +
             "JOIN agent_run r ON r.id = m.runId AND r.sessionId = m.sessionId " +
             "WHERE m.sessionId = :sessionId ORDER BY m.sequence ASC",

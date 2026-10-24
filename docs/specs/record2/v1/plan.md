@@ -963,3 +963,15 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
   →`am instrument -w -r -e class com.paherdin.record2.storage.SessionRunRealContractTest#prepare com.paherdin.record2.debug.test/androidx.test.runner.AndroidJUnitRunner`→`adb -s emulator-5580 shell am force-stop com.paherdin.record2.debug`→重新注入Key→同上`#verify`。缺Key时该类以Assume记INCONCLUSIVE，不阻塞确定性套件；E1完成门禁的该项已满足。
 - E2拥有的取消/换Provider/删除Session/真进程恢复矩阵、D1的Record Tools与系统提示词、F2的UI与告知文案、G0/G1备份恢复均未在本批启动；`AgentRunDefaults`为测试参考值，产品默认预算不冻结。
 - 本批未修改record1、R1文档、CI、环境与备份规则；未操作普通`record2.db`、旧测试库与其他设备。Git提交/推送/PR及issue #12状态待负责人授权，本轮未提前关闭远端任务。
+
+### 26.5 2026-10-24 PR #24 审阅修复（REQUEST CHANGES）
+
+负责人对PR #24（提交`6cca984`）给出REQUEST CHANGES：3项P1必须修复、3项P2同步处理，并要求补真实Room取消、启动提交时窗与默认窗口边界测试。本节记录修复与新的回归结果；§26.2–26.4首轮交付事实保留不变。
+
+- **P1-1 取消后slot被永久占用：** Coordinator在`CancellationException`分支现以`withContext(NonCancellable)`执行终态标记——已取消协程内普通suspend调用（经`Dispatchers.IO`切换）可能直接不执行，导致RUNNING+activeSlot=1残留、后续输入被SessionBusy拒绝。新增设备测试`realCancellationDuringRunFreesTheSlotAndPersistsTerminalState`：真实Room+脚本化HTTP运行中取消，验证Run=CANCELLED、slot=NULL、safeErrorCode持久化、无最终回复、同Session可立即再启动。host的Fake清理路径不再被当作该风险的证明。
+- **P1-2 startRun提交后回执丢失的孤立Run：** 三层修复：(1) `RunIdentity`（runId/userMessageId/proposalCreationRequestId）在启动事务前由调用方生成并传入——回执丢失时孤立Run可按身份精确处置；(2) 服务端start/complete/fail三个提交点的事务体保持可取消（回滚语义不变），但提交后的回执尾部改在`NonCancellable`内交付，取消不再能在Kotlin层造成“已提交无回执”；(3) Coordinator启动阶段显式先捕获`CancellationException`原样上抛（不再包装破坏取消语义），对`OutcomeUnknown`按identity以NonCancellable标CANCELLED回账。新增设备测试`startReceiptLossReconcilesTheCommittedOrphanByIdentity`（RUN_START_COMMITTED检查点注入丢回执）：孤立Run=CANCELLED、消息保留可读、同Session新Run成功且创建身份不同。
+- **P1-3 窗口裁剪破坏问答对：** 窗口语义改为约束整个prompt：system 1条+完整USER/ASSISTANT对+当前输入1条；预算`((window-2)下取整至偶数)`，provider永不以被裁掉提问的assistant开头（dropWhile前导ASSISTANT）。默认40=system+19对+当前输入，恰40条（原实现会到41条且开头孤立assistant）。新增host边界测试`defaultWindowKeepsWholePromptWithinBudgetWithCompletePairs`（21对种子，精确按消息内容断言，避免子串误配）。
+- **P2-4 OutcomeUnknown语义：** `AgentRunError`新增`OutcomeUnknown`并全程透传。completeRun回执丢失时，Coordinator先以`persistedResult(runId)`按Run身份核对Room事实：已COMPLETED且正文一致→返回成功（alreadyCompleted收据）；否则标FAILED并抛OutcomeUnknown——不再把可能已成功的提交上报为Internal失败。新增host `completionReceiptLossReconcilesToSuccessWhenRoomCommittedTheReply`与设备`coordinatorCompletionReceiptLossReconcilesToCommittedSuccess`（COMPLETION_COMMITTED注入丢回执→协调器返回成功、磁盘恰2条消息、跨Run上下文含该对）。
+- **P2-5 有界历史查询：** `completedHistory`新增`limit`参数，DAO按`sequence DESC LIMIT`取最近N条后反转，provider传入`budget+1`——长历史不再全量扫描/全量驻留内存；UI全历史接口`sessionMessages`不受影响。
+- **P2-6 完整幂等比较：** completeRun对已完成Run的重投递现比较正文+resultKind+resultJson+proposalId/proposalRevision+全部引用（`referencesForMessage`），不再仅正文；任何差异拒绝（RunInvalidated）且零变化。新增设备测试`completionIdempotenceComparesTheFullOutcomeSemantics`（同正文异kind/异proposal/缺引用均拒绝，完全一致返回原收据）。
+- **验证：** 全量构建任务组PASS（1分30秒，129项中22执行）；host Debug/Release各36项（新增3项：默认窗口边界、启动回账、完成回账）fail/error/skip=0；设备`SessionRunContractTest` 15/15 PASS（8.671秒，11项既有+4项新增）；共享回归（Schema 10+B2 13+E1真实类2项Assume）`OK (25 tests)`。新APK SHA-256：debug`1280423b…`、release-unsigned`87f04284…`、androidTest`cc4a4b7c…`（build/e1/apk-hashes-review.txt）；首轮回执与真实跨Run证据保留不变。Schema v1物理结构仍未修改。

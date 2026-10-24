@@ -62,6 +62,15 @@ internal data class RunOutcome(
     }
 }
 
+/** Stable identities generated before the start transaction, so a caller that loses the
+ * start receipt (crash or cancellation in the commit window) can still reconcile the exact run
+ * it attempted by identity instead of leaving an orphan slot holder. */
+internal data class RunIdentity(
+    val runId: String,
+    val userMessageId: String,
+    val proposalCreationRequestId: String,
+)
+
 internal data class RunStartReceipt(
     val runId: String,
     val sessionId: String,
@@ -90,6 +99,16 @@ internal data class RunTerminalReceipt(
     val state: RunState,
     val safeErrorCode: String?,
     val alreadyTerminal: Boolean,
+)
+
+/** Read-only reconciliation view of one run's persisted outcome, keyed by run identity. */
+internal data class PersistedRunResult(
+    val runId: String,
+    val state: RunState,
+    val assistantMessageId: String?,
+    val assistantMessageSequence: Long?,
+    val finishedAt: Long?,
+    val body: String?,
 )
 
 internal data class ProcessOwnershipReceipt(
@@ -124,8 +143,22 @@ internal interface AgentHistoryService {
     /** Full user-visible history for UI rendering: failed/interrupted inputs stay readable. */
     suspend fun sessionMessages(sessionId: String): List<AgentSessionMessage>
 
-    /** Completed USER/ASSISTANT history before [beforeSequence], for Koog context rebuild. */
-    suspend fun completedHistory(sessionId: String, beforeSequence: Long): List<CompletedHistoryEntry>
+    /**
+     * Completed USER/ASSISTANT history before [beforeSequence], ascending by sequence. [limit]
+     * bounds the database scan and the returned entries to the most recent ones; the full UI
+     * history stays on [sessionMessages].
+     */
+    suspend fun completedHistory(
+        sessionId: String,
+        beforeSequence: Long,
+        limit: Int? = null,
+    ): List<CompletedHistoryEntry>
+
+    /** Fresh stable identities for one start attempt; pure, no database access. */
+    fun newRunIdentity(): RunIdentity
+
+    /** Read-only outcome view used to reconcile a lost completion receipt by run identity. */
+    suspend fun persistedResult(runId: String): PersistedRunResult?
 
     /**
      * Single short Room transaction: persist the current user message plus a RUNNING run that
@@ -138,6 +171,7 @@ internal interface AgentHistoryService {
         receiverIdentity: String,
         authEpoch: Long,
         processOwnerId: String,
+        identity: RunIdentity,
     ): RunStartReceipt
 
     /**

@@ -12,7 +12,9 @@ import com.paherdin.record2.sessions.AgentHistoryService
 import com.paherdin.record2.sessions.CompletedHistoryEntry
 import com.paherdin.record2.sessions.MessageReference
 import com.paherdin.record2.sessions.MessageResultKind
+import com.paherdin.record2.sessions.PersistedRunResult
 import com.paherdin.record2.sessions.ProcessOwnershipReceipt
+import com.paherdin.record2.sessions.RunIdentity
 import com.paherdin.record2.sessions.RunCompletionReceipt
 import com.paherdin.record2.sessions.RunOutcome
 import com.paherdin.record2.sessions.RunStartReceipt
@@ -27,6 +29,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 internal enum class SessionCheckpoint {
@@ -103,15 +106,44 @@ internal class RoomAgentHistoryService(
     override suspend fun completedHistory(
         sessionId: String,
         beforeSequence: Long,
+        limit: Int?,
     ): List<CompletedHistoryEntry> = io {
         database.withTransaction {
             readSession(sessionId)
-            dao.completedHistoryBefore(sessionId, beforeSequence).map { row ->
+            val rows = if (limit == null) {
+                dao.completedHistoryBefore(sessionId, beforeSequence)
+            } else {
+                require(limit >= 0)
+                // Most recent first, bounded at the database; restore ascending order after.
+                dao.completedHistoryBeforeLimited(sessionId, beforeSequence, limit).asReversed()
+            }
+            rows.map { row ->
                 CompletedHistoryEntry(
                     role = parseRole(row.role),
                     body = row.body,
                 )
             }
+        }
+    }
+
+    override fun newRunIdentity(): RunIdentity = RunIdentity(
+        runId = UUID.randomUUID().toString(),
+        userMessageId = UUID.randomUUID().toString(),
+        proposalCreationRequestId = UUID.randomUUID().toString(),
+    )
+
+    override suspend fun persistedResult(runId: String): PersistedRunResult? = io {
+        database.withTransaction {
+            val run = dao.run(runId) ?: return@withTransaction null
+            val assistant = dao.finalAssistant(runId)
+            PersistedRunResult(
+                runId = runId,
+                state = parseState(run.state),
+                assistantMessageId = assistant?.id,
+                assistantMessageSequence = assistant?.sequence,
+                finishedAt = run.finishedAt,
+                body = assistant?.body,
+            )
         }
     }
 
@@ -121,6 +153,7 @@ internal class RoomAgentHistoryService(
         receiverIdentity: String,
         authEpoch: Long,
         processOwnerId: String,
+        identity: RunIdentity,
     ): RunStartReceipt = io {
         if (userText.isEmpty()) fail(AgentHistoryError.Validation)
         try {
@@ -132,9 +165,9 @@ internal class RoomAgentHistoryService(
                 if (session.nextMessageSequence >= Long.MAX_VALUE) fail(AgentHistoryError.RecoveryRequired)
                 if (dao.activeRun(sessionId) != null) fail(AgentHistoryError.SessionBusy)
                 val now = clock.millis()
-                val runId = UUID.randomUUID().toString()
-                val messageId = UUID.randomUUID().toString()
-                val creationRequestId = UUID.randomUUID().toString()
+                val runId = identity.runId
+                val messageId = identity.userMessageId
+                val creationRequestId = identity.proposalCreationRequestId
                 val boundary = session.nextMessageSequence
                 dao.insertRun(
                     AgentRunEntity(
@@ -192,7 +225,14 @@ internal class RoomAgentHistoryService(
             // The unique (sessionId, activeSlot) index is the concurrency gate (B0 §6): a losing
             // concurrent start must surface as a busy session, not as storage corruption.
             throw AgentHistoryException(AgentHistoryError.SessionBusy, error)
-        }.also { committed(SessionCheckpoint.RUN_START_COMMITTED) }
+        }.also { receipt ->
+            // Post-commit cancellation must not strand a committed run without its receipt:
+            // the caller reconciles by the identity it generated, but only if it learns the
+            // outcome, so the tail runs outside cancellation while the transaction body stays
+            // cancellable (rollback semantics preserved).
+            withContext(NonCancellable) { committed(SessionCheckpoint.RUN_START_COMMITTED) }
+            receipt
+        }
     }
 
     override suspend fun completeRun(
@@ -207,7 +247,7 @@ internal class RoomAgentHistoryService(
             val now = clock.millis()
             if (run.state == RunState.COMPLETED.name) {
                 val existing = dao.finalAssistant(runId) ?: fail(AgentHistoryError.RecoveryRequired)
-                if (existing.body != outcome.body) fail(AgentHistoryError.RunInvalidated)
+                if (!sameOutcome(existing, outcome)) fail(AgentHistoryError.RunInvalidated)
                 return@withTransaction RunCompletionReceipt(
                     runId = runId,
                     assistantMessageId = existing.id,
@@ -281,7 +321,12 @@ internal class RoomAgentHistoryService(
                 finishedAt = now,
                 alreadyCompleted = false,
             )
-        }.also { committed(SessionCheckpoint.COMPLETION_COMMITTED) }
+        }.also { receipt ->
+            // Same post-commit tail rule as startRun: cancellation after the commit must not
+            // misreport a committed final reply as a lost one.
+            withContext(NonCancellable) { committed(SessionCheckpoint.COMPLETION_COMMITTED) }
+            receipt
+        }
     }
 
     override suspend fun failRun(
@@ -305,7 +350,10 @@ internal class RoomAgentHistoryService(
             }
             mark(SessionCheckpoint.TERMINAL_WRITTEN)
             RunTerminalReceipt(runId, parseState(state.name), safeErrorCode.name, false)
-        }.also { committed(SessionCheckpoint.TERMINAL_COMMITTED) }
+        }.also { receipt ->
+            withContext(NonCancellable) { committed(SessionCheckpoint.TERMINAL_COMMITTED) }
+            receipt
+        }
     }
 
     override suspend fun beginProcessOwnership(processOwnerId: String): ProcessOwnershipReceipt = io {
@@ -323,6 +371,19 @@ internal class RoomAgentHistoryService(
             mark(SessionCheckpoint.OWNERSHIP_COMMITTED)
             ProcessOwnershipReceipt(processOwnerId, true, interrupted, false)
         }
+    }
+
+    private fun sameOutcome(existing: AgentMessageEntity, outcome: RunOutcome): Boolean {
+        val persistedReferences = dao.referencesForMessage(existing.id)
+            .map { Triple(it.ordinal, it.transactionId, it.noteId) }
+        val requestedReferences = outcome.references
+            .map { Triple(it.ordinal, it.transactionId, it.noteId) }
+        return existing.body == outcome.body &&
+            existing.resultKind == outcome.resultKind.name &&
+            existing.resultJson == outcome.resultJson &&
+            existing.proposalId == outcome.proposalId &&
+            existing.proposalRevision == outcome.proposalRevision &&
+            persistedReferences == requestedReferences
     }
 
     private fun validateOutcome(outcome: RunOutcome) {

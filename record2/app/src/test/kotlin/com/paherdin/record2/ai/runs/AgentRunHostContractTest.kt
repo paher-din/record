@@ -136,7 +136,7 @@ class AgentRunHostContractTest {
             coord.run(session.id, "hello")
             fail("run should fail before its final reply commits")
         } catch (error: AgentRunException) {
-            assertEquals(AgentRunError.Internal, error.code)
+            assertEquals(AgentRunError.OutcomeUnknown, error.code)
         }
         // The model-side store happened (Koog offered the full window including the tool
         // protocol messages), but the authority never recorded a final reply.
@@ -161,24 +161,55 @@ class AgentRunHostContractTest {
         val session = history.newSession()
         history.seedCompleted((0 until 6).map { index -> "old-$index" to "OLD-REPLY-$index" })
         val http = ScriptedHttp { _, _ -> chatResponse("R") }
-        // Window of 7 = system + the six most recent completed entries + the current input.
+        // Window of 7 = system + 2 complete pairs (4 entries) + the current input.
         val coord = coordinator(history, FakeAiSecurity(), http, window = 7)
         coord.run(session.id, "new-input")
         assertEquals(1, http.requests.size)
         val messages = requestMessages(http.requests[0])
-        assertEquals(8, messages.size)
+        assertEquals(6, messages.size)
         assertEquals(
-            listOf("system") + List(3) { listOf("user", "assistant") }.flatten() + listOf("user"),
+            listOf("system") + List(2) { listOf("user", "assistant") }.flatten() + listOf("user"),
             messages.map { it.role() },
         )
         assertFalse(http.requests[0].contains("old-0"))
-        assertFalse(http.requests[0].contains("old-2"))
-        assertTrue(http.requests[0].contains("old-3"))
+        assertFalse(http.requests[0].contains("old-3"))
+        assertTrue(http.requests[0].contains("old-4"))
         assertTrue(http.requests[0].contains("old-5"))
         assertTrue(http.requests[0].contains("new-input"))
         // The trim is the provider's view only; the source kept all 12 seeded entries and the
         // newly completed pair.
         assertEquals(14, history.entriesSnapshot().size)
+    }
+
+    @Test
+    fun defaultWindowKeepsWholePromptWithinBudgetWithCompletePairs() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        history.seedCompleted((0 until 21).map { index -> "old-$index" to "OLD-REPLY-$index" })
+        val http = ScriptedHttp { _, _ -> chatResponse("R") }
+        val coord = coordinator(history, FakeAiSecurity(), http, window = AgentRunDefaults.HISTORY_WINDOW)
+        coord.run(session.id, "new-input")
+        val messages = requestMessages(http.requests.single())
+        // 40 = system + 19 complete pairs + the current input; never 41, never a split pair.
+        assertEquals(AgentRunDefaults.HISTORY_WINDOW, messages.size)
+        assertEquals("system", messages.first().role())
+        assertEquals("user", messages[1].role())
+        assertEquals(
+            listOf("system") + List(19) { listOf("user", "assistant") }.flatten() + listOf("user"),
+            messages.map { it.role() },
+        )
+        val userTexts = messages.mapNotNull { if (it.role() == "user") it.textContent() else null }
+        val assistantTexts = messages.mapNotNull { if (it.role() == "assistant") it.textContent() else null }
+        assertFalse("old-0" in userTexts)
+        assertFalse("old-1" in userTexts)
+        assertTrue("old-2" in userTexts)
+        assertTrue("old-20" in userTexts)
+        assertFalse("OLD-REPLY-0" in assistantTexts)
+        assertFalse("OLD-REPLY-1" in assistantTexts)
+        assertTrue("OLD-REPLY-2" in assistantTexts)
+        assertTrue("OLD-REPLY-20" in assistantTexts)
+        // 21 seeded pairs + this run's completed pair; the trim never touched the source.
+        assertEquals(44, history.entriesSnapshot().size)
     }
 
     @Test
@@ -293,11 +324,10 @@ class AgentRunHostContractTest {
         assertTrue(loaded[0].textContentOfMessage().contains("SYS-PROMPT-FIXTURE"))
         assertEquals("u1", loaded[1].textContentOfMessage())
         assertEquals("a1", loaded[2].textContentOfMessage())
-        // load() is bounded by the window while the source stays complete.
-        val trimmed = RoomChatHistoryProvider(history, "session-1", 2, "SYS", window = 2).load("koog")
-        assertEquals(2, trimmed.size)
-        assertTrue(trimmed[0] is Message.System)
-        assertEquals("a1", trimmed[1].textContentOfMessage())
+        // A window with no room for a pair keeps only the system message — never half a pair.
+        val narrow = RoomChatHistoryProvider(history, "session-1", 2, "SYS", window = 3).load("koog")
+        assertEquals(1, narrow.size)
+        assertTrue(narrow[0] is Message.System)
         provider.store("koog-run-id", emptyList())
         assertEquals(0, history.completedRuns.size)
         assertEquals(0, history.startedRuns.size)
@@ -305,6 +335,50 @@ class AgentRunHostContractTest {
 
     private fun Message.textContentOfMessage(): String =
         parts.filterIsInstance<MessagePart.Text>().joinToString("") { it.text }
+
+    @Test
+    fun startReceiptLossReconcilesOrphanByIdentityAndFreesTheSession() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        history.startRunPersistThenOutcomeUnknown = true
+        val http = ScriptedHttp { _, _ -> chatResponse("R") }
+        val coord = coordinator(history, FakeAiSecurity(), http)
+        try {
+            coord.run(session.id, "hello")
+            fail("run should surface the unknown start outcome")
+        } catch (error: AgentRunException) {
+            assertEquals(AgentRunError.OutcomeUnknown, error.code)
+        }
+        // The committed-but-unreceipted run was terminally reconciled by its identity.
+        assertEquals(listOf(Triple("run-1", RunTerminal.CANCELLED, SafeRunErrorCode.INTERNAL)), history.failedRuns)
+        assertEquals(0, http.requests.size)
+        assertEquals(0, history.completedRuns.size)
+        history.startRunPersistThenOutcomeUnknown = false
+        val second = coord.run(session.id, "again")
+        assertEquals("R", second.answer)
+        assertEquals(2, history.startedRuns.size)
+    }
+
+    @Test
+    fun completionReceiptLossReconcilesToSuccessWhenRoomCommittedTheReply() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        history.completeRunPersistThenOutcomeUnknown = true
+        val http = ScriptedHttp { index, _ -> if (index == 1) chatResponse("COMMITTED-REPLY") else chatResponse("R") }
+        val coord = coordinator(history, FakeAiSecurity(), http)
+        val result = coord.run(session.id, "hello")
+        // Room already committed the reply: the coordinator reconciles instead of failing.
+        assertEquals("COMMITTED-REPLY", result.answer)
+        assertTrue(result.completion.alreadyCompleted)
+        assertEquals(1, history.completedRuns.size)
+        assertTrue(history.failedRuns.isEmpty())
+        // The committed pair still feeds the next run's context.
+        history.completeRunPersistThenOutcomeUnknown = false
+        coord.run(session.id, "again")
+        val secondRun = requestMessages(http.requests[1])
+        assertTrue(secondRun.any { it.textContent() == "hello" })
+        assertTrue(secondRun.any { it.textContent() == "COMMITTED-REPLY" })
+    }
 
     private companion object {
         @Serializable

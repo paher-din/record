@@ -23,7 +23,9 @@ import com.paherdin.record2.sessions.AgentSessionInfo
 import com.paherdin.record2.sessions.AgentSessionMessage
 import com.paherdin.record2.sessions.CompletedHistoryEntry
 import com.paherdin.record2.sessions.MessageResultKind
+import com.paherdin.record2.sessions.PersistedRunResult
 import com.paherdin.record2.sessions.ProcessOwnershipReceipt
+import com.paherdin.record2.sessions.RunIdentity
 import com.paherdin.record2.sessions.RunCompletionReceipt
 import com.paherdin.record2.sessions.RunOutcome
 import com.paherdin.record2.sessions.RunStartReceipt
@@ -144,6 +146,10 @@ internal class FakeHistoryService(
     var completedHistoryError: AgentHistoryError? = null
     var requireAuthorizationMismatch: Boolean = false
 
+    // Commit-then-lose-the-receipt simulations for coordinator reconciliation paths.
+    var startRunPersistThenOutcomeUnknown: Boolean = false
+    var completeRunPersistThenOutcomeUnknown: Boolean = false
+
     private var sequence = 0L
     private var sessionId: String? = null
     private val entries = CopyOnWriteArrayList<CompletedHistoryEntry>()
@@ -186,11 +192,19 @@ internal class FakeHistoryService(
     override suspend fun completedHistory(
         sessionId: String,
         beforeSequence: Long,
+        limit: Int?,
     ): List<CompletedHistoryEntry> {
         completedHistoryCalls += 1
         completedHistoryError?.let { throw AgentHistoryException(it) }
-        return entries.toList()
+        val source = entries.toList()
+        return if (limit == null) source else source.takeLast(limit)
     }
+
+    override fun newRunIdentity(): RunIdentity = RunIdentity(
+        runId = "run-${startedRuns.size + 1}",
+        userMessageId = "m-${startedRuns.size + 1}-user",
+        proposalCreationRequestId = "req-${startedRuns.size + 1}",
+    )
 
     override suspend fun startRun(
         sessionId: String,
@@ -198,17 +212,18 @@ internal class FakeHistoryService(
         receiverIdentity: String,
         authEpoch: Long,
         processOwnerId: String,
+        identity: RunIdentity,
     ): RunStartReceipt {
         startRunError?.let { throw AgentHistoryException(it) }
         if (requireAuthorizationMismatch) throw AgentHistoryException(AgentHistoryError.AuthorizationRequired)
         val receipt = RunStartReceipt(
-            runId = "run-${startedRuns.size + 1}",
+            runId = identity.runId,
             sessionId = sessionId,
-            userMessageId = "m-${startedRuns.size + 1}",
+            userMessageId = identity.userMessageId,
             userMessageSequence = sequence,
             boundarySequence = sequence,
             boundaryHistoryVersion = 1,
-            proposalCreationRequestId = "req-${startedRuns.size + 1}",
+            proposalCreationRequestId = identity.proposalCreationRequestId,
             receiverIdentity = receiverIdentity,
             authEpoch = authEpoch,
             dataGeneration = "generation",
@@ -218,6 +233,9 @@ internal class FakeHistoryService(
         startedRuns += receipt
         inputs += userText to RunState.RUNNING
         sequence += 1
+        if (startRunPersistThenOutcomeUnknown) {
+            throw AgentHistoryException(AgentHistoryError.OutcomeUnknown)
+        }
         return receipt
     }
 
@@ -235,7 +253,29 @@ internal class FakeHistoryService(
         entries += CompletedHistoryEntry(SessionRole.ASSISTANT, outcome.body)
         sequence += 1
         inputs.replaceAll { (body, state) -> if (body == startedBody(start)) body to RunState.COMPLETED else body to state }
-        return RunCompletionReceipt(runId, "assistant-${completedRuns.size}", sequence - 1, 0, false)
+        val receipt = RunCompletionReceipt(runId, "assistant-${completedRuns.size}", sequence - 1, 0, false)
+        if (completeRunPersistThenOutcomeUnknown) {
+            throw AgentHistoryException(AgentHistoryError.OutcomeUnknown)
+        }
+        return receipt
+    }
+
+    override suspend fun persistedResult(runId: String): PersistedRunResult? {
+        val completed = completedRuns.singleOrNull { it.first.runId == runId }
+        return if (completed != null) {
+            PersistedRunResult(
+                runId = runId,
+                state = RunState.COMPLETED,
+                assistantMessageId = "assistant-${completedRuns.indexOf(completed) + 1}",
+                assistantMessageSequence = completed.second.let { sequence - 1 },
+                finishedAt = 0,
+                body = completed.second.body,
+            )
+        } else {
+            startedRuns.singleOrNull { it.runId == runId }?.let {
+                PersistedRunResult(runId, RunState.RUNNING, null, null, null, null)
+            }
+        }
     }
 
     override suspend fun failRun(

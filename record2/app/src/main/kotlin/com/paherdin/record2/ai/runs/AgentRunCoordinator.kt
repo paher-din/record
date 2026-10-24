@@ -18,6 +18,8 @@ import com.paherdin.record2.ai.security.AiSecurityService
 import com.paherdin.record2.ai.security.AiSendPermit
 import com.paherdin.record2.ai.security.ProviderReceiver
 import com.paherdin.record2.ai.security.RecordProviderReceivers
+import com.paherdin.record2.sessions.AgentHistoryError
+import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.AgentHistoryService
 import com.paherdin.record2.sessions.AgentSessionInfo
 import com.paherdin.record2.sessions.AgentSessionMessage
@@ -25,10 +27,12 @@ import com.paherdin.record2.sessions.MessageResultKind
 import com.paherdin.record2.sessions.ProcessOwnershipReceipt
 import com.paherdin.record2.sessions.RunCompletionReceipt
 import com.paherdin.record2.sessions.RunOutcome
+import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.SafeRunErrorCode
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -38,6 +42,7 @@ internal enum class AgentRunError {
     CredentialUnavailable,
     SessionBusy,
     RunInvalidated,
+    OutcomeUnknown,
     ProviderFailure,
     BudgetExceeded,
     RecoverableIO,
@@ -56,11 +61,12 @@ internal data class RunResult(
 )
 
 /**
- * Application-level default context bounds. [HISTORY_WINDOW] counts prompt messages including
- * the system message; the completed history is trimmed inside the history provider because
- * Koog's stock window preprocessor would trim the system message away (Koog 1.3.0 merge rule).
- * D0 test budgets (Plan §24.5) are an upper-bound reference; product defaults stay unfrozen
- * until D1/E2 evidence lands.
+ * Application-level default context bounds. [HISTORY_WINDOW] bounds the whole prompt — the
+ * system message plus complete USER/ASSISTANT pairs plus the current input — and the trim is
+ * done inside the history provider, because Koog's stock window preprocessor would trim the
+ * system message away and could split a pair (Koog 1.3.0 merge rule). D0 test budgets
+ * (Plan §24.5) are an upper-bound reference; product defaults stay unfrozen until D1/E2
+ * evidence lands.
  */
 internal object AgentRunDefaults {
     const val HISTORY_WINDOW = 40
@@ -99,11 +105,33 @@ internal class AgentRunCoordinator(
         } catch (error: AiSecurityException) {
             throw AgentRunException(safeAuthorization(error), error)
         }
+        // Identities are generated before the start transaction: if the commit lands but the
+        // receipt is lost (crash, cancellation in the commit window, lost post-commit receipt),
+        // the exact orphan is still addressable by identity and can be terminally reconciled
+        // instead of holding the session's single run slot forever.
+        val identity = history.newRunIdentity()
         val start = try {
-            history.startRun(sessionId, userText, receiver.identity, permit.authEpoch, processOwnerId)
+            history.startRun(
+                sessionId, userText, receiver.identity, permit.authEpoch, processOwnerId, identity,
+            )
+        } catch (error: CancellationException) {
+            // Preserve cancellation semantics; clean up any run this attempt may have committed.
+            withContext(NonCancellable) {
+                markTerminal(identity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+            }
+            throw error
         } catch (error: Exception) {
+            if (error is AgentHistoryException && error.code == AgentHistoryError.OutcomeUnknown) {
+                // Committed but the receipt was lost: reconcile the orphan by identity so the
+                // session's slot frees deterministically instead of waiting for a future gate.
+                withContext(NonCancellable) {
+                    markTerminal(identity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.INTERNAL)
+                }
+                throw AgentRunException(AgentRunError.OutcomeUnknown, error)
+            }
             throw AgentRunException(safeStartError(error), error)
         }
+        var reply: String? = null
         try {
             // The plaintext exists only inside the E0 callback: build the client there, clear the
             // array, then run the agent. The client keeps its own copy for the network calls the
@@ -116,7 +144,7 @@ internal class AgentRunCoordinator(
                 )
             }
             val executor = MultiLLMPromptExecutor(LLMProvider.DeepSeek to client)
-            val reply = agent(start, executor).run(userText)
+            reply = agent(start, executor).run(userText)
             if (reply.isBlank()) fail(AgentRunError.ProviderFailure)
             val completion = history.completeRun(
                 runId = start.runId,
@@ -125,11 +153,38 @@ internal class AgentRunCoordinator(
                 processOwnerId = processOwnerId,
                 outcome = RunOutcome(resultKind = MessageResultKind.Answer, body = reply),
             )
-            RunResult(start.runId, sessionId, reply, completion)
+            RunResult(start.runId, sessionId, reply!!, completion)
         } catch (error: CancellationException) {
-            markTerminal(start.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+            // The coroutine is already cancelled: a plain suspend call could be skipped
+            // entirely, stranding the run as RUNNING with its slot held. Run the terminal
+            // marking outside cancellation so the slot is freed deterministically here —
+            // not only when some later ownership gate happens to run.
+            withContext(NonCancellable) {
+                markTerminal(start.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+            }
             throw error
         } catch (error: Exception) {
+            if (error is AgentHistoryException && error.code == AgentHistoryError.OutcomeUnknown) {
+                // The final reply may already be committed; never report failure while Room says
+                // otherwise. Reconcile by run identity and surface success or a true unknown.
+                val persisted = history.persistedResult(start.runId)
+                if (reply != null && persisted?.state == RunState.COMPLETED && persisted.body == reply) {
+                    return@withContext RunResult(
+                        runId = start.runId,
+                        sessionId = sessionId,
+                        answer = reply,
+                        completion = RunCompletionReceipt(
+                            runId = start.runId,
+                            assistantMessageId = persisted.assistantMessageId!!,
+                            assistantMessageSequence = persisted.assistantMessageSequence!!,
+                            finishedAt = persisted.finishedAt ?: clock.millis(),
+                            alreadyCompleted = true,
+                        ),
+                    )
+                }
+                markTerminal(start.runId, RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)
+                throw AgentRunException(AgentRunError.OutcomeUnknown, error)
+            }
             markTerminal(start.runId, RunTerminal.FAILED, safeErrorCode(error))
             throw AgentRunException(safeRunError(error), error)
         }
@@ -166,9 +221,12 @@ internal class AgentRunCoordinator(
     private suspend fun markTerminal(runId: String, state: RunTerminal, code: SafeRunErrorCode) {
         try {
             history.failRun(runId, state, code)
+        } catch (error: CancellationException) {
+            throw error
         } catch (ignored: Exception) {
             // Terminal marking is best-effort on the failure path; a lost mark leaves the run to
-            // the ownership gate, never to a ghost final reply.
+            // the ownership gate, never to a ghost final reply. Callers invoke this under
+            // NonCancellable when their own coroutine is already cancelled.
         }
     }
 
@@ -191,6 +249,7 @@ internal class AgentRunCoordinator(
                 com.paherdin.record2.sessions.AgentHistoryError.Validation -> AgentRunError.Validation
                 com.paherdin.record2.sessions.AgentHistoryError.StorageFull -> AgentRunError.StorageFull
                 com.paherdin.record2.sessions.AgentHistoryError.RecoverableIO -> AgentRunError.RecoverableIO
+                com.paherdin.record2.sessions.AgentHistoryError.OutcomeUnknown -> AgentRunError.OutcomeUnknown
                 else -> AgentRunError.Internal
             }
         is AgentRunException -> error.code
