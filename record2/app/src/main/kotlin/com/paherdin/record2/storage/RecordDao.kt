@@ -20,6 +20,53 @@ internal interface RecordDao {
     @Query("SELECT * FROM note WHERE id = :id AND deletedAt IS NULL")
     fun visibleNote(id: String): NoteEntity?
 
+    @Query("""
+        SELECT n.* FROM note n
+        JOIN transaction_note_link l ON l.noteId = n.id
+        WHERE l.transactionId = :transactionId AND n.deletedAt IS NULL
+        ORDER BY n.occurredAt DESC, n.id ASC
+    """)
+    fun visibleNotesForTransaction(transactionId: String): List<NoteEntity>
+
+    @Query("""
+        SELECT t.* FROM record_transaction t
+        JOIN transaction_note_link l ON l.transactionId = t.id
+        WHERE l.noteId = :noteId
+        ORDER BY t.occurredAt DESC, t.id ASC
+    """)
+    fun transactionsForNote(noteId: String): List<TransactionEntity>
+
+    @Query("""
+        SELECT COUNT(*) FROM transaction_note_link l
+        JOIN note n ON n.id = l.noteId
+        WHERE l.transactionId = :transactionId AND n.deletedAt IS NULL
+    """)
+    fun visibleLinkCount(transactionId: String): Int
+
+    @Query("SELECT noteId FROM transaction_note_link WHERE transactionId = :transactionId")
+    fun linkedNoteIds(transactionId: String): List<String>
+
+    @Query("""
+        SELECT n.* FROM note n
+        WHERE n.deletedAt IS NULL
+        AND n.id NOT IN (SELECT noteId FROM transaction_note_link WHERE transactionId = :transactionId)
+        ORDER BY n.occurredAt DESC, n.id ASC
+    """)
+    fun visibleUnlinkedNoteCandidates(transactionId: String): List<NoteEntity>
+
+    @Query("""
+        UPDATE note SET version = version + 1, updatedAt = :updatedAt
+        WHERE id = :id AND version = :expectedVersion AND deletedAt IS NULL
+        AND version < 9223372036854775807
+    """)
+    fun touchNote(id: String, expectedVersion: Long, updatedAt: Long): Int
+
+    @Query("""
+        UPDATE record_transaction SET version = version + 1, updatedAt = :updatedAt
+        WHERE id = :id AND version = :expectedVersion AND version < 9223372036854775807
+    """)
+    fun touchTransaction(id: String, expectedVersion: Long, updatedAt: Long): Int
+
     @Query("SELECT * FROM note WHERE id = :id")
     fun noteForLifecycle(id: String): NoteEntity?
 
