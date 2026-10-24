@@ -97,6 +97,9 @@ internal interface RecordDao {
     @Query("SELECT * FROM record_data_state WHERE id = 1")
     fun dataState(): RecordDataStateEntity?
 
+    @Query("UPDATE record_data_state SET processOwnerId = :processOwnerId WHERE id = 1")
+    fun updateProcessOwner(processOwnerId: String): Int
+
     @Query("""
         SELECT EXISTS(
             SELECT 1 FROM account UNION ALL SELECT 1 FROM category
