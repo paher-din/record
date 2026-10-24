@@ -224,10 +224,33 @@ internal object LogicalZipWriter {
     )
 }
 
+internal data class VerifiedLogicalBackup(
+    val manifest: BackupManifest,
+    val zipBytes: Long,
+    val zipSha256: String,
+    val stats: Map<LogicalSegment, SegmentStats>,
+)
+
 internal object LogicalZipReader {
     private val expectedNames = listOf("manifest.json") + LogicalSegment.entries.map { it.path }
 
     fun read(file: File): ReadLogicalBackup {
+        val parsed = readInternal(file, collectRows = true)
+        return ReadLogicalBackup(
+            backup = LogicalBackup(parsed.manifest, buildContent(parsed.rows)),
+            zipBytes = parsed.zipBytes,
+            zipSha256 = parsed.zipSha256,
+            stats = parsed.stats,
+        )
+    }
+
+    /** Container/hash/row verification without retaining the decoded rows. */
+    fun verify(file: File): VerifiedLogicalBackup {
+        val parsed = readInternal(file, collectRows = false)
+        return VerifiedLogicalBackup(parsed.manifest, parsed.zipBytes, parsed.zipSha256, parsed.stats)
+    }
+
+    private fun readInternal(file: File, collectRows: Boolean): ParsedZip {
         if (!file.isFile) fail(BackupError.InvalidSource, "backup ZIP does not exist")
         val size = file.length()
         if (size <= 0 || size > BackupLimits.MAX_ZIP_BYTES) {
@@ -253,7 +276,7 @@ internal object LogicalZipReader {
                 val rows = LinkedHashMap<LogicalSegment, List<SegmentRow>>()
                 for (segment in LogicalSegment.entries) {
                     val entry = central.getValue(segment.path)
-                    val payload = readEntry(raf, entry, segment)
+                    val payload = readEntry(raf, entry, segment, collectRows)
                     if (payload.stats.uncompressedBytes > BackupLimits.MAX_ENTRY_UNCOMPRESSED) {
                         fail(BackupError.InvalidSource, "${segment.path} exceeds 128 MiB")
                     }
@@ -285,15 +308,9 @@ internal object LogicalZipReader {
                 if (ManifestCodec.contentDigest(manifest) != manifest.contentDigest) {
                     fail(BackupError.InvalidSource, "manifest contentDigest mismatch")
                 }
-                val content = buildContent(rows)
                 val zipSha = sha256File(file)
-                if (zipSha == null) fail(BackupError.RecoverableIO, "could not hash backup ZIP")
-                return ReadLogicalBackup(
-                    backup = LogicalBackup(manifest, content),
-                    zipBytes = size,
-                    zipSha256 = zipSha,
-                    stats = stats,
-                )
+                    ?: fail(BackupError.RecoverableIO, "could not hash backup ZIP")
+                return ParsedZip(manifest, rows, size, zipSha, stats)
             }
         } catch (error: BackupException) {
             throw error
@@ -301,6 +318,14 @@ internal object LogicalZipReader {
             throw BackupException(BackupError.RecoverableIO, "could not read backup ZIP", error)
         }
     }
+
+    private data class ParsedZip(
+        val manifest: BackupManifest,
+        val rows: Map<LogicalSegment, List<SegmentRow>>,
+        val zipBytes: Long,
+        val zipSha256: String,
+        val stats: Map<LogicalSegment, SegmentStats>,
+    )
 
     private fun readEnd(raf: RandomAccessFile, size: Long): EndRecord {
         val maxTail = minOf(size, 22L + 65_535L).toInt()
@@ -494,22 +519,27 @@ internal object LogicalZipReader {
         val stats: SegmentStats,
     )
 
-    private fun readEntry(raf: RandomAccessFile, entry: CentralEntry, segment: LogicalSegment): EntryRead {
+    private fun readEntry(
+        raf: RandomAccessFile,
+        entry: CentralEntry,
+        segment: LogicalSegment,
+        collectRows: Boolean,
+    ): EntryRead {
         validateSegmentContainer(entry, segment)
-        val rows = ArrayList<SegmentRow>()
+        val rows = if (collectRows) ArrayList<SegmentRow>() else null
         val decoder = LineDecoder(segment, rows)
         val result = readUncompressed(raf, entry) { buffer, length -> decoder.accept(buffer, length) }
         decoder.finish()
         if (result.uncompressedBytes == 0L) {
-            if (rows.isNotEmpty()) fail(BackupError.InvalidSource, "${segment.path} empty bytes with rows")
+            if (decoder.lineCount != 0L) fail(BackupError.InvalidSource, "${segment.path} empty bytes with rows")
             if (entry.method != 0 || entry.compressedBytes != 0L || entry.crc != 0L) {
                 fail(BackupError.InvalidSource, "empty segment must be STORED with 0/0 and CRC 0")
             }
-        } else if (rows.isEmpty()) {
+        } else if (decoder.lineCount == 0L) {
             fail(BackupError.InvalidSource, "${segment.path} has bytes but no rows")
         }
         return EntryRead(
-            rows,
+            rows.orEmpty(),
             SegmentStats(
                 segment, decoder.lineCount, result.uncompressedBytes, entry.compressedBytes,
                 result.crc, result.sha256,
@@ -519,7 +549,7 @@ internal object LogicalZipReader {
 
     private class LineDecoder(
         private val segment: LogicalSegment,
-        private val rows: MutableList<SegmentRow>,
+        private val rows: MutableList<SegmentRow>?,
     ) {
         private val line = ByteArrayOutputStream()
         var lineCount: Long = 0
@@ -544,7 +574,8 @@ internal object LogicalZipReader {
                     fail(BackupError.InvalidSource, "${segment.path} contains CRLF")
                 }
                 val value = StrictJson.decodeObject(bytes, BackupLimits.MAX_LINE_BYTES)
-                rows += SegmentCodecs.decode(segment, value)
+                val row = SegmentCodecs.decode(segment, value)
+                rows?.add(row)
                 lineCount++
                 if (lineCount > BackupLimits.MAX_ROWS_TOTAL) {
                     fail(BackupError.InvalidSource, "row count exceeds 500,000")

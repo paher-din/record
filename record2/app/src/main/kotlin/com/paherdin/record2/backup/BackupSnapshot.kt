@@ -11,6 +11,14 @@ internal data class SnapshotContent(
     val businessRevision: Long,
 )
 
+internal data class StreamedSnapshot(
+    val dataGeneration: String,
+    val businessRevision: Long,
+    val sources: List<SegmentSource>,
+    val totalRows: Long,
+    val totalUncompressedBytes: Long,
+)
+
 internal interface ExportResourceMonitor {
     fun check()
 }
@@ -47,6 +55,9 @@ internal class FileSystemExportResourceMonitor(
  * read-only connection, so a single compound statement is the supported way to keep every table
  * on one SQLite read snapshot without acquiring a writer lock. The statement holds its implicit
  * read transaction until the cursor is exhausted; no other statement or connection participates.
+ *
+ * stream() writes each row directly to its segment staging file and retains only the cursor row
+ * and 12 writers. read() remains the full-content form for small fixtures/tests.
  */
 internal object ReadOnlyBackupSnapshot {
     fun read(
@@ -55,9 +66,55 @@ internal object ReadOnlyBackupSnapshot {
         monitor: ExportResourceMonitor = NoopExportResourceMonitor(),
         onSnapshotOpen: () -> Unit = {},
     ): SnapshotContent {
+        val directory = File(
+            databasePath.parentFile ?: databasePath,
+            "snapshot-read-${System.nanoTime()}",
+        )
+        try {
+            val streamed = stream(databasePath, nowMillis, monitor, onSnapshotOpen, directory)
+            val rows = LinkedHashMap<LogicalSegment, MutableList<SegmentRow>>()
+            for (segment in LogicalSegment.entries) rows[segment] = ArrayList()
+            for (source in streamed.sources) {
+                source.file.inputStream().bufferedReader(StandardCharsets.UTF_8).useLines { lines ->
+                    lines.forEach { line ->
+                        if (line.isNotEmpty()) {
+                            val value = StrictJson.decodeObject(
+                                line.toByteArray(StandardCharsets.UTF_8),
+                                BackupLimits.MAX_LINE_BYTES,
+                            )
+                            rows.getValue(source.segment) += SegmentCodecs.decode(source.segment, value)
+                        }
+                    }
+                }
+            }
+            val content = sort(buildContent(rows))
+            LogicalBackupValidator.validateContent(content, nowMillis)
+            return SnapshotContent(content, streamed.dataGeneration, streamed.businessRevision)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    fun stream(
+        databasePath: File,
+        nowMillis: Long,
+        monitor: ExportResourceMonitor = NoopExportResourceMonitor(),
+        onSnapshotOpen: () -> Unit = {},
+        outputDirectory: File,
+    ): StreamedSnapshot {
         if (!databasePath.isFile) fail(BackupError.Unsupported, "database file is missing")
+        if (!outputDirectory.mkdirs() && !outputDirectory.isDirectory) {
+            fail(BackupError.RecoverableIO, "could not create snapshot staging directory")
+        }
+        val writers = LinkedHashMap<LogicalSegment, SegmentFileWriter>()
         var database: SQLiteDatabase? = null
         try {
+            for (segment in LogicalSegment.entries) {
+                writers[segment] = SegmentFileWriter(
+                    segment,
+                    File(outputDirectory, "${segment.ordinal}-${segment.path.substringAfterLast('/')}"),
+                )
+            }
             database = SQLiteDatabase.openDatabase(
                 databasePath.absolutePath,
                 null,
@@ -77,15 +134,14 @@ internal object ReadOnlyBackupSnapshot {
                 fail(BackupError.Unsupported, "database schema version is not 1")
             }
             monitor.check()
-            val rows = LinkedHashMap<LogicalSegment, MutableList<SegmentRow>>()
-            for (segment in LogicalSegment.entries) rows[segment] = ArrayList()
             var dataGeneration: String? = null
             var businessRevision: Long? = null
             var snapshotOpened = false
+            var totalRows = 0L
             database.rawQuery(snapshotQuery(), null).use { cursor ->
                 while (cursor.moveToNext()) {
-                    val label = cursor.getString(0)
-                    val payload = cursor.getString(1)
+                    val index = cursor.getInt(0)
+                    val payload = cursor.getString(3)
                     if (payload == null) fail(BackupError.InvalidSource, "snapshot row is null")
                     if (payload.toByteArray(StandardCharsets.UTF_8).size > BackupLimits.MAX_LINE_BYTES) {
                         fail(BackupError.StorageFull, "snapshot row exceeds 8 MiB")
@@ -94,13 +150,17 @@ internal object ReadOnlyBackupSnapshot {
                         payload.toByteArray(StandardCharsets.UTF_8),
                         BackupLimits.MAX_LINE_BYTES,
                     )
-                    if (label == "data_state") {
+                    if (index == LogicalSegment.entries.size) {
                         dataGeneration = value.string("dataGeneration", "record_data_state")
                         businessRevision = value.long("businessRevision", "record_data_state")
                     } else {
-                        val segment = LogicalSegment.entries.firstOrNull { it.name == label }
-                            ?: fail(BackupError.InvalidSource, "unknown snapshot segment $label")
-                        rows.getValue(segment) += SegmentCodecs.decode(segment, value)
+                        val segment = LogicalSegment.entries.getOrNull(index)
+                            ?: fail(BackupError.InvalidSource, "unknown snapshot segment $index")
+                        writers.getValue(segment).append(SegmentCodecs.decode(segment, value))
+                        totalRows++
+                        if (totalRows > BackupLimits.MAX_ROWS_TOTAL) {
+                            fail(BackupError.StorageFull, "export exceeds the 500,000 row limit")
+                        }
                     }
                     if (!snapshotOpened) {
                         snapshotOpened = true
@@ -115,28 +175,50 @@ internal object ReadOnlyBackupSnapshot {
             if (!canonicalUuid(generation) || revision < 0) {
                 fail(BackupError.InvalidSource, "record_data_state is corrupt")
             }
-            val content = sort(buildContent(rows))
-            LogicalBackupValidator.validateContent(content, nowMillis)
-            return SnapshotContent(content, generation, revision)
+            val sources = ArrayList<SegmentSource>(LogicalSegment.entries.size)
+            var totalBytes = 0L
+            for (segment in LogicalSegment.entries) {
+                val source = writers.getValue(segment).finish()
+                sources += source
+                totalBytes += source.uncompressedBytes
+            }
+            if (totalBytes > BackupLimits.MAX_TOTAL_UNCOMPRESSED) {
+                fail(BackupError.StorageFull, "export exceeds the 256 MiB uncompressed limit")
+            }
+            return StreamedSnapshot(generation, revision, sources, totalRows, totalBytes)
         } catch (error: BackupException) {
             throw error
         } catch (error: Exception) {
             throw BackupException(BackupError.RecoverableIO, "could not take the read-only backup snapshot", error)
         } finally {
+            writers.values.forEach { runCatching { it.close() } }
             runCatching { database?.close() }
         }
     }
 
     private fun snapshotQuery(): String {
-        val parts = LogicalSegment.entries.map { segment ->
+        val parts = LogicalSegment.entries.mapIndexed { index, segment ->
             val projection = segment.fields.joinToString(",") { field -> "'$field', $field" }
-            "SELECT '${segment.name}' AS segment, json_object($projection) AS payload FROM ${table(segment)}"
+            val order = orderKeys(segment)
+            "SELECT $index AS segmentIndex, ${order.first} AS k1, ${order.second} AS k2, " +
+                "json_object($projection) AS payload FROM ${table(segment)}"
         } + (
-            "SELECT 'data_state' AS segment, " +
+            "SELECT ${LogicalSegment.entries.size} AS segmentIndex, 0 AS k1, '' AS k2, " +
                 "json_object('dataGeneration', dataGeneration, 'businessRevision', businessRevision) AS payload " +
                 "FROM record_data_state WHERE id = 1"
             )
-        return parts.joinToString(" UNION ALL ")
+        return parts.joinToString(" UNION ALL ") + " ORDER BY segmentIndex ASC, k1 ASC, k2 ASC"
+    }
+
+    private fun orderKeys(segment: LogicalSegment): Pair<String, String> = when (segment) {
+        LogicalSegment.ACCOUNT, LogicalSegment.CATEGORY -> "id" to "''"
+        LogicalSegment.TRANSACTION, LogicalSegment.NOTE -> "occurredAt" to "id"
+        LogicalSegment.LINK -> "transactionId" to "noteId"
+        LogicalSegment.DRAFT -> "slot" to "''"
+        LogicalSegment.PROPOSAL, LogicalSegment.OPERATION, LogicalSegment.SESSION -> "createdAt" to "id"
+        LogicalSegment.RUN -> "startedAt" to "id"
+        LogicalSegment.MESSAGE -> "sessionId" to "sequence"
+        LogicalSegment.REFERENCE -> "messageId" to "ordinal"
     }
 
     private fun table(segment: LogicalSegment): String = when (segment) {

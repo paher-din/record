@@ -51,32 +51,17 @@ internal class BackupExporter(
             }
             if (!work.mkdirs()) fail(BackupError.RecoverableIO, "could not create export staging directory")
             val exportedAt = clock.millis()
-            val snapshot = ReadOnlyBackupSnapshot.read(
+            val snapshot = ReadOnlyBackupSnapshot.stream(
                 databasePath,
                 exportedAt,
                 monitorFactory(databasePath, stagingDirectory),
                 snapshotHook,
+                work,
             )
             checkpoint(ExportCheckpoint.SNAPSHOT_READ)
-            val sources = ArrayList<SegmentSource>()
-            var totalRows = 0L
-            var totalBytes = 0L
-            for (segment in LogicalSegment.entries) {
-                val file = File(work, "${segment.ordinal}-${segment.path.substringAfterLast('/')}")
-                SegmentFileWriter(segment, file).use { writer ->
-                    snapshot.content.rows(segment).forEach { writer.append(it) }
-                    val source = writer.finish()
-                    sources += source
-                    totalRows += source.rows
-                    totalBytes += source.uncompressedBytes
-                }
-                if (totalRows > BackupLimits.MAX_ROWS_TOTAL) {
-                    fail(BackupError.StorageFull, "export exceeds the 500,000 row limit")
-                }
-                if (totalBytes > BackupLimits.MAX_TOTAL_UNCOMPRESSED) {
-                    fail(BackupError.StorageFull, "export exceeds the 256 MiB uncompressed limit")
-                }
-            }
+            val sources = snapshot.sources
+            val totalRows = snapshot.totalRows
+            val totalBytes = snapshot.totalUncompressedBytes
             checkpoint(ExportCheckpoint.SEGMENTS_WRITTEN)
             val segments = sources.mapIndexed { index, source ->
                 ManifestSegment(
@@ -105,11 +90,10 @@ internal class BackupExporter(
             val zip = File(work, "backup.zip")
             LogicalZipWriter.write(zip, manifest, sources)
             checkpoint(ExportCheckpoint.ZIP_WRITTEN)
-            val verified = LogicalZipReader.read(zip)
-            if (verified.backup.manifest != manifest || verified.backup.content != snapshot.content) {
-                fail(BackupError.Internal, "staging ZIP does not round-trip its source content")
+            val verified = LogicalZipReader.verify(zip)
+            if (verified.manifest != manifest) {
+                fail(BackupError.Internal, "staging ZIP does not round-trip its manifest")
             }
-            LogicalBackupValidator.validate(verified.backup, exportedAt)
             if (zip.length() > BackupLimits.MAX_ZIP_BYTES) {
                 fail(BackupError.StorageFull, "export ZIP exceeds 64 MiB")
             }
