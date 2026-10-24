@@ -40,15 +40,15 @@ class CommitProcessContractTest {
                 val fixture = ProposalFixture(database)
                 fixture.seed()
                 val proposals = RoomProposalService(database, proposalClock)
-                val view = proposals.prepare(
-                    fixture.context(fixture.run),
-                    listOf(fixture.createTransaction(), fixture.createNote(), fixture.linkNew()),
-                )
+                val perWrite = writeIndex()
+                val intents = if (perWrite != null) comboIntents(fixture) else listOf(fixture.createTransaction(), fixture.createNote(), fixture.linkNew())
+                val view = proposals.prepare(fixture.context(fixture.run), intents)
                 val command = ConfirmationCommand(view.id, view.revision, view.payloadDigest, fixture.generation)
                 var baseline = SchemaDiskObserver.snapshot(path)
                 var armed: CommitCheckpoint? = null
-                val commits = RoomCommitService(database, proposalClock, queuedIds(*CommitGolden.ids().toTypedArray())) { point, _ ->
-                    if (point == armed) {
+                var armedIndex: Int? = null
+                val commits = RoomCommitService(database, proposalClock, queuedIds(*CommitGolden.ids().toTypedArray())) { point, index ->
+                    if (point == armed && (armedIndex == null || index == armedIndex)) {
                         val encoded = Base64.encodeToString(JSONObject(baseline).toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
                         instrumentation.sendStatus(2, Bundle().apply { putString("c1_ready", encoded) })
                         check(CountDownLatch(1).await(120, TimeUnit.SECONDS)) { "Host did not terminate gated process" }
@@ -59,16 +59,16 @@ class CommitProcessContractTest {
                     "A_AFTER" -> CommitCheckpoint.A_COMMITTED
                     "B_MID" -> CommitCheckpoint.BUSINESS_WRITTEN
                     "B_AFTER" -> CommitCheckpoint.B_COMMITTED
-                    else -> error("Unsupported scenario")
+                    else -> if (perWrite != null) CommitCheckpoint.BUSINESS_WRITTEN else error("Unsupported scenario")
                 }
-                when (scenario) {
-                    "A_MID", "A_AFTER" -> commits.confirm(command)
-                    "B_MID", "B_AFTER" -> {
+                armedIndex = perWrite
+                when {
+                    scenario == "A_MID" || scenario == "A_AFTER" -> commits.confirm(command)
+                    else -> {
                         commits.confirm(command)
                         baseline = SchemaDiskObserver.snapshot(path)
                         commits.execute(CommitGolden.OPERATION)
                     }
-                    else -> error("Unsupported scenario")
                 }
                 error("Expected process gate")
             } finally {
@@ -76,6 +76,19 @@ class CommitProcessContractTest {
             }
         }
     }
+
+    /** B_W_<n> scenarios kill after the n-th individual business write of the combined payload. */
+    private fun writeIndex(): Int? =
+        if (scenario.startsWith("B_W_")) scenario.removePrefix("B_W_").toIntOrNull()?.takeIf { it >= 1 } else null
+
+    private fun comboIntents(fixture: ProposalFixture) = listOf(
+        fixture.createTransaction("#t1", amount = "88.80", memo = "晚饭", categoryId = fixture.expense.id, categoryVersion = 1),
+        fixture.createNote("#n1", body = "买菜记录"),
+        fixture.updateTransaction(amount = "60.50", memo = "改写说明"),
+        fixture.updateNote(body = "修订正文"),
+        fixture.linkNew(),
+        fixture.unlinkExisting(),
+    )
 
     @Test
     fun verifyAfterHostRestart() {
@@ -141,7 +154,20 @@ class CommitProcessContractTest {
                         assertEquals(inspected, reexecuted)
                         assertEquals(observed, SchemaDiskObserver.snapshot(path))
                     }
-                    else -> error("Unsupported scenario")
+                    else -> if (writeIndex() != null) {
+                        // Same oracle at every individual write boundary of the combined payload:
+                        // uncommitted means fully rolled back, and the retry applies it once.
+                        assertEquals(baseline, observed)
+                        assertEquals("Pending", observed.getValue("commit_operation").single()[7])
+                        val applied = commits.execute(CommitGolden.OPERATION)
+                        assertEquals(CommitStatus.Applied, applied.status)
+                        assertComboAppliedFacts(baseline)
+                        val after = SchemaDiskObserver.snapshot(path)
+                        commits.execute(CommitGolden.OPERATION)
+                        assertEquals(after, SchemaDiskObserver.snapshot(path))
+                    } else {
+                        error("Unsupported scenario")
+                    }
                 }
             } finally {
                 database.close()
@@ -174,6 +200,50 @@ class CommitProcessContractTest {
             ),
         ),
     )
+
+    /** Full six-kind combined payload oracle: every fact, version, relation and the receipt. */
+    private fun assertComboAppliedFacts(baseline: Map<String, List<List<Any?>>>) {
+        val after = SchemaDiskObserver.snapshot(path)
+        val existingLink = baseline.getValue("transaction_note_link").single()
+        val existingTransaction = existingLink[0] as String
+        val existingNote = existingLink[1] as String
+        val created = after.getValue("record_transaction").single { it[0] == CommitGolden.NEW_TRANSACTION }
+        assertEquals(8880L, created[2])
+        assertEquals("晚饭", created[6])
+        assertEquals(2L, created[8])
+        val createdNote = after.getValue("note").single { it[0] == CommitGolden.NEW_NOTE }
+        assertEquals("买菜记录", createdNote[1])
+        assertEquals(2L, createdNote[3])
+        val updated = after.getValue("record_transaction").single { it[0] == existingTransaction }
+        assertEquals(6050L, updated[2])
+        assertEquals("改写说明", updated[6])
+        assertEquals(5L, updated[8])
+        val updatedNote = after.getValue("note").single { it[0] == existingNote }
+        assertEquals("修订正文", updatedNote[1])
+        assertEquals(9L, updatedNote[3])
+        assertEquals(listOf(listOf<Any?>(CommitGolden.NEW_TRANSACTION, CommitGolden.NEW_NOTE)), after.getValue("transaction_note_link"))
+        assertEquals((baseline.getValue("record_data_state").single()[2] as Long) + 1, after.getValue("record_data_state").single()[2])
+        val operation = after.getValue("commit_operation").single()
+        assertEquals("Applied", operation[7])
+        assertEquals(
+            CommitResultCodec.canonical(
+                AppliedCommitResult(
+                    2,
+                    listOf(
+                        AppliedOutcome.CreateTransaction(CommitGolden.NEW_TRANSACTION, 1),
+                        AppliedOutcome.CreateNote(CommitGolden.NEW_NOTE, 1),
+                        AppliedOutcome.UpdateTransaction(existingTransaction, 4),
+                        AppliedOutcome.UpdateNote(existingNote, 8),
+                        AppliedOutcome.LinkRecords(1),
+                        AppliedOutcome.UnlinkRecords(1),
+                    ),
+                ),
+            ),
+            operation[10],
+        )
+        assertEquals("APPLIED", after.getValue("change_proposal").single()[11])
+        assertNull(after.getValue("change_proposal").single()[12])
+    }
 
     private fun expectedAfterConfirm(
         baseline: Map<String, List<List<Any?>>>,

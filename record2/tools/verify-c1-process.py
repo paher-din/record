@@ -19,7 +19,7 @@ import uuid
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--adb", required=True)
 parser.add_argument("--serial", required=True)
-parser.add_argument("--scenario", choices=["A_MID", "A_AFTER", "B_MID", "B_AFTER"])
+parser.add_argument("--scenario", choices=["A_MID", "A_AFTER", "B_MID", "B_AFTER"] + [f"B_W_{index}" for index in range(1, 12)])
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 output = root / "build/c1" / ("process-" + uuid.uuid4().hex)
@@ -58,7 +58,7 @@ def verify_installed_identity():
 
 
 results = []
-for scenario in ["A_MID", "A_AFTER", "B_MID", "B_AFTER"]:
+for scenario in ["A_MID", "A_AFTER", "B_MID", "B_AFTER"] + [f"B_W_{index}" for index in range(1, 12)]:
     if args.scenario and args.scenario != scenario:
         continue
     verify_installed_identity()

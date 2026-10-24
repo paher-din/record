@@ -200,4 +200,77 @@ class CommitCodecTest {
         expectRecovery { CommitResultCodec.decode(canonical.replace("\"id\":\"$newTransaction\"", "\"id\":\"not-an-id\"")) }
         assertEquals(4, CommitResultCodec.decode(canonical).outcomes.size)
     }
+
+    @Test
+    fun appliedReceiptsMustCorrespondOneToOneWithTheFrozenOperations() {
+        val golden = CommitCodec.decode(goldenFrozen)
+        CommitResultCodec.validateAgainst(
+            AppliedCommitResult(
+                2,
+                listOf(
+                    AppliedOutcome.CreateTransaction(newTransaction, 1),
+                    AppliedOutcome.CreateNote(newNote, 1),
+                    AppliedOutcome.LinkRecords(1),
+                ),
+            ),
+            golden.operations,
+        )
+        val shortReceipt = AppliedCommitResult(2, listOf(AppliedOutcome.CreateNote(newNote, 1)))
+        expectRecovery { CommitResultCodec.validateAgainst(shortReceipt, golden.operations) }
+        val reordered = AppliedCommitResult(
+            2,
+            listOf(
+                AppliedOutcome.CreateTransaction(newTransaction, 1),
+                AppliedOutcome.LinkRecords(1),
+                AppliedOutcome.CreateNote(newNote, 1),
+            ),
+        )
+        expectRecovery { CommitResultCodec.validateAgainst(reordered, golden.operations) }
+        val wrongIdentity = AppliedCommitResult(
+            2,
+            listOf(
+                AppliedOutcome.CreateTransaction(newNote, 1),
+                AppliedOutcome.CreateNote(newNote, 1),
+                AppliedOutcome.LinkRecords(1),
+            ),
+        )
+        expectRecovery { CommitResultCodec.validateAgainst(wrongIdentity, golden.operations) }
+        val wrongCreateVersion = AppliedCommitResult(
+            2,
+            listOf(
+                AppliedOutcome.CreateTransaction(newTransaction, 2),
+                AppliedOutcome.CreateNote(newNote, 1),
+                AppliedOutcome.LinkRecords(1),
+            ),
+        )
+        expectRecovery { CommitResultCodec.validateAgainst(wrongCreateVersion, golden.operations) }
+        val oversizedCount = AppliedCommitResult(
+            2,
+            listOf(
+                AppliedOutcome.CreateTransaction(newTransaction, 1),
+                AppliedOutcome.CreateNote(newNote, 1),
+                AppliedOutcome.LinkRecords(2),
+            ),
+        )
+        expectRecovery { CommitResultCodec.validateAgainst(oversizedCount, golden.operations) }
+
+        // Update outcomes may carry either the unchanged baseline or the bumped version.
+        val time = ProposalTime(1792729800000, "Asia/Shanghai", "2026-10-23T12:30", 28800)
+        val updates = listOf(
+            FrozenOperation.UpdateTransaction(storedTransaction, 3, FinanceDirection.EXPENSE, 6050, account, 1, null, null, "改写说明", time),
+            FrozenOperation.UpdateNote(storedNote, 7, "修订正文", time),
+        )
+        CommitResultCodec.validateAgainst(
+            AppliedCommitResult(2, listOf(AppliedOutcome.UpdateTransaction(storedTransaction, 4), AppliedOutcome.UpdateNote(storedNote, 7))),
+            updates,
+        )
+        CommitResultCodec.validateAgainst(
+            AppliedCommitResult(3, listOf(AppliedOutcome.UpdateTransaction(storedTransaction, 3), AppliedOutcome.UpdateNote(storedNote, 8))),
+            updates,
+        )
+        val skippedVersion = AppliedCommitResult(2, listOf(AppliedOutcome.UpdateTransaction(storedTransaction, 5), AppliedOutcome.UpdateNote(storedNote, 7)))
+        expectRecovery { CommitResultCodec.validateAgainst(skippedVersion, updates) }
+        val swappedKinds = AppliedCommitResult(2, listOf(AppliedOutcome.UpdateNote(storedNote, 7), AppliedOutcome.UpdateTransaction(storedTransaction, 4)))
+        expectRecovery { CommitResultCodec.validateAgainst(swappedKinds, updates) }
+    }
 }

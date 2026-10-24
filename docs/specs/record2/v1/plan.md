@@ -1241,3 +1241,13 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 ### 28.6 提交、推送与PR
 
 负责人“完成issue c1”按C0/E1先例覆盖本分支必要Git提交、分支推送与创建PR；不关闭issue #9、不合并PR、不动B4分支或其工作树。本节为首版记录；PR审阅修复（如有）将在后续小节追加。
+
+### 28.7 2026-10-24 第一轮PR #27审阅修复（REQUEST CHANGES）
+
+负责人对PR #27（提交`5ae29f4`）给出REQUEST CHANGES：1项P1（C1首次确认绕过C0创建身份绑定校验）、2项P2（Applied回执未与冻结操作交叉校验；强停矩阵未覆盖逐业务写入边界）。§28.1–28.6首轮交付事实保留不变；本节记录修复与重验。
+
+- **P1 创建身份绑定（修复）：** `displayed()`在身份规范检查后、状态解析前新增与C0 `view()`一致的不变量：按`originRunId`读取持久Run行（缺失RecoveryRequired），其`proposalCreationRequestId`必须等于Proposal行的`creationRequestId`，否则RecoveryRequired。格式合法但被改绑的提案行在C0读取与本C1确认两条路径同样fail-closed。新增设备测试`mismatchedCreationIdentityFailsClosedBeforeAnyFreeze`：SQL改绑后confirm返回RecoveryRequired、全14表快照零变化、不创建Operation、Proposal保持EDITABLE+slot，C0 `proposal()`同报RecoveryRequired。
+- **P2 Applied回执对应关系（修复）：** `CommitResultCodec`新增`validateAgainst(result, operations)`——回执与冻结操作逐位置校验：数量相等、类型序列一致、CREATE/UPDATE稳定id相等（CREATE版本恒1、UPDATE版本为expectedVersion或+1）、LINK/UNLINK计数不超过冻结配对数；`frozen()`的Applied分支在读取resultJson后执行该校验。Rejected分支新增拒绝码组合校验：rejectionCode必须是已知CommitError名且`rejectionStatusOf`映射与持久状态一致（如RejectedConflict+Validation、未知码名均为RecoveryRequired）。不校验当前业务表与历史结果一致（Applied后允许合法再编辑）。新增设备测试`appliedReceiptsThatDoNotCorrespondToTheFrozenOperationsFailClosed`（数量不足/身份互换/计数超限的合法回执与三类拒绝码组合矛盾在confirm/execute/inspect三路径均RecoveryRequired且零写入，恢复后原Applied仍可读）与host测试`appliedReceiptsMustCorrespondOneToOneWithTheFrozenOperations`（合法对应通过、六类不对应拒绝、UPDATE双版本语义）。
+- **P2 逐业务写入强停矩阵（补全）：** 组合载荷（六类操作）的B共11次业务写入：insertTransaction、insertNote、editTransaction、updateNoteBody、LINK的touchNote/insertLink/touchTransaction、UNLINK的touchNote/removeLink/touchTransaction、advanceBusinessRevision。新增场景`B_W_1`～`B_W_11`按`BUSINESS_WRITTEN`的写入序号逐个强停，断言与B_MID同构：未提交→磁盘与确认后基线完全一致、operation仍Pending；重启后用户同ID重试Applied恰好一次，六类事实/版本/关系/resultJson由独立观察器逐字段核对（`assertComboAppliedFacts`），再试幂等快照零变化。
+- **重验（最终审阅APK）：** debug`083cb84f…`、release-unsigned`9d8d2d02…`、androidTest`834e2893…`，安装后回拉一致（build/c1/apk-hashes-review.txt）。构建任务组PASS；host Debug/Release各76项（新增1项）fail/error/skip=0。设备`CommitContractTest` 16/16 `OK (16 tests)`（14项既有+2项新增）。进程矩阵15/15 PASS：A_MID/A_AFTER/B_MID/B_AFTER+B_W_1..B_W_11（build/c1/process-c6c2b39a…/）。共享回归`OK (41 tests)`。
+- **共享AVD观察：** 两轮C1会话之间B4批次在同一AVD执行了其设备验证（b4-contract +60、b4-perf +6及其共享回归造成的b1/b2/b3/c0/e0/e1/schema增长）；本批每个设备步骤前都执行安装身份校验（安装摘要==本批构建产物）且全部通过，无并发instrumentation、未读改任何b4-*或其他批次库。本批新增c1-contract 72份（首轮56+本轮16）与c1-process 23份（首轮8+本轮15），record2.db仍为0。

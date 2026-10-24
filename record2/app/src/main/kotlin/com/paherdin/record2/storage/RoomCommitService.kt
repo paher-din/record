@@ -370,6 +370,10 @@ internal class RoomCommitService(
         for (identity in listOf(row.id, row.sessionId, row.originRunId, row.lastWriterRunId, row.creationRequestId, row.dataGeneration)) {
             if (!ProposalBudget.IDENTITY.matches(identity)) fail(CommitError.RecoveryRequired)
         }
+        // The same C0 invariant: the creation identity belongs to the originating run, so a
+        // well-formed but rebound row is corruption and must never freeze into an operation.
+        val originRun = sessions.run(row.originRunId) ?: fail(CommitError.RecoveryRequired)
+        if (originRun.proposalCreationRequestId != row.creationRequestId) fail(CommitError.RecoveryRequired)
         val state = try {
             ProposalState.valueOf(row.state)
         } catch (error: IllegalArgumentException) {
@@ -410,13 +414,25 @@ internal class RoomCommitService(
         if (payloadFormatVersion != ProposalBudget.FORMAT_VERSION || createdAt < 0) fail(CommitError.RecoveryRequired)
         if (CommitCodec.digest(frozenPayloadJson) != payloadDigest) fail(CommitError.RecoveryRequired)
         val frozen = CommitCodec.decode(frozenPayloadJson)
-        when (status()) {
+        val status = status()
+        when (status) {
             CommitStatus.Pending ->
                 if (finishedAt != null || resultJson != null || rejectionCode != null) fail(CommitError.RecoveryRequired)
-            CommitStatus.Applied ->
+            CommitStatus.Applied -> {
                 if (finishedAt == null || rejectionCode != null || resultJson == null) fail(CommitError.RecoveryRequired)
-            CommitStatus.RejectedConflict, CommitStatus.RejectedInvalid ->
+                CommitResultCodec.validateAgainst(CommitResultCodec.decode(resultJson), frozen.operations)
+            }
+            CommitStatus.RejectedConflict, CommitStatus.RejectedInvalid -> {
                 if (finishedAt == null || rejectionCode.isNullOrBlank() || resultJson != null) fail(CommitError.RecoveryRequired)
+                // The persisted rejection cause must be a known deterministic error whose
+                // rejection class matches the persisted state; anything else is corruption.
+                val cause = try {
+                    CommitError.valueOf(rejectionCode)
+                } catch (error: IllegalArgumentException) {
+                    throw CommitException(CommitError.RecoveryRequired, error)
+                }
+                if (rejectionStatusOf(cause) != status) fail(CommitError.RecoveryRequired)
+            }
         }
         return frozen
     }

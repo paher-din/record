@@ -78,6 +78,48 @@ internal object CommitResultCodec {
         throw CommitException(CommitError.RecoveryRequired, error)
     }
 
+    /**
+     * A persisted Applied receipt must correspond one-to-one with the frozen operations it
+     * claims to have applied: same count, same type sequence, the same stable identities for
+     * creates and updates, and relation counts bounded by the frozen pair sets. Historical
+     * business rows may legitimately have moved on since; only the receipt itself is checked.
+     */
+    fun validateAgainst(result: AppliedCommitResult, operations: List<FrozenOperation>) {
+        try {
+            require(result.outcomes.size == operations.size)
+            for ((outcome, operation) in result.outcomes.zip(operations)) when (outcome) {
+                is AppliedOutcome.CreateTransaction -> {
+                    val frozen = operation as? FrozenOperation.CreateTransaction ?: throw IllegalArgumentException("type mismatch")
+                    require(outcome.id == frozen.id && outcome.version == 1L)
+                }
+                is AppliedOutcome.UpdateTransaction -> {
+                    val frozen = operation as? FrozenOperation.UpdateTransaction ?: throw IllegalArgumentException("type mismatch")
+                    require(outcome.id == frozen.id)
+                    require(outcome.version == frozen.expectedVersion || outcome.version == frozen.expectedVersion + 1)
+                }
+                is AppliedOutcome.CreateNote -> {
+                    val frozen = operation as? FrozenOperation.CreateNote ?: throw IllegalArgumentException("type mismatch")
+                    require(outcome.id == frozen.id && outcome.version == 1L)
+                }
+                is AppliedOutcome.UpdateNote -> {
+                    val frozen = operation as? FrozenOperation.UpdateNote ?: throw IllegalArgumentException("type mismatch")
+                    require(outcome.id == frozen.id)
+                    require(outcome.version == frozen.expectedVersion || outcome.version == frozen.expectedVersion + 1)
+                }
+                is AppliedOutcome.LinkRecords -> {
+                    val frozen = operation as? FrozenOperation.LinkRecords ?: throw IllegalArgumentException("type mismatch")
+                    require(outcome.count in 0..frozen.pairs.size)
+                }
+                is AppliedOutcome.UnlinkRecords -> {
+                    val frozen = operation as? FrozenOperation.UnlinkRecords ?: throw IllegalArgumentException("type mismatch")
+                    require(outcome.count in 0..frozen.pairs.size)
+                }
+            }
+        } catch (error: RuntimeException) {
+            throw CommitException(CommitError.RecoveryRequired, error)
+        }
+    }
+
     private fun stable(id: String, version: Long) {
         require(ProposalBudget.IDENTITY.matches(id))
         require(version in 1 until Long.MAX_VALUE)

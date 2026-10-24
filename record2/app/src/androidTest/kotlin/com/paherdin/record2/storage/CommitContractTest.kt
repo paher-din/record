@@ -644,6 +644,73 @@ class CommitContractTest {
         assertEquals(applied, snapshot())
     }
 
+    @Test
+    fun mismatchedCreationIdentityFailsClosedBeforeAnyFreeze() = runBlocking {
+        val view = proposals.prepare(context, goldenIntents)
+        // A well-formed identity that no longer binds to the origin run is C0 corruption; C1
+        // must refuse to freeze it into an operation even though every displayed field matches.
+        sql("UPDATE change_proposal SET creationRequestId=? WHERE id=?", UUID.randomUUID().toString(), view.id)
+        val corrupt = snapshot()
+        expectCommitError(CommitError.RecoveryRequired) { service().confirm(command(view)) }
+        assertEquals(corrupt, snapshot())
+        assertTrue(operations().isEmpty())
+        assertEquals("EDITABLE", rowOf("change_proposal", 0, view.id)[11])
+        assertEquals(1L, rowOf("change_proposal", 0, view.id)[12])
+        // C0 parity: the same row is unreadable through the proposal service too.
+        expectProposalError(ProposalError.RecoveryRequired) { proposals.proposal(view.id) }
+    }
+
+    @Test
+    fun appliedReceiptsThatDoNotCorrespondToTheFrozenOperationsFailClosed() = runBlocking {
+        val view = proposals.prepare(context, goldenIntents)
+        service(CommitGolden.ids()).confirm(command(view))
+        service().execute(CommitGolden.OPERATION)
+        val original = operations().single()
+        val shortReceipt = CommitResultCodec.canonical(
+            AppliedCommitResult(2, listOf(AppliedOutcome.CreateNote(CommitGolden.NEW_NOTE, 1))),
+        )
+        val swappedIdentity = CommitResultCodec.canonical(
+            AppliedCommitResult(
+                2,
+                listOf(
+                    AppliedOutcome.CreateTransaction(CommitGolden.NEW_NOTE, 1),
+                    AppliedOutcome.CreateNote(CommitGolden.NEW_NOTE, 1),
+                    AppliedOutcome.LinkRecords(1),
+                ),
+            ),
+        )
+        val oversizedCount = CommitResultCodec.canonical(
+            AppliedCommitResult(
+                2,
+                listOf(
+                    AppliedOutcome.CreateTransaction(CommitGolden.NEW_TRANSACTION, 1),
+                    AppliedOutcome.CreateNote(CommitGolden.NEW_NOTE, 1),
+                    AppliedOutcome.LinkRecords(2),
+                ),
+            ),
+        )
+        val corruptions: List<List<Any?>> = listOf(
+            listOf("UPDATE commit_operation SET resultJson=?", shortReceipt),
+            listOf("UPDATE commit_operation SET resultJson=?", swappedIdentity),
+            listOf("UPDATE commit_operation SET resultJson=?", oversizedCount),
+            // Well-formed receipts whose rejection cause contradicts the persisted state.
+            listOf("UPDATE commit_operation SET state='RejectedConflict', rejectionCode='Validation', resultJson=NULL"),
+            listOf("UPDATE commit_operation SET state='RejectedInvalid', rejectionCode='VersionConflict', resultJson=NULL"),
+            listOf("UPDATE commit_operation SET state='RejectedConflict', rejectionCode='NoSuchError', resultJson=NULL"),
+        )
+        for (corruption in corruptions) {
+            sql(corruption[0] as String, *corruption.drop(1).toTypedArray())
+            val corrupt = snapshot()
+            expectCommitError(CommitError.RecoveryRequired) { service().confirm(command(view)) }
+            expectCommitError(CommitError.RecoveryRequired) { service().execute(CommitGolden.OPERATION) }
+            expectCommitError(CommitError.RecoveryRequired) { service().inspect(CommitGolden.OPERATION) }
+            assertEquals(corrupt, snapshot())
+            restoreOperation(original)
+        }
+        reopen()
+        assertEquals(CommitStatus.Applied, service().inspect(CommitGolden.OPERATION)!!.status)
+    }
+
     private fun seededTransactionCount() = snapshot().getValue("record_transaction").size
 
     private fun restoreOperation(row: List<Any?>) = sql(
