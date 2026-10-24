@@ -4,6 +4,14 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 
+internal data class AggregateAmountRow(
+    val direction: String,
+    val amountMinor: Long,
+    val currency: String,
+)
+
+internal data class LinkCountRow(val id: String, val count: Int)
+
 @Dao
 internal interface RecordDao {
     @Insert fun insertDataState(row: RecordDataStateEntity)
@@ -180,4 +188,71 @@ internal interface RecordDao {
 
     @Query("DELETE FROM transaction_note_link WHERE transactionId = :transactionId AND noteId = :noteId")
     fun removeLink(transactionId: String, noteId: String): Int
+
+    @Query("""
+        SELECT * FROM record_transaction
+        WHERE (:start IS NULL OR occurredAt >= :start)
+        AND (:end IS NULL OR occurredAt < :end)
+        AND (:before IS NULL OR occurredAt < :before)
+        AND (:keyword IS NULL OR instr(lower(memo), lower(:keyword)) > 0)
+        AND (:afterTime IS NULL OR occurredAt < :afterTime
+            OR (:afterType = 'TRANSACTION' AND occurredAt = :afterTime AND id > :afterId))
+        ORDER BY occurredAt DESC, id ASC
+        LIMIT :limit
+    """)
+    fun timelineTransactions(
+        start: Long?, end: Long?, before: Long?, keyword: String?, limit: Int,
+        afterTime: Long?, afterType: String?, afterId: String?,
+    ): List<TransactionEntity>
+
+    @Query("""
+        SELECT * FROM note
+        WHERE deletedAt IS NULL
+        AND (:start IS NULL OR occurredAt >= :start)
+        AND (:end IS NULL OR occurredAt < :end)
+        AND (:before IS NULL OR occurredAt < :before)
+        AND (:keyword IS NULL OR instr(lower(body), lower(:keyword)) > 0)
+        AND (:afterTime IS NULL OR occurredAt < :afterTime
+            OR (:afterType = 'NOTE' AND occurredAt = :afterTime AND id > :afterId)
+            OR (:afterType = 'TRANSACTION' AND occurredAt = :afterTime))
+        ORDER BY occurredAt DESC, id ASC
+        LIMIT :limit
+    """)
+    fun timelineNotes(
+        start: Long?, end: Long?, before: Long?, keyword: String?, limit: Int,
+        afterTime: Long?, afterType: String?, afterId: String?,
+    ): List<NoteEntity>
+
+    @Query("""
+        SELECT direction, amountMinor, currency FROM record_transaction
+        WHERE occurredAt >= :start AND occurredAt < :end
+    """)
+    fun aggregateAmounts(start: Long, end: Long): List<AggregateAmountRow>
+
+    @Query("""
+        SELECT direction, amountMinor, currency FROM record_transaction
+        WHERE occurredAt >= :start AND occurredAt < :end AND categoryId = :categoryId
+    """)
+    fun aggregateAmountsForCategory(start: Long, end: Long, categoryId: String): List<AggregateAmountRow>
+
+    @Query("""
+        SELECT direction, amountMinor, currency FROM record_transaction
+        WHERE occurredAt >= :start AND occurredAt < :end AND categoryId IS NULL
+    """)
+    fun aggregateAmountsUncategorized(start: Long, end: Long): List<AggregateAmountRow>
+
+    @Query("""
+        SELECT l.transactionId AS id, COUNT(*) AS count FROM transaction_note_link l
+        JOIN note n ON n.id = l.noteId
+        WHERE n.deletedAt IS NULL AND l.transactionId IN (:transactionIds)
+        GROUP BY l.transactionId
+    """)
+    fun visibleLinkCountsForTransactions(transactionIds: List<String>): List<LinkCountRow>
+
+    @Query("""
+        SELECT noteId AS id, COUNT(*) AS count FROM transaction_note_link
+        WHERE noteId IN (:noteIds)
+        GROUP BY noteId
+    """)
+    fun linkCountsForNotes(noteIds: List<String>): List<LinkCountRow>
 }

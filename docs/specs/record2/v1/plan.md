@@ -1184,3 +1184,66 @@ D0交付为“Koog Android/DeepSeek真协议接缝 + 合成集成测试 + 已执
 - **Key口径裁定（2026-10-24）：** 负责人明确允许复用D0专用测试Key，不要求为E1单独生成新Key，也不要求因此重跑；§27.2首轮与本节集成后的真实跨Run证据均有效。
 - **制品/证据：** debug`5e95ec9c…`、release-unsigned`766dcb5e…`、androidTest`eb6535fd…`；设备安装的`.debug`/`.debug.test`摘要与构建产物一致。回执`build/e1/instrument-integrated-session.txt`、`instrument-integrated-b3-regression.txt`、`instrument-integrated-shared.txt`、`real-integrated-prepare.txt`、`real-integrated-verify.txt`、`e1-contract-real-integrated.db`、`logcat-integrated-real.txt`；原始文件被Git忽略。
 - **边界不变：** E2/D1/F2/G0/G1未启动；PR #24待再次审阅，未合并main、未关闭issue #12。
+
+## 29. B4：连续时间线、真实检索与确定性汇总（issue #7）
+
+2026-10-24负责人要求“完成issueb4”，对应[GitHub #7](https://github.com/paher-din/record/issues/7)。本批按§4 B4合同、[B0 §4.2](../../../architecture/record2-b0-data-model-design.md#42-查询分页与汇总)、Spec §3/§5.1及B-AC5/CTX-02/CTX-09执行正式时间线/检索/详情读取/确定性汇总服务及测试；沿用B1–B3与Schema v1，不新增ADR、Spec、Schema或索引，不注册`aggregate_finances`工具，不接F1页面、AI、ZIP或备份。执行于独立工作树`D:/record/.worktrees/b4-timeline-search`（分支`codex/b4-timeline-search`，基线`7a3913d`）；主工作树开始时无本批改动并保持只读。main工作树当前有未提交的F0 §28，故本批使用§29，不重编号其他批次；并行worktree合并时按实际占用处理并保留双方记录。未操作真实用户数据、Provider、网络、凭据或发布。
+
+### 29.1 查询合同与实现
+
+- [TimelineService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/TimelineService.kt)：提供原生与未来Tools共用的`RecordKind`、`TimelineRange`/`TimelineQuery`/`TimelineCursor`、`TimelineEntry`/`TimelinePage`、`RecordRef`/`RecordDetail`、`FinanceCategoryScope`/`FinanceAggregate`及`TimelineError`。时间线全序固定为`occurredAt DESC, TRANSACTION先于NOTE, id ASC`（同类型UUID按二进制文本序）；这是B0 §4.2未指定类型先后时本批的查询语义决定，D1/oracle必须沿用。`TimelineTime`以调用方ZoneId求本地日`[start,nextStart)`，用`atStartOfDay`处理DST gap/overlap和23h/25h日，拒绝倒置/空范围；`timelineBefore`的`beforeExclusive`是“跳到某日并继续向更早分页”的锚点，不是单日过滤。`TimelineQueryRules`把空白关键词视为无过滤，非空白关键词做ASCII大小写折叠、按字面`instr`匹配（中文/换行/`%`/`_`均非通配），并以1000 code point安全上限拒绝异常长关键词（D1仍可设更小Token预算）。
+- 分页cursor绑定代际、businessRevision、过滤摘要（kind/关键词/范围/时区）及最后排序键；`cursorDigest`使用进程内随机密钥的HMAC-SHA256覆盖排序键、代际和revision。任何业务写、过滤/时区变化或cursor字段改动都返回`CursorExpired`，不跨不同revision拼接页面；进程重启后旧cursor按失效处理，需重建当前页。这样同时拒绝旧请求迟到、篡改和“编辑日期后继续旧分页”的静默漏重。
+- [RoomTimelineService](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RoomTimelineService.kt)：在单个Room事务内校验代际/limit/cursor，按两张表各取`limit+1`并以与SQL谓词一致的全序合并；同一时刻的cross-type边界由`TRANSACTION`/`NOTE`条件精确处理。页面批量读取可见关联数量（Transaction只计未删除Note，Note计其收支关系），供F0/F1时间线行展示。`detail`重验可见性：Transaction详情只返回未删除Note，Note详情对已删除Note返回`NotVisible`；恢复后原关系重新可见。`aggregateFinances`只读取`record_transaction`，按半开范围与`All/Category(id)/Uncategorized`分类范围逐行以`Math.addExact`累加收入/支出及计数；溢出返回`AggregateOverflow`且不返回部分结果，未知分类`NotFound`，非法范围`Validation`。草稿/Proposal不在正式交易表中，结构上不进入汇总；未使用SQLite浮点/未检查SUM。
+- [RecordDao](../../../../record2/app/src/main/kotlin/com/paherdin/record2/storage/RecordDao.kt)只新增时间线两表keyset查询、汇总投影与可见关联计数；无实体/字段/索引/外键或Schema JSON变化。`(occurredAt,id)`等既有索引为ASC/ASC，极端同刻大组的`id ASC`末项可能触发临时B-tree；本批不新增混合方向索引（需G-SCHEMA批准），以固定高量合成库基线记录实际影响。
+- [TimelineBrowser](../../../../record2/app/src/main/kotlin/com/paherdin/record2/records/TimelineBrowser.kt)为F1提供非视觉状态：筛选/关键词/日期范围/锚点、连续下一页、失败保留已有可读页、迟到请求丢弃。`loadMore`在筛选变更尚未重试时被阻断，避免用旧页成功掩盖新筛选失败；cursor过期保留旧页并要求`refresh`，`GenerationMismatch`标记必须重建浏览器；`retry`按上一次browse/loadMore分别重试。最终页面、分组、滚动位置和返回动画仍归F0/F1，本批不新增Compose/UI/导航/文案。
+
+### 29.2 实际验证与证据（2026-10-24）
+
+- **构建/host PASS：** [最终构建](../../../../record2/build/b4/build-final4.log)使用JDK17.0.20+8、Gradle 8.13、AGP 8.12.3、Kotlin 2.3.10、Room 2.8.4；`check :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`成功（2分7秒，129项中8执行/121 up-to-date）。Debug/Release各86项host（新增B4 18项：`TimelineTimeTest` 8项+`TimelineBrowserTest` 10项；其余68项既有回归），fail/error/skip均0。lint 0错误/7项既有类别警告，未关闭检查。
+- **真实Room合同 PASS：** 复用专用`record2-schema-api34`（serial`emulator-5580`，API34 x86_64，fingerprint`google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.050/12077443:userdebug/dev-keys`；运行前核对boot/包归属/无活动instrumentation）。仅安装本批`.debug`/`.debug.test`，安装后拉回`base.apk`与构建产物逐项一致（debug`6cbe0ed8…`、test`fa2fd849…`）。[TimelineServiceContractTest](../../../../record2/app/src/androidTest/kotlin/com/paherdin/record2/storage/TimelineServiceContractTest.kt) 10项`OK (10 tests)`、3.347秒，覆盖：同刻cross-type全序与双向页边界、中文/换行/ASCII大小写/`%`/`_`/空白关键词、关键词同刻跨页、删除Note在时间线/搜索/before锚点/详情关联全部隐藏及恢复原关系、半开日界/时区/午夜、cursor在业务写/过滤/时区/代际/字段篡改后的过期、真实FinanceService编辑日期后的移动与旧cursor失效、锚点连续跨日、汇总半开/分类/未分类/空结果/BigInteger独立oracle、草稿不入汇总、Long累加溢出/精确边界、可见关联计数；回执[contract-approved](../../../../record2/build/b4/instrumentation-contract-approved.txt)。
+- **固定高量合成库 PASS（已按批准阈值断言）：** `TimelinePerformanceContractTest` 2项`OK (2 tests)`、28.388秒；典型5,000收支+2,000 Note、高量30,000收支+10,000 Note，冷重开后测首屏、连续翻页、关键词检索与全年汇总，并按§29.3批准值断言首屏/单页/检索/汇总；原始数值见下节及[perf-logcat-approved](../../../../record2/build/b4/perf-logcat-approved.txt)、[typical](../../../../record2/build/b4/perf-typical-approved.txt)、[high](../../../../record2/build/b4/perf-high-approved.txt)。
+- **共享回归 PASS：** 同AVD执行B4 10项+Finance 14+Note 13+Link 13+Schema 10+Proposal 18+SessionRun 15+AiSecurity 8+AiSecurityInitialization 3，共104项`OK (104 tests)`、38.476秒，无fail/error/skip；见[instrumentation-regression-approved](../../../../record2/build/b4/instrumentation-regression-approved.txt)。Schema v1物理结构/Git diff未变，LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`（工作树CRLF原始字节`2ceae115…`，不代表内容变化）。最终APK SHA-256：debug`6cbe0ed85daec85c06d2a43031d493591fbec00d6b1917eb8831a358e36e5e0a`、release-unsigned`f90d6a99a8013b7787519c2c181628c671e7bff5911f514696789cdddcdb38e0`、androidTest`fa2fd84974d8477ef2395f58a38ad8fb775c4500be2aca4c0338d22b1e6418de`。
+- **失败与修订保留：** 首轮合同8/9失败于初版测试夹具把“上海10月23日00:30”误当作UTC 10月23日范围；实际该时刻为UTC 10月22日16:30。修正夹具为“上海10月24日00:30（UTC 10月23日16:30）”后重跑；生产逻辑未改，原始[首轮回执](../../../../record2/build/b4/instrumentation-contract.txt)与修正后[fixed回执](../../../../record2/build/b4/instrumentation-contract-fixed.txt)保留。独立子代理static review此前对两表cursor谓词做300组随机数据集对照（1–5行页、同刻cross-type、删除Note、关键词、新到旧/锚点），无漏重/乱序；其P2项（cursor排序键完整性、关键词规范化/上限、浏览器pending/重试、GenerationMismatch、锚点边界、可见关联计数及测试缺口）已按上节修正并重跑，未用审查结论代替设备回执。
+- **证据位置：** [本机B4目录](../../../../record2/build/b4/)保留build-final/final2/final3/final4、contract/perf/regression各轮回执（含approved轮）、安装hash与perf文件；该目录被Git忽略，不承诺跨机存在；正式Kotlin测试可纳管重建。测试合成库保留，未wipe/uninstall/清库或操作其他设备。
+
+### 29.3 性能基线、批准预算与结果
+
+- **参考环境/数据：** `record2-schema-api34`/`emulator-5580`/API34 x86_64/debug构建；典型5,000收支+2,000 Note（约35/42天），高量30,000收支+10,000 Note（约208天）；每轮冷重开数据库后测首屏50条，再连续翻页（典型10页、高量20页），关键词`needle`（典型2条、高量10条），汇总覆盖数据库全量收支。该环境是参考模拟器，不等于获批真机硬件性能。
+- **实测（2026-10-24最终轮）：** 典型first 24ms、10页scroll合计143ms（单页max 22ms）、search 11ms、aggregate 66ms；高量first 59ms、20页scroll合计332ms（单页max 28ms）、search 14ms、aggregate 443ms。高量汇总在单事务内读取30k行，是当前最大单项；D1必须在后台线程调用，不得置于主线程。
+- **批准预算与结果（2026-10-24）：** 负责人批准以下“API34参考AVD功能上限”：典型首屏/单页滚动/关键词各≤100ms、汇总≤250ms；高量首屏≤200ms、单页滚动≤100ms、关键词≤150ms、汇总≤1000ms；任一场景不得ANR/OOM，runner必须完整完成。`TimelinePerformanceContractTest` 已写入这些阈值并在最终test APK（`fa2fd849…`）上重跑`OK (2 tests)`；B4参考AVD性能门禁已满足。该数值是同步测量，不冒充获批真机硬件结论；真机结论仍由G2按获批环境取证，D1仍需在获批的运行环境中复核工具级超时/费用/无进展预算。
+
+### 29.4 未执行边界与下游责任
+
+- D1仍拥有`search_records`/`get_record_detail`/`aggregate_finances`的封闭参数解析、授权/Run/代际检查、cursor opaque化/防伪、长正文分段、Token/时间/费用/无进展预算、结果摘要与“必要关联”投影；B4性能门禁已满足，但D1仍须完成自己的工具合同、真实Agent验收和预算后才注册`aggregate_finances`。B4只提供真实服务与页级可见关联数量，不是工具注册或Agent实现。模型提供的cursor不得直接信任排序字段；B4的HMAC只保证进程内结构完整性，跨进程需重新查询。
+- F1仍拥有时间线分组/布局/视觉/滚动/返回动画；B4的`TimelineBrowser`只是非视觉状态合同。F1/D1必须用`TimelineTime`按ZoneId求日界，不得假设24小时或退回旧单日LIMIT列表。
+- G1/G2仍拥有ZIP/恢复、最终B-AC5/M1/V1联合验收和真机性能；本批不声称最终原生页面、M1或V1完成，不把服务层PASS外推为产品AC PASS。未接旧搜索中心/FTS/向量/投影事实，未新增Schema/索引/迁移，未修改构建/依赖/Manifest/普通Host/R1/冻结Spec/架构。
+- 本批未操作真实用户数据、Provider/Key/网络、备份或发布；未清库/卸载/wipe；未创建ADR或新Spec。
+
+### 29.5 Git 交付状态
+
+2026-10-24负责人明确选择“提交+推送分支+PR”，覆盖本任务实现、测试、Plan §29与路由文件的提交、推送分支`codex/b4-timeline-search`及创建PR；不合并main、不关闭issue #7、不发布。实际提交、远端引用与PR身份由Git/GitHub回执证明，本Plan不预填；本机构建证据/合成库/AVD仍被Git忽略。
+
+### 29.6 PR交付（2026-10-24）
+
+源码/测试/Plan/路由提交为`406edc6959f80005b29b8a85d91b0c780e519975`，已推送`codex/b4-timeline-search`并创建[PR #26](https://github.com/paher-din/record/pull/26)（base `main`、head `codex/b4-timeline-search`）。PR包含本任务12个文件及§29证据；未合并main、未关闭issue #7。本节文档回执不改变源码或已测APK；审查、合并与issue收口由负责人决定。
+
+### 29.7 PR #26 审阅修复（2026-10-24，REQUEST CHANGES）
+
+负责人对PR #26给出REQUEST CHANGES，暂不合并；本轮只修P1 `TimelineBrowser`并发状态一致性、P2 cursor错误分类及对应测试，不修改Schema、索引、最终UI、AI工具注册或其他任务语义，不自动合并/关闭issue #7。
+
+- **P1线性化：** 请求注册（token递增、pending、loading/error）与响应提交（token核对后才更新entries/query/anchor/next/error/flags）现在各自在同一短`synchronized(lock)`临界区完成；数据库查询在锁外，不持长锁。`loadMore`在锁内重读当前`next/loading/pending`，因此并发两次页请求最多注册一次；新browse/筛选使旧token失效，旧响应即使最后返回也只丢弃。`clearLoading`仅在token仍当前时生效；`retry`优先重试pending Browse，不再因旧的`requiresReload`丢弃新的筛选失败。新增host并发回归：`concurrentLoadMoreRegistrationsIssueOneQueryAndAppendOnePage`与`concurrentFilterChangesKeepTheLastRegisteredQuery`，使用`Dispatchers.Default`和可控门控制造交错，断言service只调用一次、旧NOTE响应晚到不覆盖新TRANSACTION结果、无重复页。
+- **P2错误分类：** `RoomTimelineService.validateCursor`对非法UUID cursor id统一返回`CursorExpired`，不再先触发`Validation`；与代际/revision/过滤摘要/HMAC排序键校验使用同一损坏/篡改游标错误。合同测试新增`"not-a-uuid"`与空id两种篡改输入，均断言`CursorExpired`。`TimelineBrowser`对`CursorExpired`保留已有可读页、清空next、置`requiresReload=true`，`refresh`成功后恢复，由`cursorExpiryKeepsReadableEntriesAndRefreshReloads`覆盖。
+- **测试对应commit：** `af87fa262ece0cd7aaab344e69e47d8f7f5f2247`（源码/测试只来自该commit；此后仅Plan回执，不改源码）。
+- **验证结果（commit `af87fa2`）：** [build-review-fixes2](../../../../record2/build/b4/build-review-fixes2.log) 50秒、129项中22执行/107 up-to-date；host Debug/Release各88项（新增2项并发），fail/error/skip均0；[B4 Room合同](../../../../record2/build/b4/instrumentation-contract-review-fixes2.txt) 10/10、3.724秒；[性能](../../../../record2/build/b4/instrumentation-perf-review-fixes2.txt) 2/2、27.324秒（典型首屏38ms/单页max20ms/检索10ms/汇总89ms；高量51/19/12/372ms，均低于批准阈值）；[共享回归](../../../../record2/build/b4/instrumentation-regression-review-fixes2.txt) 104/104、45.299秒。最终APK SHA-256：debug`f7c3aeb51584c47df5b89055816c2bb73d3e761bc93247d2612fcfcbd6ca0f25`、release-unsigned`cd29080e924a3bd06d5caf5f536e88b7a168e0406bfe6b0d8c24282bc2d5f904`、androidTest`e91228273e66d4a9db380c0c0b2a644c871c6211b5f75ed7e3cc5146f6a91bbb`；安装后设备摘要与构建一致；lint 0错误/7警告；Schema LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
+- **失败与修订：** P1首版修复后host 5项失败，根因是新`commitError`在写入错误状态后仍返回`true`，调用方把失败当成功；改为固定返回`false`后重跑88/88。失败由测试正确暴露，未改断言或放宽门禁；该失败轮不作为PASS，最终结果只引用commit `af87fa2`。
+- **未覆盖项：** 并发测试是同一JVM内单个`TimelineBrowser`实例的确定性交错，不覆盖多进程、Compose主线程调度或真实数据库写并发；cursor HMAC仍为进程内密钥，跨进程需重新查询。D1工具注册/授权、F1页面、G2真机与最终AC不受本轮影响，仍未完成。未操作真实用户数据、Provider/网络/凭据、Schema/索引、备份或发布；未合并PR、未关闭issue #7。
+
+### 29.8 PR #26 第三轮审阅修复（2026-10-24）
+
+负责人确认上轮P1/P2通过源码复核，但指出连续修改不同筛选字段会丢失待执行意图：`browseFromCurrent`只基于最后提交的页面状态，`setKind(NOTE)`未返回时再`setKeyword("午餐")`可能丢掉NOTE。本轮只修这一P1及对应host交错测试，保持token线性化、迟到丢弃、失败保留可读页和retry语义；不扩展Schema、索引、最终UI或AI Tools。
+
+- **修复：** `browseFromCurrent`在同一个短锁内选择基线：若存在`Pending.Browse`，以它的query+anchor为最新待执行意图；否则以最后提交的`TimelineState`。随后的字段transform、规范化、锚点计算和请求注册仍在该临界区一次完成，因此连续`setKind`/`setKeyword`/`setRange`会叠加到同一最新意图，而不是回退到旧页面状态。`retry`仍按pending原意图精确重试；旧响应仍按token丢弃，失败仍保留可读页。
+- **交错测试：** 新增`consecutiveKindAndKeywordChangesMergePendingIntent`与`consecutiveRangeAndKindChangesMergePendingIntent`：用`Dispatchers.Default`和门控让第一个请求悬停，第二个筛选字段在返回前注册；断言第二次提交的`TimelineQuery`同时含kind+keyword或range+kind，且第一个迟到响应不能覆盖。
+- **测试对应commit：** `6973d57c859a687e52f04430dd64b1d7ae69b577`（仅该commit源码/测试；此后仅Plan回执）。
+- **结果：** [build-review3](../../../../record2/build/b4/build-review3.log) 50秒、129项中24执行/105 up-to-date；host Debug/Release各90项（新增2项连续意图交错），fail/error/skip均0；[B4 Room合同](../../../../record2/build/b4/instrumentation-contract-review3.txt) 10/10、4.936秒；[性能](../../../../record2/build/b4/instrumentation-perf-review3.txt) 2/2、29.851秒（典型首屏22ms/单页max17ms/检索12ms/汇总80ms；高量65/25/26/524ms，均低于批准阈值）；[共享回归](../../../../record2/build/b4/instrumentation-regression-review3.txt) 104/104、48.375秒。最终APK SHA-256：debug`4a3be6c742739caeebbca969f943ab9857caa4565eacdea4875b8136171e4c4a`、release-unsigned`e8895a26d12ecb16beb6a74795e81ff26bd83fd582207526c36c7e1330ab43f0`、androidTest`e91228273e66d4a9db380c0c0b2a644c871c6211b5f75ed7e3cc5146f6a91bbb`；安装摘要与构建一致；lint 0错误/7警告；Schema LF规范化SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`。
+- **未覆盖项不变：** 仍是同一JVM内单个`TimelineBrowser`的确定性交错，不覆盖多进程、Compose主线程调度或真实数据库写并发；cursor HMAC进程绑定；D1工具/F1页面/G2真机与最终AC未变。未合并PR、未关闭issue #7。
