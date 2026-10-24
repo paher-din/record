@@ -19,4 +19,5 @@ internal abstract class RecordDatabase : RoomDatabase() {
     abstract fun proposals(): ProposalDao
     abstract fun sessions(): SessionDao
     abstract fun aiControl(): AiControlDao
+    abstract fun backup(): BackupDao
 }
