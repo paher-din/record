@@ -1334,3 +1334,10 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - **新增回归：** `mismatchedConfirmationCancelledAtTheReturnBoundaryStaysAMismatch`——既有revision1/摘要A的operation后，分别以revision2与异摘要命令在返回边界取消，调用点分类均为`ConfirmationMismatch`而非回执丢失，快照零变化。既有两处已提交竞态测试不变并通过，证明嵌套形态对COMMITTED/ROLLED_BACK两分支保持§28.8语义。
 - **重验（最终APK debug`eb43f6d0…`、release-unsigned`1b7475ad…`、androidTest`51f2ae93…`，安装回拉一致，build/c1/apk-hashes-round3.txt）：** 构建任务组PASS；host Debug/Release各98项fail/error/skip=0；设备`CommitContractTest` 19/19 `OK (19 tests)`（18项既有+1项新增）；进程矩阵15/15 PASS（build/c1/process-d3c7ba1a…/）；扩展共享回归（Schema+C0+B2 Note+B4 Timeline）`OK (51 tests)`。
 - **未变边界：** Schema v1、事务框架、强停矩阵范围均未改动；主线程响应性由纯挂起实现保证，未新增专项UI响应测试（如实登记，非本批验收面）。
+
+### 28.10 2026-10-24 第四轮审阅APPROVE与合并
+
+负责人第四轮审阅结论：**APPROVE，建议按HEAD`2606c17`合并**。复查确认第三轮P1（嵌套`withContext(NonCancellable)`+内层IO的纯挂起恢复，不再阻塞调用线程、结果不再被已取消Job丢弃）与P2（`reconcileConfirmation`的`frozen()`完整性校验+confirmedRevision/displayedDigest匹配，异display取消判ConfirmationMismatch）均通过，Transaction A/B主体未扩大不可取消范围；GitHub `mergeable_state=clean`；未发现新增阻断问题。四轮审阅发现的具体缺陷均已修复并有针对性测试覆盖。
+
+- **下游边界（审阅确认）：** C1作为独立模块收口；F2仍需原生确认界面与未知结果提示，E2负责删除/取消真实联调，G0/G1负责备份恢复与代际处理——均为既定任务边界，不阻C1。
+- **执行：** 本节记录批准后，PR #27按仓库merge-commit惯例合并进main；合并后的集成为F2与后续联合验收的基线。issue #9关闭与C0/E1先例一致归负责人。
