@@ -122,24 +122,40 @@ internal class RestoreService(
         withContext(Dispatchers.IO) {
             val state = store.currentState() ?: return@withContext RestoreReceiptLookup.None
             val text = state.restoreReceipt ?: return@withContext RestoreReceiptLookup.None
+            // A fresh candidate was preflighted against the current generation. A matching old
+            // receipt must not turn that confirmed replacement into a no-op (A -> new data -> A).
+            val generationUnchanged = candidate.targetGeneration == state.dataGeneration
             val receipt = try {
                 RestoreReceiptCodec.decode(text, clock.millis())
             } catch (error: BackupException) {
-                return@withContext RestoreReceiptLookup.Unknown("restore receipt is unreadable: ${error.code}")
+                return@withContext if (generationUnchanged) {
+                    // A malformed receipt must not block a valid rescue replacement; startup
+                    // gating still reports RecoveryRequired until this new restore commits.
+                    RestoreReceiptLookup.None
+                } else {
+                    RestoreReceiptLookup.Unknown("restore receipt is unreadable: ${error.code}")
+                }
             }
-            if (receipt.restoredGeneration != state.dataGeneration ||
-                receipt.sourceZipSha256 != candidate.sourceSha256 ||
-                receipt.sourceZipBytes != candidate.sourceBytes ||
-                receipt.sourceFormatVersion != candidate.manifest.formatVersion ||
-                receipt.sourceSchemaVersion != candidate.manifest.databaseSchemaVersion ||
-                receipt.contentDigest != candidate.manifest.contentDigest ||
-                receipt.sourceGeneration != candidate.manifest.sourceGeneration
-            ) {
-                return@withContext RestoreReceiptLookup.Unknown(
-                    "persisted restore receipt does not match the confirmed candidate",
-                )
+            val matchesCandidate = receipt.restoredGeneration == state.dataGeneration &&
+                receipt.sourceZipSha256 == candidate.sourceSha256 &&
+                receipt.sourceZipBytes == candidate.sourceBytes &&
+                receipt.sourceFormatVersion == candidate.manifest.formatVersion &&
+                receipt.sourceSchemaVersion == candidate.manifest.databaseSchemaVersion &&
+                receipt.contentDigest == candidate.manifest.contentDigest &&
+                receipt.sourceGeneration == candidate.manifest.sourceGeneration
+            if (!matchesCandidate) {
+                // A different valid backup (A -> B) is a new replacement, not an unknown outcome.
+                return@withContext RestoreReceiptLookup.None
             }
-            RestoreReceiptLookup.Committed(receipt)
+            if (generationUnchanged) {
+                // The preflight target is still current: this is a fresh replacement of the same
+                // ZIP, even though a prior restore with the same source committed earlier.
+                RestoreReceiptLookup.None
+            } else {
+                // The generation moved after preflight and the receipt proves this exact ZIP is
+                // what committed. This is the lost-observation / same-attempt case.
+                RestoreReceiptLookup.Committed(receipt)
+            }
         }
 
     override suspend fun completedResult(receipt: RestoreReceipt): RestoreResult =

@@ -451,6 +451,142 @@ class BackupRestoreContractTest {
     }
 
     @Test
+    fun secondRestoreWithDifferentBackupSucceeds() = runBlocking {
+        val dataA = BackupTestDataFactory.create()
+        val dataB = dataA.copy(
+            generation = UUID.randomUUID().toString(),
+            content = dataA.content.copy(
+                notes = dataA.content.notes.map {
+                    if (it.id == BackupTestDataFactory.NOTE_ACTIVE) it.copy(body = "backup B note") else it
+                },
+            ),
+        )
+        val sourceAName = "g1-a-b-source-a-${UUID.randomUUID()}.db"
+        val sourceBName = "g1-a-b-source-b-${UUID.randomUUID()}.db"
+        val targetName = "g1-a-b-target-${UUID.randomUUID()}.db"
+        val aDb = open(sourceAName)
+        val bDb = open(sourceBName)
+        seed(aDb, dataA)
+        seed(bDb, dataB)
+        val aZip = File(staging, "a-b-a.zip")
+        val bZip = File(staging, "a-b-b.zip")
+        export(context.getDatabasePath(sourceAName), aZip, DataOperationGate())
+        export(context.getDatabasePath(sourceBName), bZip, DataOperationGate())
+        val targetDb = open(targetName)
+        val targetPath2 = context.getDatabasePath(targetName)
+        val first = RestoreService(
+            RoomRestoreStore(targetDb, clock), targetPath2, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val candidateA = first.preflight(FileSource(aZip))
+        val resultA = first.restore(candidateA)
+        val generationA = targetDb.records().dataState()!!.dataGeneration
+        assertEquals(resultA.restoredGeneration, generationA)
+
+        val second = RestoreService(
+            RoomRestoreStore(targetDb, clock), targetPath2, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val candidateB = second.preflight(FileSource(bZip))
+        assertEquals(generationA, candidateB.targetGeneration)
+        val resultB = second.restore(candidateB)
+        assertTrue(resultB.restoredGeneration != generationA)
+        assertEquals(resultB.restoredGeneration, targetDb.records().dataState()!!.dataGeneration)
+        val body = targetDb.query(
+            "SELECT body FROM note WHERE id = ?", arrayOf(BackupTestDataFactory.NOTE_ACTIVE),
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            cursor.getString(0)
+        }
+        assertEquals("backup B note", body)
+        assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath2, clock).check().kind)
+
+        aDb.close()
+        bDb.close()
+        targetDb.close()
+    }
+
+    @Test
+    fun freshRestoreOfSameBackupReplacesDataAddedAfterTheFirstRestore() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-same-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "same-source.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-same-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        val first = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val candidate = first.preflight(FileSource(zip))
+        first.restore(candidate)
+        val generation = target.records().dataState()!!.dataGeneration
+        val extraId = UUID.randomUUID().toString()
+        assertNotNull(
+            RoomNoteService(target, clock).save(
+                generation, extraId, null, "added after restore", BackupTestDataFactory.START,
+            ),
+        )
+
+        val second = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val fresh = second.preflight(FileSource(zip))
+        assertEquals(generation, fresh.targetGeneration)
+        val result = second.restore(fresh)
+        assertTrue(result.restoredGeneration != generation)
+        val extraCount = target.query(
+            "SELECT COUNT(*) FROM note WHERE id = ?", arrayOf(extraId),
+        ).use { cursor ->
+            cursor.moveToFirst()
+            cursor.getInt(0)
+        }
+        assertEquals(0, extraCount)
+        assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath, clock).check().kind)
+
+        source.close()
+        target.close()
+    }
+
+    @Test
+    fun malformedReceiptCanBeReplacedByValidBackup() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-malformed-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "malformed-source.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-malformed-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        seed(target, data)
+        target.openHelper.writableDatabase.execSQL(
+            "UPDATE record_data_state SET restoreReceipt = '{' WHERE id = 1",
+        )
+        val targetPath = context.getDatabasePath(targetName)
+        assertEquals(StartupKind.RECOVERY_REQUIRED, RestoreStartupGate(targetPath, clock).check().kind)
+
+        val service = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val candidate = service.preflight(FileSource(zip))
+        assertEquals(target.records().dataState()!!.dataGeneration, candidate.targetGeneration)
+        val result = service.restore(candidate)
+        assertTrue(result.restoredGeneration != candidate.targetGeneration)
+        assertNotNull(target.records().dataState()?.restoreReceipt)
+        assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath, clock).check().kind)
+
+        source.close()
+        target.close()
+    }
+
+    @Test
     fun emojiAndMixedTextCrossChunkBoundary() = runBlocking {
         val data = BackupTestDataFactory.create()
         val body = "中文abc😀".repeat(60_000)
