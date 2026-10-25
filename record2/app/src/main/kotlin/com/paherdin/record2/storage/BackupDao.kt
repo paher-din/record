@@ -1,12 +1,17 @@
 package com.paherdin.record2.storage
 
+import android.database.Cursor
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.RawQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 
 /** Delete/insert surface used only by the single restore transaction. */
 @Dao
 internal interface BackupDao {
+    @RawQuery fun rawQuery(query: SupportSQLiteQuery): Cursor
+
     @Query("DELETE FROM agent_message_reference") fun deleteReferences(): Int
     @Query("DELETE FROM agent_message") fun deleteMessages(): Int
     @Query("DELETE FROM change_proposal") fun deleteProposals(): Int

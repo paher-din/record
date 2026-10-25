@@ -65,20 +65,24 @@ internal class RestoreService(
             val bytes = source.copyTo(zip, BackupLimits.MAX_ZIP_BYTES)
             check()
             if (bytes > BackupLimits.MAX_ZIP_BYTES) fail(BackupError.InvalidSource, "backup exceeds 64 MiB")
-            val read = LogicalZipReader.read(zip, check)
-            check()
             val now = clock.millis()
-            LogicalBackupValidator.validate(read.backup, now, check)
+            val validator = StreamingBackupValidator(now)
+            val streamed = LogicalZipReader.forEachRow(zip, check) { segment, row ->
+                validator.accept(segment, row)
+            }
+            check()
+            validator.finish(check)
+            LogicalBackupValidator.validateManifest(streamed.manifest, now)
             check()
             val target = ReadOnlyTargetInspector.inspect(databasePath)
-            checkDisk(read.backup.manifest, bytes, target)
+            checkDisk(streamed.manifest, bytes, target)
             RestoreCandidate(
                 id = UUID.randomUUID().toString(),
                 source = source,
                 sourceDisplayName = source.displayName,
                 sourceBytes = bytes,
-                sourceSha256 = read.zipSha256,
-                manifest = read.backup.manifest,
+                sourceSha256 = streamed.zipSha256,
+                manifest = streamed.manifest,
                 targetGeneration = target.generation,
                 targetAuthEpoch = target.authEpoch,
                 preflightAt = now,
@@ -190,17 +194,24 @@ internal class RestoreService(
         if (sourceSha != candidate.sourceSha256) {
             fail(BackupError.InvalidSource, "source digest changed since preflight")
         }
-        val read = LogicalZipReader.read(zip)
-        if (read.backup.manifest != candidate.manifest) {
+        val restoredAt = clock.millis()
+        val validator = StreamingBackupValidator(restoredAt)
+        val streamed = LogicalZipReader.forEachRow(zip) { segment, row ->
+            validator.accept(segment, row)
+        }
+        validator.finish()
+        if (streamed.manifest != candidate.manifest) {
             fail(BackupError.InvalidSource, "manifest changed since preflight")
         }
-        val restoredAt = clock.millis()
-        LogicalBackupValidator.validate(read.backup, restoredAt)
+        if (streamed.zipSha256 != candidate.sourceSha256 || streamed.zipBytes != copied) {
+            fail(BackupError.InvalidSource, "staging backup does not match the preflight digest")
+        }
+        LogicalBackupValidator.validateManifest(streamed.manifest, restoredAt)
         val target = ReadOnlyTargetInspector.inspect(databasePath)
         if (target.generation != candidate.targetGeneration) {
             fail(BackupError.TargetInvalid, "target generation changed since preflight")
         }
-        checkDisk(read.backup.manifest, copied, target)
+        checkDisk(streamed.manifest, copied, target)
         val newEpoch = when (val old = target.authEpoch) {
             null -> 1L
             else -> old + 1L
@@ -209,54 +220,74 @@ internal class RestoreService(
             fail(BackupError.TargetInvalid, "restore would write an unusable authEpoch")
         }
         val restoredGeneration = UUID.randomUUID().toString()
-        if (restoredGeneration == read.backup.manifest.sourceGeneration) {
+        if (restoredGeneration == streamed.manifest.sourceGeneration) {
             fail(BackupError.Internal, "new generation collided with source generation")
         }
-        val owner = selectOwner(candidate.manifest, read.backup.content)
+        val owner = selectOwner(candidate.manifest, validator)
         val receipt = RestoreReceipt(
             formatVersion = 1,
-            sourceZipSha256 = read.zipSha256,
+            sourceZipSha256 = streamed.zipSha256,
             sourceZipBytes = copied,
-            sourceFormatVersion = read.backup.manifest.formatVersion,
-            sourceSchemaVersion = read.backup.manifest.databaseSchemaVersion,
-            sourceGeneration = read.backup.manifest.sourceGeneration,
+            sourceFormatVersion = streamed.manifest.formatVersion,
+            sourceSchemaVersion = streamed.manifest.databaseSchemaVersion,
+            sourceGeneration = streamed.manifest.sourceGeneration,
             restoredGeneration = restoredGeneration,
             restoredAt = restoredAt,
-            contentDigest = read.backup.manifest.contentDigest,
-            importedRows = read.backup.manifest.totalRows,
-            businessRevisionAtRestore = read.backup.manifest.businessRevision,
+            contentDigest = streamed.manifest.contentDigest,
+            importedRows = streamed.manifest.totalRows,
+            businessRevisionAtRestore = streamed.manifest.businessRevision,
         )
         val receiptText = RestoreReceiptCodec.encode(receipt)
-        val transformedRuns = read.backup.content.runs.map { run ->
-            if (run.state != "RUNNING") {
-                run
-            } else {
-                run.copy(
-                    state = "INTERRUPTED",
-                    activeSlot = null,
-                    finishedAt = maxOf(restoredAt, run.startedAt),
-                )
-            }
-        }
-        val transformedProposals = read.backup.content.proposals.map { proposal ->
-            if (proposal.state == "EDITABLE" || proposal.state == "LOCKED") {
-                proposal.copy(state = "NEEDS_REVIEW", activeSlot = null)
-            } else {
-                proposal
-            }
-        }
         progress(RestoreProgress.IMPORTING)
-        store.import(
-            read.backup,
-            transformedRuns,
-            transformedProposals,
-            restoredGeneration,
-            owner,
-            newEpoch,
-            receiptText,
-            candidate.targetGeneration,
-            target.authEpoch,
-            checkpoint,
+        val transformStats = store.import(
+            expectedManifest = candidate.manifest,
+            expectedZipSha256 = candidate.sourceSha256,
+            expectedZipBytes = copied,
+            restoredGeneration = restoredGeneration,
+            owner = owner,
+            newEpoch = newEpoch,
+            receipt = receiptText,
+            expectedGeneration = candidate.targetGeneration,
+            expectedEpoch = target.authEpoch,
+            streamRows = { sink ->
+                var transformedRuns = 0
+                var transformedProposals = 0
+                val imported = LogicalZipReader.forEachRow(zip) { segment, row ->
+                    when (segment) {
+                        LogicalSegment.RUN -> {
+                            val run = row as RunRow
+                            if (run.state == "RUNNING") {
+                                transformedRuns++
+                                sink(
+                                    segment,
+                                    run.copy(
+                                        state = "INTERRUPTED",
+                                        activeSlot = null,
+                                        finishedAt = maxOf(restoredAt, run.startedAt),
+                                    ),
+                                )
+                            } else {
+                                sink(segment, run)
+                            }
+                        }
+                        LogicalSegment.PROPOSAL -> {
+                            val proposal = row as ProposalRow
+                            if (proposal.state == "EDITABLE" || proposal.state == "LOCKED") {
+                                transformedProposals++
+                                sink(segment, proposal.copy(state = "NEEDS_REVIEW", activeSlot = null))
+                            } else {
+                                sink(segment, proposal)
+                            }
+                        }
+                        else -> sink(segment, row)
+                    }
+                }
+                StreamedImport(
+                    backup = imported,
+                    stats = RestoreTransformStats.Known(transformedRuns, transformedProposals),
+                )
+            },
+            checkpoint = checkpoint,
         )
         checkpoint(RestoreCheckpoint.AFTER_COMMIT)
         progress(RestoreProgress.COMMITTED)
@@ -266,12 +297,7 @@ internal class RestoreService(
             authEpoch = newEpoch,
             receipt = receipt,
             importedRows = receipt.importedRows,
-            transformStats = RestoreTransformStats.Known(
-                transformedRuns = read.backup.content.runs.count { it.state == "RUNNING" },
-                transformedProposals = read.backup.content.proposals.count {
-                    it.state == "EDITABLE" || it.state == "LOCKED"
-                },
-            ),
+            transformStats = transformStats,
         )
         progress(RestoreProgress.POST_COMMIT)
         return result
@@ -290,16 +316,16 @@ internal class RestoreService(
         )
     }
 
-    private fun selectOwner(manifest: BackupManifest, content: LogicalBackupContent): String {
+    private fun selectOwner(manifest: BackupManifest, validator: StreamingBackupValidator): String {
         val requested = processOwnerId
         if (requested != null && requested != manifest.sourceGeneration &&
-            content.runs.none { it.processOwnerId == requested }
+            !validator.usesProcessOwner(requested)
         ) {
             return requested
         }
         while (true) {
             val generated = UUID.randomUUID().toString()
-            if (generated != manifest.sourceGeneration && content.runs.none { it.processOwnerId == generated }) {
+            if (generated != manifest.sourceGeneration && !validator.usesProcessOwner(generated)) {
                 return generated
             }
         }

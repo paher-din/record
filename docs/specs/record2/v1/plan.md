@@ -1633,8 +1633,8 @@ PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，iss
 - **Host（T1）：** `:app:testDebugUnitTest`通过110项/0失败；其中backup新增`LogicalFormatTest`8项与`DataOperationGateTest`4项，覆盖严格JSON、manifest、ZIP空段/DEFLATE空块拒绝、往返、校验器合法/损坏历史、gate drain/互斥。
 - **API34 instrumentation（T3）：** `emulator-5594`（AVD `record-api34`，API34）运行`BackupRestoreContractTest` 13项全部通过：完整业务/聊天/Applied/旧Pending轮转与owner重读、14表零写门禁、authEpoch MAX-1拒绝/MAX-2→MAX-1、receipt损坏/NULL边界、WAL只读导出与并发写、空段恢复再导出、SAVED/DISCARDED直接状态与真实B1生命周期草稿过滤、失败恢复后旧Run迟到完成与C0 prepare/revise拒绝+受控中断+新Run成功、1/2/4/7 MiB Note导出、跨块emoji/中英文混合导出→恢复、并发多表原子更新前后的完整快照、提交边界取消后receipt仍可判定、预检取消清理staging且零写。构建`assembleDebug`/`assembleDebugAndroidTest`通过。
 - **回归：** `SessionRunContractTest`+`SessionRunRealContractTest`+`RecordSchemaContractTest`+`AiSecurityInitializationContractTest` 30项通过；Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`，无Schema/迁移/Manifest/data-extraction规则改动。
-- **未运行/阻塞：** 真机与真实DocumentsUI SAF create/write/flush/close/回读、真实Keystore/Provider、云备份/设备迁移排除、进程终止（force-stop/kill）全矩阵、完整BK2/BK4、64 MiB/256 MiB/500,000行边界、性能/ANR/OOM、F1/E2/F2最终UI与迟到Run内存取消接线、最终APK/合并/G2联合验收均NOT RUN或BLOCKED；G1完成门禁未因此通过。
-- **P1内存修复与剩余风险：** 导出路径已从“全量content→写ZIP→全量再读校验”改为单语句快照逐行写段文件、完成后用不保留行的ZIP verify；host/API34重跑通过。**导入preflight仍使用`LogicalZipReader.read`+全量validator**，在256 MiB/500,000行上限下仍有内存风险，必须在G1完整验收前流式化或提供覆盖上限的内存/性能证据；本批不把该风险标为已解除。
+- **未运行/阻塞（历史批次；矩阵/资源项已由§35.2关闭）：** 真机与真实DocumentsUI picker、真实Keystore/Provider、云备份/设备迁移排除、完整BK2/BK4、F1/E2/F2最终UI、最终APK/合并/G2联合验收仍NOT RUN；进程force-stop矩阵与64 MiB/256 MiB/500,000行资源边界已在本批§35.2完成，但真机性能/ANR/OOM仍NOT RUN。
+- **P1内存修复与剩余风险（已由§35.2关闭）：** 导出为单语句快照逐行写段文件+不保留行的ZIP verify；导入改为`StreamingBackupValidator`+单Room事务流式插入，500,000行/约221 MiB/57.6 MiB ZIP实测无OOM/ANR；全量content保留已删除。模拟器墙钟不作为真机性能PASS。
 
 **2026-10-25 复审 REQUEST CHANGES 的修复：**
 - 导出快照查询草稿段限定`state='EDITING'`，SAVED/DISCARDED不进入ZIP；新增真实状态导出→恢复测试。
@@ -1650,7 +1650,7 @@ PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，iss
 
 **需负责人确认的实现偏差/风险：**
 
-1. **API34只读快照事务：** Android `SQLiteDatabase`在`OPEN_READONLY`连接上执行显式`BEGIN`会按写事务打开并以`SQLITE_READONLY`失败；本批改用同一只读连接、同一WAL、一个`WITH RECURSIVE`分块复合SELECT的隐式读事务，cursor遍历期间全部12表+`record_data_state`处于同一SQLite快照，仍不使用Room写事务、DB/WAL复制或多连接拼接。负责人2026-10-25已接受该等价实现，不再要求为字面SQL退回G0；但导出P1已按流式段文件修复，导入preflight内存风险仍归G1后续。
+1. **API34只读快照事务：** Android `SQLiteDatabase`在`OPEN_READONLY`连接上执行显式`BEGIN`会按写事务打开并以`SQLITE_READONLY`失败；本批改用同一只读连接、同一WAL、一个`WITH RECURSIVE`分块复合SELECT的隐式读事务，cursor遍历期间全部12表+`record_data_state`处于同一SQLite快照，仍不使用Room写事务、DB/WAL复制或多连接拼接。负责人2026-10-25已接受该等价实现，不再要求为字面SQL退回G0；导出P1与导入有界流式化均已按§35.2完成。
 2. **写入门禁层级：** gate接入现有Room服务的写事务边界，并覆盖当前所有生产写服务；未来新增写入口（E2/D1/F2等）必须复用`ProcessDataOperationGate.gate`，本批不提供SQLite authorizer级强制。`RestoreMemoryBarrier`只提供内存失效钩子，真实Run/工具协程取消由E2/F2接线并另测。
 3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
 
@@ -1666,3 +1666,12 @@ PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，iss
 - **第九轮修复：** `RestoreService.restore()`把`progress(PREPARING)`/staging创建纳入lease的try，staging清理使用内层`runCatching`，外层`finally`无条件`lease.close()`；`progress`抛异常或cleanup失败都不会把gate永久留在RESTORE。真实API34新增`gateIsReleasedWhenProgressThrows`、`gateIsReleasedWhenStagingCleanupThrows`（后者同时源损坏、零提交、可继续写）。P2身份边界明确为：正式接线每进程只持有唯一`RestoreCoordinator`，未完成候选不跨进程持久化/复用；receipt只证明当前数据库内容，不提供跨操作attempt ID。
 - **验证（最新APK）：** host **169/169**；G1 `BackupRestoreContractTest` **20/20**；E1/E2/D1/C0基线 **97/97**；`verifyBuildIsolation` PASS。APK debug `eb60397e…`、test `335a7e7a…`、release `6714a27e…`。
 - **未完成（仍为G1阻塞）：** 64MiB/256MiB/500k行导入资源实测与导入器决策、进程强停恢复矩阵、真实SAF/DocumentsUI、F1/F2 UI与G2联合验收；issue #19保持OPEN，未合并main。
+
+### 35.2 2026-10-25 有界流式导入、资源与恢复故障验收
+
+- **决策依据：** 近上限合法包（500,000行、17条约7.4 MiB memo、约225 MiB解压）在192 MiB heap预检发生OOM，证明全量`LogicalZipReader.read`+validator不满足G0 §导入限额。按负责人G1任务书实施有界导入，保持G0/ADR/ZIP v1/12段/Schema v1/Manifest与全部校验不变，不降低限额、不使用第二套恢复协议。
+- **实现：** `StreamingBackupValidator`单遍逐行执行既有规则，只保留紧凑id/跨段元数据；preflight与restore事务前复验均流式；正式导入在同一Room事务内第二遍流式插入并计数转换（RUNNING→INTERRUPTED、EDITABLE/LOCKED→NEEDS_REVIEW）；逐段行数、active slot、AI OFF、receipt/data state在事务内assert；proposal先于session/run的段顺序以`PRAGMA defer_foreign_keys=ON`延后FK检查到commit，最终仍由SQLite校验。删除`readForValidation`临时占位方案与全量content导入。
+- **资源（API34 `record-api34`，最终debug APK）：** notes 500k/105.9 MB/13.3 MB ZIP（46.3s预检、223.3s恢复、PSS 64.0 MB）；large 500k/231.7 MB/46.5 MB ZIP（56.4s、253.0s、PSS 64.9 MB，覆盖约126 MiB单段与7.4 MiB行）；zip 500k/179.9 MB/60.4 MB ZIP=57.6 MiB（53.0s、267.9s、PSS 65.2 MB）。均无OOM/ANR；模拟器墙钟不构成真机性能PASS。
+- **故障/联合：** 真实`am force-stop`5场景（PREFLIGHT、AFTER_DELETE、BEFORE_RECEIPT、BEFORE_COMMIT、AFTER_COMMIT）PASS；前四者14表基线不变/无receipt/重启后可正常恢复，AFTER_COMMIT数据/receipt完整且按预检代际得到Committed不重导入。`G1E2JointContractTest`证明真实Owner撤销、无终态写、迟到完成NotFound、AI拒绝。`G1SafContractTest`通过MediaStore Downloads的ContentResolver写出/回读/恢复；真实DocumentsUI picker UI未接线（F1）。
+- **验证：** host **179/179**；G1 device 25/25（20+E2联合1+SAF4）；确定性storage/AI **177/177**；强停5/5；build isolation PASS；release PASS；APK debug `0b2c130f…`、test `f8775c80…`、release `b7f84b1c…`。详见[G1 evidence §4.2](../../../engineering/evidence/2026-10-25-g1.md#42-2026-10-25-有界流式导入资源与恢复故障验收)。
+- **未完成：** F1/F2/D-SAFE最终UI与真实DocumentsUI picker、真机/Keystore/Provider/云备份/设备迁移、preflight强停孤儿staging自动清扫、G2联合与负责人最终验收；issue #19保持OPEN，未合并main。

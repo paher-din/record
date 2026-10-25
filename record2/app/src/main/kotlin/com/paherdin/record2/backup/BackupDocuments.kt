@@ -31,26 +31,37 @@ internal class ContentResolverBackupSource(
     override val displayName: String?,
 ) : BackupSource {
     override suspend fun copyTo(destination: File, maxBytes: Long): Long = withContext(Dispatchers.IO) {
-        val input = resolver.openInputStream(uri)
-            ?: throw BackupException(BackupError.RecoverableIO, "selected backup cannot be opened")
-        input.use { stream ->
-            FileOutputStream(destination).use { output ->
-                val buffer = ByteArray(65_536)
-                var total = 0L
-                while (true) {
-                    currentCoroutineContext().ensureActive()
-                    val read = stream.read(buffer)
-                    if (read < 0) break
-                    total += read
-                    if (total > maxBytes) {
-                        destination.delete()
-                        throw BackupException(BackupError.InvalidSource, "backup exceeds 64 MiB")
+        try {
+            val input = resolver.openInputStream(uri)
+                ?: throw BackupException(BackupError.RecoverableIO, "selected backup cannot be opened")
+            input.use { stream ->
+                FileOutputStream(destination).use { output ->
+                    val buffer = ByteArray(65_536)
+                    var total = 0L
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = stream.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > maxBytes) {
+                            destination.delete()
+                            throw BackupException(BackupError.InvalidSource, "backup exceeds 64 MiB")
+                        }
+                        output.write(buffer, 0, read)
                     }
-                    output.write(buffer, 0, read)
+                    output.flush()
+                    total
                 }
-                output.flush()
-                total
             }
+        } catch (error: BackupException) {
+            destination.delete()
+            throw error
+        } catch (error: IOException) {
+            destination.delete()
+            throw BackupException(BackupError.RecoverableIO, "could not read the selected backup", error)
+        } catch (error: SecurityException) {
+            destination.delete()
+            throw BackupException(BackupError.RecoverableIO, "backup document is not readable", error)
         }
     }
 }
@@ -72,35 +83,53 @@ internal class ContentResolverBackupTarget(
             }
         } catch (error: IOException) {
             throw BackupException(BackupError.RecoverableIO, "could not write the backup document", error)
+        } catch (error: SecurityException) {
+            throw BackupException(BackupError.RecoverableIO, "backup document is not writable", error)
         }
     }
 
     override suspend fun readBackSha256(): String = withContext(Dispatchers.IO) {
-        val digest = MessageDigest.getInstance("SHA-256")
-        resolver.openInputStream(uri)?.use { input ->
-            val buffer = ByteArray(65_536)
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val read = input.read(buffer)
-                if (read < 0) break
-                digest.update(buffer, 0, read)
-            }
-        } ?: throw BackupException(BackupError.RecoverableIO, "backup document cannot be reopened")
-        digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            resolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(65_536)
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            } ?: throw BackupException(BackupError.RecoverableIO, "backup document cannot be reopened")
+            digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        } catch (error: BackupException) {
+            throw error
+        } catch (error: IOException) {
+            throw BackupException(BackupError.RecoverableIO, "could not read the backup document", error)
+        } catch (error: SecurityException) {
+            throw BackupException(BackupError.RecoverableIO, "backup document is not readable", error)
+        }
     }
 
     override suspend fun readBackBytes(): Long = withContext(Dispatchers.IO) {
-        resolver.openInputStream(uri)?.use { input ->
-            var total = 0L
-            val buffer = ByteArray(65_536)
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val read = input.read(buffer)
-                if (read < 0) break
-                total += read
-            }
-            total
-        } ?: throw BackupException(BackupError.RecoverableIO, "backup document cannot be reopened")
+        try {
+            resolver.openInputStream(uri)?.use { input ->
+                var total = 0L
+                val buffer = ByteArray(65_536)
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    total += read
+                }
+                total
+            } ?: throw BackupException(BackupError.RecoverableIO, "backup document cannot be reopened")
+        } catch (error: BackupException) {
+            throw error
+        } catch (error: IOException) {
+            throw BackupException(BackupError.RecoverableIO, "could not read the backup document", error)
+        } catch (error: SecurityException) {
+            throw BackupException(BackupError.RecoverableIO, "backup document is not readable", error)
+        }
     }
 }
 

@@ -41,6 +41,12 @@ internal data class ReadLogicalBackup(
     val stats: Map<LogicalSegment, SegmentStats>,
 )
 
+internal data class StreamedLogicalBackup(
+    val manifest: BackupManifest,
+    val zipBytes: Long,
+    val zipSha256: String,
+)
+
 internal object LogicalZipWriter {
     fun write(target: File, manifest: BackupManifest, sources: List<SegmentSource>) {
         if (sources.map { it.segment } != LogicalSegment.entries.toList()) {
@@ -244,13 +250,37 @@ internal object LogicalZipReader {
         )
     }
 
+    /**
+     * Streams real rows without retaining them. Container headers, per-entry sizes/CRCs and the
+     * segment/manifest totals are verified; the manifest is returned after the last segment. The
+     * caller owns the transaction boundary.
+     */
+    fun forEachRow(
+        file: File,
+        cancellationCheck: () -> Unit = {},
+        sink: (LogicalSegment, SegmentRow) -> Unit,
+    ): StreamedLogicalBackup {
+        val parsed = readInternal(
+            file,
+            collectRows = false,
+            cancellationCheck = cancellationCheck,
+            rowSink = sink,
+        )
+        return StreamedLogicalBackup(parsed.manifest, parsed.zipBytes, parsed.zipSha256)
+    }
+
     /** Container/hash/row verification without retaining the decoded rows. */
     fun verify(file: File): VerifiedLogicalBackup {
         val parsed = readInternal(file, collectRows = false, cancellationCheck = {})
         return VerifiedLogicalBackup(parsed.manifest, parsed.zipBytes, parsed.zipSha256, parsed.stats)
     }
 
-    private fun readInternal(file: File, collectRows: Boolean, cancellationCheck: () -> Unit): ParsedZip {
+    private fun readInternal(
+        file: File,
+        collectRows: Boolean,
+        cancellationCheck: () -> Unit,
+        rowSink: ((LogicalSegment, SegmentRow) -> Unit)? = null,
+    ): ParsedZip {
         if (!file.isFile) fail(BackupError.InvalidSource, "backup ZIP does not exist")
         val size = file.length()
         if (size <= 0 || size > BackupLimits.MAX_ZIP_BYTES) {
@@ -277,7 +307,9 @@ internal object LogicalZipReader {
                 for (segment in LogicalSegment.entries) {
                     cancellationCheck()
                     val entry = central.getValue(segment.path)
-                    val payload = readEntry(raf, entry, segment, collectRows, cancellationCheck)
+                    val payload = readEntry(
+                        raf, entry, segment, collectRows, cancellationCheck, rowSink,
+                    )
                     if (payload.stats.uncompressedBytes > BackupLimits.MAX_ENTRY_UNCOMPRESSED) {
                         fail(BackupError.InvalidSource, "${segment.path} exceeds 128 MiB")
                     }
@@ -526,10 +558,11 @@ internal object LogicalZipReader {
         segment: LogicalSegment,
         collectRows: Boolean,
         cancellationCheck: () -> Unit,
+        rowSink: ((LogicalSegment, SegmentRow) -> Unit)?,
     ): EntryRead {
         validateSegmentContainer(entry, segment)
         val rows = if (collectRows) ArrayList<SegmentRow>() else null
-        val decoder = LineDecoder(segment, rows, cancellationCheck)
+        val decoder = LineDecoder(segment, rows, cancellationCheck, rowSink)
         val result = readUncompressed(raf, entry, cancellationCheck) { buffer, length -> decoder.accept(buffer, length) }
         decoder.finish()
         if (result.uncompressedBytes == 0L) {
@@ -553,6 +586,7 @@ internal object LogicalZipReader {
         private val segment: LogicalSegment,
         private val rows: MutableList<SegmentRow>?,
         private val cancellationCheck: () -> Unit,
+        private val rowSink: ((LogicalSegment, SegmentRow) -> Unit)?,
     ) {
         private val line = ByteArrayOutputStream()
         var lineCount: Long = 0
@@ -580,6 +614,7 @@ internal object LogicalZipReader {
                 val value = StrictJson.decodeObject(bytes, BackupLimits.MAX_LINE_BYTES)
                 val row = SegmentCodecs.decode(segment, value)
                 rows?.add(row)
+                rowSink?.invoke(segment, row)
                 lineCount++
                 if (lineCount > BackupLimits.MAX_ROWS_TOTAL) {
                     fail(BackupError.InvalidSource, "row count exceeds 500,000")
