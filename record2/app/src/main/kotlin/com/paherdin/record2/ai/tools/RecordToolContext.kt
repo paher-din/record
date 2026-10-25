@@ -106,13 +106,18 @@ internal class RecordToolContext(
      * BUDGET_EXCEEDED and persists a terminal failure.
      */
     fun recordUsage(requestBody: String, responseBody: String) {
-        usage.record(requestBody, responseBody)?.let { reason ->
-            poison(RecordToolFailure.BudgetExceeded, reason)
+        when (val verdict = usage.record(requestBody, responseBody)) {
+            is RunUsageVerdict.Exceeded -> poison(RecordToolFailure.BudgetExceeded, verdict.reason)
+            is RunUsageVerdict.Unknown -> poison(RecordToolFailure.UsageUnknown, verdict.reason)
+            RunUsageVerdict.Within -> Unit
         }
     }
 
-    /** Safety net for a ledger that was crossed without a request-boundary throw. */
+    /** Safety net for a ledger that was crossed or became unverifiable without a throw. */
     fun ensureUsageWithinBudget() {
+        usage.unknownReason?.let { reason ->
+            poison(RecordToolFailure.UsageUnknown, reason)
+        }
         usage.exceededReason?.let { reason ->
             poison(RecordToolFailure.BudgetExceeded, reason)
         }

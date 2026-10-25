@@ -59,6 +59,7 @@ internal enum class AgentRunError {
     RunInvalidated,
     OutcomeUnknown,
     ProviderFailure,
+    UsageUnknown,
     BudgetExceeded,
     RecoverableIO,
     StorageFull,
@@ -383,6 +384,7 @@ internal class AgentRunCoordinator(
 
     private fun toolRunError(error: RecordToolException): AgentRunError = when (error.code) {
         RecordToolFailure.BudgetExceeded -> AgentRunError.BudgetExceeded
+        RecordToolFailure.UsageUnknown -> AgentRunError.UsageUnknown
         RecordToolFailure.AuthorizationRevoked -> AgentRunError.AuthorizationRequired
         RecordToolFailure.RunInvalidated, RecordToolFailure.GenerationMoved -> AgentRunError.RunInvalidated
         RecordToolFailure.RecoverableIO -> AgentRunError.RecoverableIO
@@ -395,6 +397,8 @@ internal class AgentRunCoordinator(
         AgentRunError.AuthorizationRequired, AgentRunError.CredentialUnavailable -> SafeRunErrorCode.AUTHORIZATION
         AgentRunError.RunInvalidated, AgentRunError.Internal, AgentRunError.RecoverableIO,
         AgentRunError.StorageFull -> SafeRunErrorCode.INTERNAL
+        // UsageUnknown is a provider-protocol/terminal failure, never a completed budget claim.
+        AgentRunError.UsageUnknown -> SafeRunErrorCode.PROVIDER_FAILURE
         else -> SafeRunErrorCode.PROVIDER_FAILURE
     }
 

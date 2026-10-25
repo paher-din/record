@@ -88,7 +88,12 @@ class SessionRunRealContractTest {
 
     @Test
     fun verify() = runBlocking {
-        Assume.assumeTrue("requires the prepare marker file", markerFile().isFile)
+        // A stale marker from an earlier batch must not activate verify without the re-injected
+        // key; the two-phase contract always requires both files.
+        Assume.assumeTrue(
+            "requires the prepare marker and the re-injected key file",
+            markerFile().isFile && keyFile().isFile,
+        )
         val fixture = SessionContractFixture("real")
         try {
             val sessionId = markerFile().readText().trim().lineSequence().first()

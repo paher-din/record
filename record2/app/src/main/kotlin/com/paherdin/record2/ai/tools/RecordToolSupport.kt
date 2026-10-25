@@ -52,7 +52,7 @@ internal object RecordToolBudget {
  */
 internal enum class RecordToolFailure {
     AuthorizationRevoked, RunInvalidated, GenerationMoved, BudgetExceeded,
-    RecoveryRequired, RecoverableIO, StorageFull,
+    UsageUnknown, RecoveryRequired, RecoverableIO, StorageFull,
 }
 
 internal class RecordToolException(val code: RecordToolFailure, message: String) :

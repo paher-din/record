@@ -45,7 +45,6 @@ import java.time.ZoneId
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -359,24 +358,23 @@ internal class RecordToolsHostTest {
     }
 
     @Test
-    fun guardedSseAndLinesRevalidateAtCollection() = runBlocking {
+    fun guardedStreamingPathsAreRejectedBeforeAnyTransport() = runBlocking {
         val harness = ToolHarness()
-        harness.security.valid = false
         val delegate = GuardFailingHttpClient()
         val guard = GuardedHttpClient(delegate, harness.context)
         val sse = runCatching {
             guard.sse<String, String, Any>(
                 "chat", "{}", String::class, { true }, { it }, { null }, emptyMap(), emptyMap(),
-            ).toList()
+            )
         }.exceptionOrNull()
-        assertTrue("expected a hard SSE failure, got $sse", sse is RecordToolException)
-        assertEquals(RecordToolFailure.AuthorizationRevoked, (sse as RecordToolException).code)
+        assertTrue("expected an explicit streaming rejection, got $sse", sse is RecordToolException)
+        assertEquals(RecordToolFailure.RecoveryRequired, (sse as RecordToolException).code)
 
         val lines = runCatching {
-            guard.lines("chat", "{}", String::class, emptyMap(), emptyMap()).toList()
+            guard.lines("chat", "{}", String::class, emptyMap(), emptyMap())
         }.exceptionOrNull()
-        assertTrue("expected a hard lines failure, got $lines", lines is RecordToolException)
-        assertEquals(RecordToolFailure.AuthorizationRevoked, (lines as RecordToolException).code)
+        assertTrue("expected an explicit lines rejection, got $lines", lines is RecordToolException)
+        assertEquals(RecordToolFailure.RecoveryRequired, (lines as RecordToolException).code)
     }
 
     @Test

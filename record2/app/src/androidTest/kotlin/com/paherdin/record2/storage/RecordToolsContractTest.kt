@@ -3,6 +3,8 @@ package com.paherdin.record2.storage
 import androidx.test.platform.app.InstrumentationRegistry
 import com.paherdin.record2.ai.runs.AgentRunCoordinator
 import com.paherdin.record2.ai.runs.AgentRunDefaults
+import com.paherdin.record2.ai.runs.AgentRunError
+import com.paherdin.record2.ai.runs.AgentRunException
 import com.paherdin.record2.ai.security.AiMode
 import com.paherdin.record2.ai.security.KeystoreCredentialVault
 import com.paherdin.record2.ai.security.RecordProviderReceivers
@@ -39,6 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -410,6 +413,36 @@ internal class RecordToolsContractTest {
         assertTrue("the LLM client must release its HTTP resources", http.closed)
     }
 
+    @Test fun unmeasurableUsageFailsAsUsageUnknownInsteadOfCompleting() = runBlocking {
+        val variants = listOf(
+            "missing" to d1TextChatWithoutUsage("没有usage的最终回复"),
+            "malformed" to d1TextChatWithUsageValues(
+                "畸形usage", JsonPrimitive("ten"), JsonPrimitive(5),
+            ),
+            "negative" to d1TextChatWithUsageValues(
+                "负数usage", JsonPrimitive(-1), JsonPrimitive(5),
+            ),
+            "overflow" to d1TextChatWithUsageValues(
+                "溢出usage", JsonPrimitive(Long.MAX_VALUE), JsonPrimitive(1),
+            ),
+        )
+        variants.forEach { (label, reply) ->
+            val http = ScriptedDeviceHttp { _, _ -> reply }
+            val session = history.createSession("d1-usage-unknown-$label")
+            val failure = runCatching { coordinator(http).run(session.id, "只回复OK") }
+            val error = failure.exceptionOrNull()
+            assertTrue("$label: expected UsageUnknown, got $error", error is AgentRunException)
+            assertEquals("$label", AgentRunError.UsageUnknown, (error as AgentRunException).code)
+            assertEquals("$label", "FAILED" to "PROVIDER_FAILURE", runStateFor(session.id))
+            assertEquals("$label", 1, http.requests.size)
+            assertTrue(
+                "$label",
+                history.sessionMessages(session.id).none { it.role == SessionRole.ASSISTANT },
+            )
+            assertEquals("$label", 0, activeRunSlots())
+        }
+    }
+
     @Test fun detailLinkedRecordsAreStructuredJson() = runBlocking {
         val seed = seedRealRecords()
         val context = directToolContext()
@@ -594,6 +627,13 @@ internal class RecordToolsContractTest {
         cursor.getString(0)
     }
 
+    private fun runStateFor(sessionId: String): Pair<String, Any?> = database.query(
+        "SELECT state, safeErrorCode FROM agent_run WHERE sessionId = ?", arrayOf(sessionId),
+    ).use { cursor ->
+        check(cursor.moveToFirst()) { "no run for $sessionId" }
+        cursor.getString(0) to (if (cursor.isNull(1)) null else cursor.getString(1))
+    }
+
     private fun toolResultText(requestBody: String): String {
         val messages = Json.parseToJsonElement(requestBody).jsonObject["messages"]!!.jsonArray
         val toolMessage = messages.last { it.jsonObject["role"]!!.jsonPrimitive.content == "tool" }.jsonObject
@@ -629,11 +669,17 @@ private fun d1ChatMessage(
     }
 }
 
+private fun d1DefaultUsage(promptTokens: Int = 10, completionTokens: Int = 5): JsonObject =
+    buildJsonObject {
+        put("prompt_tokens", promptTokens)
+        put("completion_tokens", completionTokens)
+        put("total_tokens", promptTokens + completionTokens)
+    }
+
 private fun d1Completion(
     message: JsonObject,
     finishReason: String,
-    promptTokens: Int = 10,
-    completionTokens: Int = 5,
+    usage: JsonObject? = d1DefaultUsage(),
 ): String = buildJsonObject {
     put("id", "d1-device-fixture")
     put("object", "chat.completion")
@@ -645,17 +691,31 @@ private fun d1Completion(
         put("message", message)
         put("finish_reason", finishReason)
     })))
-    put("usage", buildJsonObject {
-        put("prompt_tokens", promptTokens)
-        put("completion_tokens", completionTokens)
-        put("total_tokens", promptTokens + completionTokens)
-    })
+    usage?.let { put("usage", it) }
 }.toString()
 
 internal fun d1TextChat(text: String): String = d1Completion(d1ChatMessage(text = text), "stop")
 
 internal fun d1TextChatWithUsage(text: String, promptTokens: Int, completionTokens: Int): String =
-    d1Completion(d1ChatMessage(text = text), "stop", promptTokens, completionTokens)
+    d1Completion(
+        d1ChatMessage(text = text), "stop",
+        d1DefaultUsage(promptTokens, completionTokens),
+    )
+
+internal fun d1TextChatWithoutUsage(text: String): String =
+    d1Completion(d1ChatMessage(text = text), "stop", null)
+
+internal fun d1TextChatWithUsageValues(
+    text: String,
+    promptTokens: JsonElement,
+    completionTokens: JsonElement,
+): String = d1Completion(
+    d1ChatMessage(text = text), "stop",
+    buildJsonObject {
+        put("prompt_tokens", promptTokens)
+        put("completion_tokens", completionTokens)
+    },
+)
 
 internal fun d1ToolChat(name: String, arguments: String): String =
     d1Completion(d1ChatMessage(toolCall = name to arguments), "tool_calls")

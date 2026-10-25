@@ -3,7 +3,6 @@ package com.paherdin.record2.ai.tools
 import ai.koog.http.client.KoogHttpClient
 import com.paherdin.record2.sessions.RunState
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.onStart
 import kotlin.reflect.KClass
 
 /**
@@ -16,7 +15,8 @@ import kotlin.reflect.KClass
  *
  * The persisted-state read is what catches a run cancelled/deleted by E2 even when the E0
  * authorization epoch did not change. Usage is charged after each successful response, so the
- * cumulative token/cost guard cannot be bypassed by a final answer.
+ * cumulative token/cost guard cannot be bypassed by a final answer. D1 is non-streaming; the
+ * sse()/lines() entries are rejected rather than leaving an unmetered budget bypass for F2.
  */
 internal class GuardedHttpClient(
     private val delegate: KoogHttpClient,
@@ -60,23 +60,24 @@ internal class GuardedHttpClient(
         return response
     }
 
-    // sse()/lines() are not suspend in KoogHttpClient; run the complete guard at collection time,
-    // before the upstream flow is collected. This removes the authorization/run/time bypass even
-    // though D1's normal chat path uses post().
+    // D1's normal chat path is non-streaming. A streaming path would bypass the usage ledger, so
+    // reject it explicitly instead of letting a later caller spend an unmetered budget.
     override fun <T : Any, R : Any, O : Any> sse(
         path: String, requestBody: T, requestBodyType: KClass<T>, dataFilter: (String?) -> Boolean,
         decodeStreamingResponse: (String) -> R, processStreamingChunk: (R) -> O?,
         parameters: Map<String, String>, headers: Map<String, String>,
-    ): Flow<O> = delegate.sse(
-        path, requestBody, requestBodyType, dataFilter,
-        decodeStreamingResponse, processStreamingChunk, parameters, headers,
-    ).onStart { check() }
+    ): Flow<O> = throw RecordToolException(
+        RecordToolFailure.RecoveryRequired,
+        "streaming is not enabled for D1 budgeted runs; usage metering is required first",
+    )
 
     override fun <T : Any> lines(
         path: String, requestBody: T, requestBodyType: KClass<T>,
         parameters: Map<String, String>, headers: Map<String, String>,
-    ): Flow<String> = delegate.lines(path, requestBody, requestBodyType, parameters, headers)
-        .onStart { check() }
+    ): Flow<String> = throw RecordToolException(
+        RecordToolFailure.RecoveryRequired,
+        "streaming is not enabled for D1 budgeted runs; usage metering is required first",
+    )
 
     override fun close() = delegate.close()
 }

@@ -5,13 +5,20 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
+internal sealed interface RunUsageVerdict {
+    data object Within : RunUsageVerdict
+    data class Exceeded(val reason: String) : RunUsageVerdict
+    data class Unknown(val reason: String) : RunUsageVerdict
+}
+
 /**
  * Per-run provider usage ledger. The guarded HTTP client charges every successful LLM response
  * here; the coordinator refuses a final answer once the cumulative token or cost upper bound is
  * crossed. Bounds are D0 §24.5 test-derived guards, not frozen product billing defaults.
  *
- * A response without a usage block is counted as unmetered rather than silently treated as zero;
- * the D0 protocol evidence records that state. DeepSeek's normal responses carry usage.
+ * A response whose usage is missing, partial, malformed, negative or overflowing is UNKNOWN, not
+ * zero. The run is terminated rather than marked completed with an unverifiable budget; the
+ * persisted safe code is PROVIDER_FAILURE because no dedicated usage code exists.
  */
 internal class RunUsageLedger(
     private val maxTokens: Long = RecordToolBudget.TOKENS_PER_RUN,
@@ -32,41 +39,87 @@ internal class RunUsageLedger(
         private set
     var exceededReason: String? = null
         private set
+    var unknownReason: String? = null
+        private set
 
-    /** Returns a hard-budget reason when this response crossed a limit, otherwise null. */
-    fun record(requestBody: String, responseBody: String): String? {
+    fun record(requestBody: String, responseBody: String): RunUsageVerdict {
+        unknownReason?.let { return RunUsageVerdict.Unknown(it) }
         val usage = usageOf(responseBody)
-        if (usage == null) {
-            unmeteredResponses += 1
-            return null
+        if (usage is ParsedUsage.Invalid) {
+            return unknown(usage.reason)
         }
+        val valid = usage as ParsedUsage.Valid
         val model = modelOf(requestBody)
-        val input = usage.first
-        val output = usage.second
-        inputTokens += input
-        outputTokens += output
+        val newInput = addTokens(inputTokens, valid.input)
+            ?: return unknown("input token count overflow")
+        val newOutput = addTokens(outputTokens, valid.output)
+            ?: return unknown("output token count overflow")
+        val total = addTokens(newInput, newOutput)
+            ?: return unknown("total token count overflow")
         val isPro = model.contains("pro", ignoreCase = true)
         val inputRate = if (isPro) proInputRate else flashInputRate
         val outputRate = if (isPro) proOutputRate else flashOutputRate
-        estimatedCostUsd += (input * inputRate + output * outputRate) / 1_000_000.0
+        val deltaCost = (valid.input * inputRate + valid.output * outputRate) / 1_000_000.0
+        val newCost = estimatedCostUsd + deltaCost
+        if (!newCost.isFinite()) return unknown("cost accumulation overflow")
+        inputTokens = newInput
+        outputTokens = newOutput
+        estimatedCostUsd = newCost
         val cap = if (isPro) proUsdCap else flashUsdCap
-        val total = inputTokens + outputTokens
         val reason = when {
             total > maxTokens -> "run token budget exceeded: $total > $maxTokens"
-            estimatedCostUsd > cap -> "run cost budget exceeded: $estimatedCostUsd > $cap"
+            newCost > cap -> "run cost budget exceeded: $newCost > $cap"
             else -> null
         }
-        if (reason != null) exceededReason = reason
-        return reason
+        return if (reason == null) {
+            RunUsageVerdict.Within
+        } else {
+            exceededReason = reason
+            RunUsageVerdict.Exceeded(reason)
+        }
     }
 
-    private fun usageOf(responseBody: String): Pair<Long, Long>? = runCatching {
-        val usage = Json.parseToJsonElement(responseBody).jsonObject["usage"]?.jsonObject
-            ?: return@runCatching null
-        val input = usage["prompt_tokens"]?.jsonPrimitive?.longOrNull ?: 0L
-        val output = usage["completion_tokens"]?.jsonPrimitive?.longOrNull ?: 0L
-        input to output
-    }.getOrNull()
+    private fun unknown(reason: String): RunUsageVerdict {
+        unmeteredResponses += 1
+        if (unknownReason == null) unknownReason = reason
+        return RunUsageVerdict.Unknown(reason)
+    }
+
+    private fun addTokens(left: Long, right: Long): Long? = try {
+        Math.addExact(left, right)
+    } catch (_: ArithmeticException) {
+        null
+    }
+
+    private sealed interface ParsedUsage {
+        data class Valid(val input: Long, val output: Long) : ParsedUsage
+        data class Invalid(val reason: String) : ParsedUsage
+    }
+
+    private fun usageOf(responseBody: String): ParsedUsage {
+        val usage = try {
+            Json.parseToJsonElement(responseBody).jsonObject["usage"]?.jsonObject
+                ?: return ParsedUsage.Invalid("usage block missing")
+        } catch (error: IllegalArgumentException) {
+            return ParsedUsage.Invalid("response usage is not valid JSON")
+        }
+        val input = tokenField(usage, "prompt_tokens")
+            ?: return ParsedUsage.Invalid("prompt_tokens missing or invalid")
+        val output = tokenField(usage, "completion_tokens")
+            ?: return ParsedUsage.Invalid("completion_tokens missing or invalid")
+        if (input < 0 || output < 0) return ParsedUsage.Invalid("usage token count is negative")
+        return ParsedUsage.Valid(input, output)
+    }
+
+    private fun tokenField(usage: kotlinx.serialization.json.JsonObject, name: String): Long? {
+        val element = usage[name] ?: return null
+        val value = try {
+            element.jsonPrimitive.longOrNull
+        } catch (error: IllegalArgumentException) {
+            null
+        } ?: return null
+        return value
+    }
 
     private fun modelOf(requestBody: String): String = runCatching {
         Json.parseToJsonElement(requestBody).jsonObject["model"]?.jsonPrimitive?.content
