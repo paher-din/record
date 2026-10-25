@@ -71,6 +71,7 @@ class SessionRunRealContractTest {
                 security = fixture.security,
                 history = fixture.history,
                 processOwnerId = fixture.owner,
+                clock = sessionClock,
             )
             val first = coord.run(session.id, "请记住编号 $code。只回复OK。")
             assertTrue("first reply was blank", first.answer.isNotBlank())
@@ -103,6 +104,7 @@ class SessionRunRealContractTest {
                 security = fixture.security,
                 history = fixture.history,
                 processOwnerId = "${fixture.owner}-verify",
+                clock = sessionClock,
             )
             val third = coord.run(sessionId, "我之前让你记住的编号是什么？只回复编号本身。")
             val messages = fixture.history.sessionMessages(sessionId)

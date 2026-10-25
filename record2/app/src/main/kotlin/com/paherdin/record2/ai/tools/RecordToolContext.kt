@@ -46,8 +46,10 @@ internal class RecordToolContext(
     val permit: AiSendPermit,
     val start: RunStartReceipt,
     clock: Clock,
+    wallClockMillis: Long = RecordToolBudget.WALL_MS_PER_RUN,
 ) {
-    val ledger = ToolBudgetLedger(clock, start.startedAt + RecordToolBudget.WALL_MS_PER_RUN)
+    val ledger = ToolBudgetLedger(clock, start.startedAt + wallClockMillis)
+    val usage = RunUsageLedger()
     private val transactionReferences = LinkedHashSet<String>()
     private val noteReferences = LinkedHashSet<String>()
 
@@ -96,6 +98,24 @@ internal class RecordToolContext(
         ledger.chargeResult(result)
     } catch (error: RecordToolException) {
         poison(error.code, error.message ?: "budget exceeded")
+    }
+
+    /**
+     * Charges one successful provider response. Crossing the token/cost upper bound poisons the
+     * run so the response is never accepted as a completed answer; the coordinator maps it to
+     * BUDGET_EXCEEDED and persists a terminal failure.
+     */
+    fun recordUsage(requestBody: String, responseBody: String) {
+        usage.record(requestBody, responseBody)?.let { reason ->
+            poison(RecordToolFailure.BudgetExceeded, reason)
+        }
+    }
+
+    /** Safety net for a ledger that was crossed without a request-boundary throw. */
+    fun ensureUsageWithinBudget() {
+        usage.exceededReason?.let { reason ->
+            poison(RecordToolFailure.BudgetExceeded, reason)
+        }
     }
 
     fun recordReference(kind: String, id: String) {

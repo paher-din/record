@@ -2,6 +2,7 @@ package com.paherdin.record2.storage
 
 import androidx.test.platform.app.InstrumentationRegistry
 import com.paherdin.record2.ai.runs.AgentRunCoordinator
+import com.paherdin.record2.ai.runs.AgentRunDefaults
 import com.paherdin.record2.ai.security.AiMode
 import com.paherdin.record2.ai.security.KeystoreCredentialVault
 import com.paherdin.record2.ai.security.RecordProviderReceivers
@@ -11,6 +12,7 @@ import com.paherdin.record2.ai.tools.GetRecordDetailTool
 import com.paherdin.record2.ai.tools.LinkPairArgs
 import com.paherdin.record2.ai.tools.PrepareChangesArgs
 import com.paherdin.record2.ai.tools.PrepareOpArgs
+import com.paherdin.record2.ai.tools.RecordToolBudget
 import com.paherdin.record2.ai.tools.RecordToolContext
 import com.paherdin.record2.ai.tools.RecordToolDeps
 import com.paherdin.record2.ai.tools.RecordToolException
@@ -23,6 +25,8 @@ import com.paherdin.record2.records.FinanceInput
 import com.paherdin.record2.records.LinkNoteRef
 import com.paherdin.record2.sessions.MessageResultKind
 import com.paherdin.record2.sessions.RunState
+import com.paherdin.record2.sessions.RunTerminal
+import com.paherdin.record2.sessions.SafeRunErrorCode
 import com.paherdin.record2.sessions.SessionRole
 import java.io.File
 import java.time.Clock
@@ -31,6 +35,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -93,12 +98,18 @@ internal class RecordToolsContractTest {
         out
     }
 
-    private fun coordinator(http: ScriptedDeviceHttp): AgentRunCoordinator = AgentRunCoordinator(
+    private fun coordinator(
+        http: ScriptedDeviceHttp,
+        maxIterations: Int = AgentRunDefaults.MAX_AGENT_ITERATIONS,
+        runWallClockMillis: Long = RecordToolBudget.WALL_MS_PER_RUN,
+    ): AgentRunCoordinator = AgentRunCoordinator(
         security = security,
         history = history,
         processOwnerId = owner,
         recordTools = RecordToolDeps(security, history, timeline, proposals, finance),
         httpClientFactory = deviceScriptFactory(http),
+        maxAgentIterations = maxIterations,
+        runWallClockMillis = runWallClockMillis,
         clock = fixture.clock,
     )
 
@@ -330,6 +341,90 @@ internal class RecordToolsContractTest {
         assertTrue(rows("change_proposal").isEmpty())
     }
 
+    @Test fun runWallClockStopsTheAgentAsBudgetExceeded() = runBlocking {
+        val http = ScriptedDeviceHttp { _, _ ->
+            delay(500)
+            d1TextChat("这条迟到的回复不能完成 Run")
+        }
+        val session = history.createSession("d1-timeout")
+        val failure = runCatching {
+            coordinator(http, runWallClockMillis = 100L).run(session.id, "只回复OK")
+        }
+        assertTrue("expected a budget failure, got ${failure.exceptionOrNull()}", failure.isFailure)
+        assertEquals(listOf("FAILED" to "BUDGET_EXCEEDED"), runStates())
+        assertEquals(1, http.requests.size)
+        assertTrue(history.sessionMessages(session.id).none { it.role == SessionRole.ASSISTANT })
+        assertEquals(0, activeRunSlots())
+    }
+
+    @Test fun maxAgentIterationsExhaustionIsBudgetNotProviderFailure() = runBlocking {
+        seedRealRecords()
+        val http = ScriptedDeviceHttp { _, _ -> d1ToolChat("search_records", "{}") }
+        val session = history.createSession("d1-max-iterations")
+        val failure = runCatching {
+            coordinator(http, maxIterations = 2).run(session.id, "反复检索")
+        }
+        assertTrue("expected an iteration/budget failure, got ${failure.exceptionOrNull()}", failure.isFailure)
+        assertEquals(listOf("FAILED" to "BUDGET_EXCEEDED"), runStates())
+        assertTrue("max iterations must stop before the no-progress budget: ${http.requests.size}", http.requests.size <= 2)
+        assertTrue(rows("change_proposal").isEmpty())
+    }
+
+    @Test fun persistedRunInvalidationBlocksTheNextRequest() = runBlocking {
+        seedRealRecords()
+        val http = ScriptedDeviceHttp { callIndex, _ ->
+            if (callIndex == 1) {
+                // E2-style invalidation without an authorization epoch change: the next request
+                // must observe the persisted terminal run and never reach the transport.
+                history.failRun(activeRunId(), RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+                d1ToolChat("search_records", "{}")
+            } else {
+                d1TextChat("这条回复不应被请求")
+            }
+        }
+        val session = history.createSession("d1-invalidated")
+        val failure = runCatching { coordinator(http).run(session.id, "查一下最近的记录") }
+        assertTrue("expected an invalidation failure, got ${failure.exceptionOrNull()}", failure.isFailure)
+        assertEquals(1, http.requests.size)
+        assertEquals(listOf("CANCELLED" to "CANCELLED"), runStates())
+        assertTrue(rows("change_proposal").isEmpty())
+    }
+
+    @Test fun usageBudgetExceededEndsTheRunWithoutAFinalReply() = runBlocking {
+        val http = ScriptedDeviceHttp { _, _ ->
+            d1TextChatWithUsage("超大用量响应", promptTokens = 70_000, completionTokens = 1)
+        }
+        val session = history.createSession("d1-usage-budget")
+        val failure = runCatching { coordinator(http).run(session.id, "随便聊聊") }
+        assertTrue("expected a usage-budget failure, got ${failure.exceptionOrNull()}", failure.isFailure)
+        assertEquals(listOf("FAILED" to "BUDGET_EXCEEDED"), runStates())
+        assertEquals(1, http.requests.size)
+        assertTrue(history.sessionMessages(session.id).none { it.role == SessionRole.ASSISTANT })
+        assertEquals(0, activeRunSlots())
+    }
+
+    @Test fun llmClientIsClosedAfterTheRun() = runBlocking {
+        val http = ScriptedDeviceHttp { _, _ -> d1TextChat("完成") }
+        val session = history.createSession("d1-close")
+        coordinator(http).run(session.id, "只回复完成")
+        assertTrue("the LLM client must release its HTTP resources", http.closed)
+    }
+
+    @Test fun detailLinkedRecordsAreStructuredJson() = runBlocking {
+        val seed = seedRealRecords()
+        val context = directToolContext()
+        val result = Json.parseToJsonElement(
+            GetRecordDetailTool(context).execute(
+                GetRecordDetailArgs(kind = "TRANSACTION", id = seed.transactionId),
+            ),
+        ).jsonObject
+        val links = result["linkedRecords"]!!.jsonArray
+        assertEquals(1, links.size)
+        assertEquals("NOTE", links[0].jsonObject["kind"]!!.jsonPrimitive.content)
+        assertEquals(seed.noteId, links[0].jsonObject["id"]!!.jsonPrimitive.content)
+        assertEquals(seed.noteVersion, links[0].jsonObject["version"]!!.jsonPrimitive.long)
+    }
+
     @Test fun allSixOperationTypesRoundTripThroughTheRealProposalService() = runBlocking {
         val seed = seedRealRecords()
         val context = directToolContext()
@@ -485,6 +580,20 @@ internal class RecordToolsContractTest {
         out
     }
 
+    private fun activeRunSlots(): Int = database.query(
+        "SELECT COUNT(*) FROM agent_run WHERE activeSlot = 1", null,
+    ).use { cursor ->
+        cursor.moveToFirst()
+        cursor.getInt(0)
+    }
+
+    private fun activeRunId(): String = database.query(
+        "SELECT id FROM agent_run WHERE activeSlot = 1", null,
+    ).use { cursor ->
+        check(cursor.moveToFirst()) { "no active run" }
+        cursor.getString(0)
+    }
+
     private fun toolResultText(requestBody: String): String {
         val messages = Json.parseToJsonElement(requestBody).jsonObject["messages"]!!.jsonArray
         val toolMessage = messages.last { it.jsonObject["role"]!!.jsonPrimitive.content == "tool" }.jsonObject
@@ -520,7 +629,12 @@ private fun d1ChatMessage(
     }
 }
 
-private fun d1Completion(message: JsonObject, finishReason: String): String = buildJsonObject {
+private fun d1Completion(
+    message: JsonObject,
+    finishReason: String,
+    promptTokens: Int = 10,
+    completionTokens: Int = 5,
+): String = buildJsonObject {
     put("id", "d1-device-fixture")
     put("object", "chat.completion")
     put("created", 0)
@@ -532,13 +646,16 @@ private fun d1Completion(message: JsonObject, finishReason: String): String = bu
         put("finish_reason", finishReason)
     })))
     put("usage", buildJsonObject {
-        put("prompt_tokens", 10)
-        put("completion_tokens", 5)
-        put("total_tokens", 15)
+        put("prompt_tokens", promptTokens)
+        put("completion_tokens", completionTokens)
+        put("total_tokens", promptTokens + completionTokens)
     })
 }.toString()
 
 internal fun d1TextChat(text: String): String = d1Completion(d1ChatMessage(text = text), "stop")
+
+internal fun d1TextChatWithUsage(text: String, promptTokens: Int, completionTokens: Int): String =
+    d1Completion(d1ChatMessage(text = text), "stop", promptTokens, completionTokens)
 
 internal fun d1ToolChat(name: String, arguments: String): String =
     d1Completion(d1ChatMessage(toolCall = name to arguments), "tool_calls")

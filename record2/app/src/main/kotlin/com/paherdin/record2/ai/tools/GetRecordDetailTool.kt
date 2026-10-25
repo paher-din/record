@@ -14,6 +14,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -153,7 +154,7 @@ internal class GetRecordDetailTool(private val context: RecordToolContext) :
         is NoteDetail -> detail.visibleLinkCount
     }
 
-    private fun linkedRecords(detail: com.paherdin.record2.records.RecordDetail): String =
+    private fun linkedRecords(detail: com.paherdin.record2.records.RecordDetail): JsonArray =
         buildJsonArray {
             when (detail) {
                 is TransactionDetail -> detail.notes.take(RecordToolBudget.LINKS_PER_DETAIL).forEach { note ->
@@ -173,7 +174,7 @@ internal class GetRecordDetailTool(private val context: RecordToolContext) :
                     })
                 }
             }
-        }.toString()
+        }
 
     private fun localTime(occurredAt: Long): String =
         localFormat.format(Instant.ofEpochMilli(occurredAt).atZone(ZoneId.systemDefault()))

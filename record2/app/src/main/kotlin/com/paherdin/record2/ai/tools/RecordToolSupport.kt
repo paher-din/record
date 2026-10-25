@@ -17,6 +17,15 @@ internal object RecordToolBudget {
     const val IDENTICAL_CALL_LIMIT = 3
     const val RESULT_CHARS_PER_RUN = 120_000
     const val WALL_MS_PER_RUN = 900_000L
+    // D0 §24.5 test upper bounds, used as provisional per-run production guards until the
+    // product defaults are frozen from D1/E2 evidence. They are not a billing quote.
+    const val TOKENS_PER_RUN = 64_000L
+    const val FLASH_USD_PER_RUN = 0.10
+    const val PRO_USD_PER_RUN = 0.25
+    const val FLASH_INPUT_USD_PER_MILLION = 0.30
+    const val FLASH_OUTPUT_USD_PER_MILLION = 1.20
+    const val PRO_INPUT_USD_PER_MILLION = 1.32
+    const val PRO_OUTPUT_USD_PER_MILLION = 3.96
     const val SEARCH_CALLS_PER_RUN = 30
     const val DETAIL_CALLS_PER_RUN = 30
     const val PREPARE_CALLS_PER_RUN = 20

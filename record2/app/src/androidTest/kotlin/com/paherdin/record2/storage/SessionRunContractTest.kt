@@ -81,6 +81,9 @@ class SessionRunContractTest {
         processOwnerId = owner,
         historyWindow = window,
         toolRegistry = tools,
+        // SessionContractFixture stamps runs with sessionClock; use the same domain for the
+        // run wall-clock deadline.
+        clock = sessionClock,
         httpClientFactory = deviceScriptFactory(http),
     )
 

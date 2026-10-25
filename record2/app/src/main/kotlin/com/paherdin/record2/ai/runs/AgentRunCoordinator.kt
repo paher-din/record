@@ -2,6 +2,7 @@ package com.paherdin.record2.ai.runs
 
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
+import ai.koog.agents.core.agent.exception.AIAgentMaxNumberOfIterationsReachedException
 import ai.koog.agents.chatMemory.feature.ChatMemory
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.http.client.KoogHttpClient
@@ -19,6 +20,7 @@ import com.paherdin.record2.ai.security.AiSendPermit
 import com.paherdin.record2.ai.security.ProviderReceiver
 import com.paherdin.record2.ai.security.RecordProviderReceivers
 import com.paherdin.record2.ai.tools.GuardedHttpClientFactory
+import com.paherdin.record2.ai.tools.RecordToolBudget
 import com.paherdin.record2.ai.tools.RecordToolContext
 import com.paherdin.record2.ai.tools.RecordToolDeps
 import com.paherdin.record2.ai.tools.RecordToolException
@@ -45,7 +47,9 @@ import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 internal enum class AgentRunError {
     Validation,
@@ -97,6 +101,8 @@ internal class AgentRunCoordinator(
     private val processOwnerId: String,
     private val historyWindow: Int = AgentRunDefaults.HISTORY_WINDOW,
     private val maxAgentIterations: Int = AgentRunDefaults.MAX_AGENT_ITERATIONS,
+    /** Hard wall clock for the agent execution; D0 §24.5 provisional upper bound. */
+    private val runWallClockMillis: Long = RecordToolBudget.WALL_MS_PER_RUN,
     private val systemPrompt: String = DeepSeekProtocol.DEFAULT_SYSTEM_PROMPT,
     private val toolRegistry: ToolRegistry = ToolRegistry.EMPTY,
     /** D1 record tools; when present the per-run registry and the real D1 system prompt take over. */
@@ -150,7 +156,9 @@ internal class AgentRunCoordinator(
             // D1: one tool context per run — entry guards, hard budgets and native handoff
             // evidence. Construction stays inside the terminal-catching scope: a catalog or
             // proposal-focus read failure must fail this run instead of stranding its slot.
-            val toolContext = recordTools?.let { RecordToolContext(it, permit, start, clock) }
+            val toolContext = recordTools?.let {
+                RecordToolContext(it, permit, start, clock, runWallClockMillis)
+            }
             val activeProposal = recordTools?.proposals
                 ?.activeProposal(start.dataGeneration, start.sessionId)
             // The system prompt is rebuilt per run so the model sees the current local time, the
@@ -183,23 +191,43 @@ internal class AgentRunCoordinator(
                     },
                 )
             }
-            val executor = MultiLLMPromptExecutor(LLMProvider.DeepSeek to client)
-            reply = agent(start, executor, runSystemPrompt, runToolRegistry).run(userText)
-            if (reply.isBlank()) fail(AgentRunError.ProviderFailure)
-            // Classification is deterministic from tool state, never from the model's own claim:
-            // a proposal this run wrote and that is still editable is ProposalReady; unresolved
-            // prepare issues are ClarificationNeeded; tools themselves never commit anything.
-            val completedOutcome = toolContext?.classifyOutcome(reply)
-                ?: RunOutcome(resultKind = MessageResultKind.Answer, body = reply)
-            outcome = completedOutcome
-            val completion = history.completeRun(
-                runId = start.runId,
-                receiverIdentity = receiver.identity,
-                authEpoch = permit.authEpoch,
-                processOwnerId = processOwnerId,
-                outcome = completedOutcome,
-            )
-            RunResult(start.runId, sessionId, reply, completion)
+            try {
+                val executor = MultiLLMPromptExecutor(LLMProvider.DeepSeek to client)
+                val remaining = (runWallClockMillis - (clock.millis() - start.startedAt))
+                    .coerceAtLeast(0L)
+                if (remaining <= 0L) fail(AgentRunError.BudgetExceeded)
+                reply = try {
+                    // A request may start close to the deadline and run for minutes; only a
+                    // deadline on the whole agent execution stops it before completion.
+                    withTimeout(remaining) {
+                        agent(start, executor, runSystemPrompt, runToolRegistry).run(userText)
+                    }
+                } catch (error: TimeoutCancellationException) {
+                    // The run wall clock is a budget stop, not a user cancellation.
+                    throw AgentRunException(AgentRunError.BudgetExceeded, error)
+                }
+                if (reply.isBlank()) fail(AgentRunError.ProviderFailure)
+                // Cumulative provider usage is charged after every response by the guarded
+                // client; never accept a final answer that already crossed the bound.
+                toolContext?.ensureUsageWithinBudget()
+                // Classification is deterministic from tool state, never from the model's own
+                // claim: a proposal this run wrote and that is still editable is ProposalReady;
+                // unresolved prepare issues are ClarificationNeeded; tools never commit.
+                val completedOutcome = toolContext?.classifyOutcome(reply)
+                    ?: RunOutcome(resultKind = MessageResultKind.Answer, body = reply)
+                outcome = completedOutcome
+                val completion = history.completeRun(
+                    runId = start.runId,
+                    receiverIdentity = receiver.identity,
+                    authEpoch = permit.authEpoch,
+                    processOwnerId = processOwnerId,
+                    outcome = completedOutcome,
+                )
+                RunResult(start.runId, sessionId, reply, completion)
+            } finally {
+                // The client owns its HTTP resources; release them on success and every failure.
+                runCatching { client.close() }
+            }
         } catch (error: CancellationException) {
             // The coroutine is already cancelled: a plain suspend call could be skipped
             // entirely, stranding the run as RUNNING with its slot held. Run the terminal
@@ -314,8 +342,11 @@ internal class AgentRunCoordinator(
     private fun safeRunError(error: Exception): AgentRunError {
         // The guarded HTTP client throws inside the LLM client, which may wrap the cause; the tool
         // failure must survive the wrapping so the run fails with its real code.
-        val toolError = generateSequence<Throwable>(error) { it.cause }.filterIsInstance<RecordToolException>().firstOrNull()
-        if (toolError != null) return toolRunError(toolError)
+        val causes = generateSequence<Throwable>(error) { it.cause }.toList()
+        causes.filterIsInstance<RecordToolException>().firstOrNull()?.let { return toolRunError(it) }
+        if (causes.any { it is AIAgentMaxNumberOfIterationsReachedException }) {
+            return AgentRunError.BudgetExceeded
+        }
         return when (error) {
         is FinanceException -> when (error.code) {
             FinanceError.GenerationMismatch -> AgentRunError.RunInvalidated
@@ -362,8 +393,8 @@ internal class AgentRunCoordinator(
     private fun safeErrorCode(error: Exception): SafeRunErrorCode = when (safeRunError(error)) {
         AgentRunError.BudgetExceeded -> SafeRunErrorCode.BUDGET_EXCEEDED
         AgentRunError.AuthorizationRequired, AgentRunError.CredentialUnavailable -> SafeRunErrorCode.AUTHORIZATION
-        AgentRunError.Internal, AgentRunError.RecoverableIO, AgentRunError.StorageFull ->
-            SafeRunErrorCode.INTERNAL
+        AgentRunError.RunInvalidated, AgentRunError.Internal, AgentRunError.RecoverableIO,
+        AgentRunError.StorageFull -> SafeRunErrorCode.INTERNAL
         else -> SafeRunErrorCode.PROVIDER_FAILURE
     }
 

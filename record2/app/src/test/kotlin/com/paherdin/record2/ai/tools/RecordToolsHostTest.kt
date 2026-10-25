@@ -1,5 +1,6 @@
 package com.paherdin.record2.ai.tools
 
+import ai.koog.http.client.KoogHttpClient
 import com.paherdin.record2.ai.security.AiMode
 import com.paherdin.record2.ai.security.AiSecurityService
 import com.paherdin.record2.ai.security.AiSecurityState
@@ -42,6 +43,9 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -54,6 +58,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import kotlin.reflect.KClass
 
 // Host-side D1 tool contract tests: the four tools over in-memory fakes. Real Room behavior,
 // real authorization state and the real DeepSeek loop are covered by instrumentation tests.
@@ -226,6 +231,36 @@ private fun noteEntry(id: String, body: String = "笔记正文"): NoteTimelineEn
     NoteRecord(id = id, body = body, occurredAt = 1_700_000_000_000, version = 2, createdAt = 0, updatedAt = 0, deletedAt = null),
 )
 
+private class GuardFailingHttpClient : KoogHttpClient {
+    var posts = 0
+    override val clientName: String = "guard-failing"
+
+    override suspend fun <R : Any> get(
+        path: String, responseType: KClass<R>, parameters: Map<String, String>, headers: Map<String, String>,
+    ): R = error("delegate get must not be reached")
+
+    override suspend fun <T : Any, R : Any> post(
+        path: String, requestBody: T, requestBodyType: KClass<T>, responseType: KClass<R>,
+        parameters: Map<String, String>, headers: Map<String, String>,
+    ): R {
+        posts += 1
+        error("delegate post must not be reached")
+    }
+
+    override fun <T : Any, R : Any, O : Any> sse(
+        path: String, requestBody: T, requestBodyType: KClass<T>, dataFilter: (String?) -> Boolean,
+        decodeStreamingResponse: (String) -> R, processStreamingChunk: (R) -> O?,
+        parameters: Map<String, String>, headers: Map<String, String>,
+    ): Flow<O> = flow { error("delegate sse must not be reached") }
+
+    override fun <T : Any> lines(
+        path: String, requestBody: T, requestBodyType: KClass<T>,
+        parameters: Map<String, String>, headers: Map<String, String>,
+    ): Flow<String> = flow { error("delegate lines must not be reached") }
+
+    override fun close() = Unit
+}
+
 private class ToolHarness(startedAt: Long = 0L) {
     val clock = MutableClock(startedAt)
     val security = ToolFakeSecurity()
@@ -307,6 +342,73 @@ internal class RecordToolsHostTest {
             view(ProposalState.LOCKED),
         )
         assertFalse(locked.contains("当前会话有一个待确认提案"))
+    }
+
+    @Test
+    fun guardedPostChecksPersistedRunStateBeforeTheDelegate() = runBlocking {
+        val harness = ToolHarness()
+        harness.history.runState = RunState.CANCELLED
+        val delegate = GuardFailingHttpClient()
+        val guard = GuardedHttpClient(delegate, harness.context)
+        val error = runCatching {
+            guard.post("chat", "{}", String::class, String::class, emptyMap(), emptyMap())
+        }.exceptionOrNull()
+        assertTrue("expected a hard tool failure, got $error", error is RecordToolException)
+        assertEquals(RecordToolFailure.RunInvalidated, (error as RecordToolException).code)
+        assertEquals(0, delegate.posts)
+    }
+
+    @Test
+    fun guardedSseAndLinesRevalidateAtCollection() = runBlocking {
+        val harness = ToolHarness()
+        harness.security.valid = false
+        val delegate = GuardFailingHttpClient()
+        val guard = GuardedHttpClient(delegate, harness.context)
+        val sse = runCatching {
+            guard.sse<String, String, Any>(
+                "chat", "{}", String::class, { true }, { it }, { null }, emptyMap(), emptyMap(),
+            ).toList()
+        }.exceptionOrNull()
+        assertTrue("expected a hard SSE failure, got $sse", sse is RecordToolException)
+        assertEquals(RecordToolFailure.AuthorizationRevoked, (sse as RecordToolException).code)
+
+        val lines = runCatching {
+            guard.lines("chat", "{}", String::class, emptyMap(), emptyMap()).toList()
+        }.exceptionOrNull()
+        assertTrue("expected a hard lines failure, got $lines", lines is RecordToolException)
+        assertEquals(RecordToolFailure.AuthorizationRevoked, (lines as RecordToolException).code)
+    }
+
+    @Test
+    fun detailReturnsLinkedRecordsAsAStructuredArray() = runBlocking {
+        val harness = ToolHarness()
+        val transaction = FinanceRecord(
+            id = "00000000-0000-4000-8000-0000000000aa",
+            direction = FinanceDirection.EXPENSE,
+            amountMinor = 3650,
+            accountId = "00000000-0000-4000-8000-000000000001",
+            categoryId = null,
+            memo = "咖啡",
+            occurredAt = 0,
+            version = 3,
+            createdAt = 0,
+            updatedAt = 0,
+        )
+        harness.timeline.detailResult = NoteDetail(
+            NoteRecord("00000000-0000-4000-8000-0000000000bb", "笔记", 1, 5, 0, 0, null),
+            listOf(transaction),
+            1,
+        )
+        val result = jsonOf(
+            harness.detail.execute(
+                GetRecordDetailArgs("NOTE", "00000000-0000-4000-8000-0000000000bb"),
+            ),
+        )
+        val links = result["linkedRecords"]!!.jsonArray
+        assertEquals(1, links.size)
+        assertEquals("TRANSACTION", links[0].jsonObject["kind"]!!.jsonPrimitive.content)
+        assertEquals(transaction.id, links[0].jsonObject["id"]!!.jsonPrimitive.content)
+        assertEquals(3L, links[0].jsonObject["version"]!!.jsonPrimitive.long)
     }
 
     @Test
