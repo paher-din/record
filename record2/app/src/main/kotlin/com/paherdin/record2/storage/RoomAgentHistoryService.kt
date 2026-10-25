@@ -6,6 +6,8 @@ import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
 import com.paherdin.record2.backup.DataOperationGate
 import com.paherdin.record2.backup.ProcessDataOperationGate
+import com.paherdin.record2.backup.ProcessRunExecutionRevoker
+import com.paherdin.record2.backup.RunExecutionRevoker
 import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.AgentSessionInfo
@@ -55,6 +57,7 @@ internal class RoomAgentHistoryService(
     private val checkpoint: (SessionCheckpoint) -> Unit = {},
 ) : AgentHistoryService {
     internal var dataOperationGate: DataOperationGate = ProcessDataOperationGate.gate
+    internal var runExecutionRevoker: RunExecutionRevoker = ProcessRunExecutionRevoker
     private val dao = database.sessions()
     private val records = database.records()
     private val control = database.aiControl()
@@ -247,6 +250,9 @@ internal class RoomAgentHistoryService(
     ): RunCompletionReceipt = io {
         write {
             val run = dao.run(runId) ?: fail(AgentHistoryError.NotFound)
+            if (run.state == RunState.RUNNING.name && runExecutionRevoker.isRevoked(runId)) {
+                fail(AgentHistoryError.RunInvalidated)
+            }
             val now = clock.millis()
             if (run.state == RunState.COMPLETED.name) {
                 val existing = dao.finalAssistant(runId) ?: fail(AgentHistoryError.RecoveryRequired)
@@ -339,6 +345,9 @@ internal class RoomAgentHistoryService(
     ): RunTerminalReceipt = io {
         write {
             val run = dao.run(runId) ?: fail(AgentHistoryError.NotFound)
+            if (run.state == RunState.RUNNING.name && runExecutionRevoker.isRevoked(runId)) {
+                fail(AgentHistoryError.RunInvalidated)
+            }
             if (run.state != RunState.RUNNING.name || run.activeSlot == null) {
                 return@write RunTerminalReceipt(runId, parseState(run.state), run.safeErrorCode, true)
             }

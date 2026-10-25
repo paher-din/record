@@ -200,8 +200,9 @@ internal object ReadOnlyBackupSnapshot {
         val parts = LogicalSegment.entries.mapIndexed { index, segment ->
             val projection = segment.fields.joinToString(",") { field -> "'$field', $field" }
             val order = orderKeys(segment)
+            val filter = if (segment == LogicalSegment.DRAFT) " WHERE state = 'EDITING'" else ""
             "SELECT $index AS segmentIndex, ${order.first} AS k1, ${order.second} AS k2, " +
-                "json_object($projection) AS payload FROM ${table(segment)}"
+                "json_object($projection) AS payload FROM ${table(segment)}$filter"
         } + (
             "SELECT ${LogicalSegment.entries.size} AS segmentIndex, 0 AS k1, '' AS k2, " +
                 "json_object('dataGeneration', dataGeneration, 'businessRevision', businessRevision) AS payload " +

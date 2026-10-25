@@ -12,6 +12,8 @@ import com.paherdin.record2.proposals.CommitStatus
 import com.paherdin.record2.proposals.ProposalState
 import com.paherdin.record2.records.FinanceDraft
 import com.paherdin.record2.records.FinanceRecord
+import com.paherdin.record2.sessions.AgentHistoryError
+import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.RunOutcome
 import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.MessageResultKind
@@ -279,6 +281,89 @@ class BackupRestoreContractTest {
         }
     }
 
+    @Test
+    fun savedAndDiscardedDraftsAreExcludedAndRestorable() = runBlocking {
+        for (state in listOf("SAVED", "DISCARDED")) {
+            val data = BackupTestDataFactory.create()
+            val content = data.content.copy(
+                drafts = data.content.drafts.map { it.copy(state = state) },
+            )
+            val sourceName = "g1-draft-$state-${UUID.randomUUID()}.db"
+            val source = open(sourceName)
+            seedContent(source, content, data.generation, data.owner)
+            val sourcePath = context.getDatabasePath(sourceName)
+            val zip = File(staging, "draft-$state.zip")
+            export(sourcePath, zip, DataOperationGate())
+            val read = LogicalZipReader.read(zip)
+            assertTrue(read.backup.content.drafts.isEmpty())
+
+            val targetName = "g1-draft-target-$state-${UUID.randomUUID()}.db"
+            val target = open(targetName)
+            val targetPath = context.getDatabasePath(targetName)
+            val result = restore(target, targetPath, zip, DataOperationGate())
+            assertNotNull(result.restoredGeneration)
+            val restored = ReadOnlyBackupSnapshot.read(targetPath, clock.millis(), NoopExportResourceMonitor())
+            assertTrue(restored.content.drafts.isEmpty())
+            source.close()
+            target.close()
+        }
+    }
+
+    @Test
+    fun failedRestoreRevokesLateRunCompletion() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-late-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "late-source.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-late-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        seed(target, data)
+        target.openHelper.writableDatabase.execSQL(
+            "UPDATE ai_control SET mode = 'FULL', selectedReceiverIdentity = ?, " +
+                "grantReceiverIdentity = ?, grantScopeVersion = 1, grantDisclosureVersion = 1, " +
+                "grantedAt = ?, authEpoch = 1 WHERE id = 1",
+            arrayOf<Any>(BackupTestDataFactory.RECEIVER, BackupTestDataFactory.RECEIVER, clock.millis()),
+        )
+        val revoker = FreshRunExecutionRevoker()
+        val barrier = object : RestoreMemoryBarrier {
+            override fun invalidateInMemory() = Unit
+            override fun revokeRuns(runIds: Set<String>) = revoker.revoke(runIds)
+            override fun fenceAllRuns() = revoker.fenceAll()
+            override fun restoreCommitted() = revoker.restoreCommitted()
+        }
+        val targetPath = context.getDatabasePath(targetName)
+        val service = RestoreService(
+            target, targetPath, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE }, memoryBarrier = barrier,
+        )
+        val candidate = service.preflight(FileSource(zip))
+        val good = zip.readBytes()
+        zip.writeBytes(good.copyOf(good.size / 2))
+        assertThrows(BackupException::class.java) { runBlocking { service.restore(candidate) } }
+
+        val history = RoomAgentHistoryService(target, clock)
+        history.runExecutionRevoker = revoker
+        val before = tables(targetPath)
+        val error = assertThrows(AgentHistoryException::class.java) {
+            runBlocking {
+                history.completeRun(
+                    BackupTestDataFactory.RUN_EDITABLE,
+                    BackupTestDataFactory.RECEIVER,
+                    1,
+                    data.owner,
+                    RunOutcome(MessageResultKind.Answer, "late"),
+                )
+            }
+        }
+        assertEquals(AgentHistoryError.RunInvalidated, error.code)
+        assertEquals(before, tables(targetPath))
+        source.close()
+        target.close()
+    }
+
     private fun open(name: String): RecordDatabase {
         val database = Room.databaseBuilder(context, RecordDatabase::class.java, name)
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
@@ -463,6 +548,25 @@ class BackupRestoreContractTest {
         override fun store(secret: CharArray) = Unit
         override fun clear() = Unit
         override fun <T> use(block: (CharArray) -> T): T = block(charArrayOf('x'))
+    }
+
+    private class FreshRunExecutionRevoker : RunExecutionRevoker {
+        private val revoked = HashSet<String>()
+        private var fenced = false
+
+        override fun revoke(runIds: Set<String>) {
+            revoked.addAll(runIds)
+        }
+
+        override fun fenceAll() {
+            fenced = true
+        }
+
+        override fun isRevoked(runId: String): Boolean = fenced || runId in revoked
+
+        override fun restoreCommitted() {
+            fenced = false
+        }
     }
 
     private companion object {

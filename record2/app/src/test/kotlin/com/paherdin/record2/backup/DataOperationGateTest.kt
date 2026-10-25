@@ -2,6 +2,7 @@ package com.paherdin.record2.backup
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -58,6 +59,30 @@ internal class DataOperationGateTest {
         writer.join()
         val lease = gate.beginRestore()
         lease.close()
+    }
+
+    @Test
+    fun cancelledDrainReleasesTheRestoreGate() = runBlocking {
+        val gate = DataOperationGate(drainTimeoutMs = 5_000)
+        val started = CompletableDeferred<Unit>()
+        val writer = launch {
+            gate.withWrite {
+                started.complete(Unit)
+                delay(300)
+            }
+        }
+        started.await()
+        val waiter = launch {
+            runCatching { gate.beginRestore() }
+        }
+        delay(20)
+        waiter.cancelAndJoin()
+        writer.join()
+        val export = gate.beginExport()
+        export.close()
+        var written = false
+        gate.withWrite { written = true }
+        assertTrue(written)
     }
 
     @Test

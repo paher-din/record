@@ -76,6 +76,29 @@ internal object ReadOnlyTargetInspector {
         }
     }
 
+    fun runningRunIds(databasePath: File): Set<String> {
+        if (!databasePath.isFile) return emptySet()
+        var database: SQLiteDatabase? = null
+        try {
+            database = SQLiteDatabase.openDatabase(
+                databasePath.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            )
+            if (!tableExists(database, "agent_run")) return emptySet()
+            return database.rawQuery(
+                "SELECT id FROM agent_run WHERE state = 'RUNNING'",
+                null,
+            ).use { cursor ->
+                buildSet {
+                    while (cursor.moveToNext()) add(cursor.getString(0))
+                }
+            }
+        } finally {
+            runCatching { database?.close() }
+        }
+    }
+
     private fun readEpoch(database: SQLiteDatabase, hasControl: Boolean): Long? {
         if (!hasControl) return null
         return database.rawQuery(

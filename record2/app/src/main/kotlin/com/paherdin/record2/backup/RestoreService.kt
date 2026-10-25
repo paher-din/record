@@ -38,10 +38,6 @@ internal enum class RestoreCheckpoint {
     BEFORE_COMMIT,
 }
 
-internal fun interface RestoreMemoryBarrier {
-    fun invalidateInMemory()
-}
-
 internal class RestoreService(
     private val database: RecordDatabase,
     private val databasePath: File,
@@ -50,7 +46,7 @@ internal class RestoreService(
     private val clock: Clock = Clock.systemUTC(),
     private val availableBytes: (File) -> Long = { FileSpace.availableBytes(it) },
     private val checkpoint: (RestoreCheckpoint) -> Unit = {},
-    private val memoryBarrier: RestoreMemoryBarrier = RestoreMemoryBarrier { },
+    private val memoryBarrier: RestoreMemoryBarrier = ProcessRestoreMemoryBarrier,
     private val processOwnerId: String? = null,
     private val currentAppVersionCode: Long = 1,
 ) {
@@ -92,6 +88,8 @@ internal class RestoreService(
         val work = File(stagingDirectory, "restore-${UUID.randomUUID()}")
         val zip = File(work, "source.zip")
         try {
+            val running = runCatching { ReadOnlyTargetInspector.runningRunIds(databasePath) }.getOrNull()
+            if (running == null) memoryBarrier.fenceAllRuns() else memoryBarrier.revokeRuns(running)
             memoryBarrier.invalidateInMemory()
             if (candidate.appVersionCode != currentAppVersionCode) {
                 fail(BackupError.TargetInvalid, "app version changed since preflight")
@@ -171,6 +169,7 @@ internal class RestoreService(
                 candidate.targetGeneration,
                 target.authEpoch,
             )
+            memoryBarrier.restoreCommitted()
             RestoreResult(
                 restoredGeneration = restoredGeneration,
                 processOwnerId = owner,

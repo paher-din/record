@@ -3,6 +3,8 @@ package com.paherdin.record2.backup
 import java.io.File
 import java.time.Clock
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal data class AppInfo(val versionCode: Long, val versionName: String)
 
@@ -38,7 +40,7 @@ internal class BackupExporter(
     private val snapshotHook: () -> Unit = {},
     private val checkpoint: (ExportCheckpoint) -> Unit = {},
 ) {
-    suspend fun export(target: BackupTarget, displayName: String? = null): ExportReceipt {
+    suspend fun export(target: BackupTarget, displayName: String? = null): ExportReceipt = withContext(Dispatchers.IO) {
         stagingDirectory.mkdirs()
         val lease = gate.beginExport()
         val work = File(stagingDirectory, "export-${UUID.randomUUID()}")
@@ -110,7 +112,7 @@ internal class BackupExporter(
                 fail(BackupError.RecoverableIO, "SAF read-back digest does not match the staging ZIP")
             }
             checkpoint(ExportCheckpoint.SAF_READ_BACK)
-            return ExportReceipt(
+            ExportReceipt(
                 displayName = displayName,
                 zipBytes = zip.length(),
                 zipSha256 = zipSha,

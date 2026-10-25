@@ -54,17 +54,26 @@ internal class DataOperationGate(
             if (mode != Mode.OPEN) throw DataOperationBusyException("Another data operation is in progress")
             mode = Mode.RESTORE
         }
-        val deadline = clock.millis() + drainTimeoutMs
-        while (true) {
-            val drained = synchronized(lock) { activeWrites == 0 }
-            if (drained) return Lease(Mode.RESTORE)
-            if (clock.millis() >= deadline) {
+        var handedOff = false
+        try {
+            val deadline = clock.millis() + drainTimeoutMs
+            while (true) {
+                val drained = synchronized(lock) { activeWrites == 0 }
+                if (drained) {
+                    handedOff = true
+                    return Lease(Mode.RESTORE)
+                }
+                if (clock.millis() >= deadline) {
+                    throw DataOperationBusyException("In-flight writes did not drain before the restore gate")
+                }
+                delay(5)
+            }
+        } finally {
+            if (!handedOff) {
                 synchronized(lock) {
                     if (mode == Mode.RESTORE) mode = Mode.OPEN
                 }
-                throw DataOperationBusyException("In-flight writes did not drain before the restore gate")
             }
-            delay(5)
         }
     }
 
