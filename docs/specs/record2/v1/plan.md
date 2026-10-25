@@ -1491,7 +1491,7 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 **本批验证（仅证据见[G1 evidence](../../../engineering/evidence/2026-10-25-g1.md)）：**
 
 - **Host（T1）：** `:app:testDebugUnitTest`通过110项/0失败；其中backup新增`LogicalFormatTest`8项与`DataOperationGateTest`4项，覆盖严格JSON、manifest、ZIP空段/DEFLATE空块拒绝、往返、校验器合法/损坏历史、gate drain/互斥。
-- **API34 instrumentation（T3）：** `emulator-5594`（AVD `record-api34`，API34）运行`BackupRestoreContractTest` 9项全部通过：完整业务/聊天/Applied/旧Pending轮转与owner重读、14表零写门禁、authEpoch MAX-1拒绝/MAX-2→MAX-1、receipt损坏/NULL边界、WAL只读导出与并发写、空段恢复再导出、SAVED/DISCARDED直接状态与真实B1生命周期草稿过滤、失败恢复后旧Run迟到完成拒绝+受控中断+新Run成功、1/2/4/7 MiB Note导出。构建`assembleDebug`/`assembleDebugAndroidTest`通过。
+- **API34 instrumentation（T3）：** `emulator-5594`（AVD `record-api34`，API34）运行`BackupRestoreContractTest` 10项全部通过：完整业务/聊天/Applied/旧Pending轮转与owner重读、14表零写门禁、authEpoch MAX-1拒绝/MAX-2→MAX-1、receipt损坏/NULL边界、WAL只读导出与并发写、空段恢复再导出、SAVED/DISCARDED直接状态与真实B1生命周期草稿过滤、失败恢复后旧Run迟到完成与C0 prepare/revise拒绝+受控中断+新Run成功、1/2/4/7 MiB Note导出、并发多表原子更新前后的完整快照。构建`assembleDebug`/`assembleDebugAndroidTest`通过。
 - **回归：** `SessionRunContractTest`+`SessionRunRealContractTest`+`RecordSchemaContractTest`+`AiSecurityInitializationContractTest` 30项通过；Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`，无Schema/迁移/Manifest/data-extraction规则改动。
 - **未运行/阻塞：** 真机与真实DocumentsUI SAF create/write/flush/close/回读、真实Keystore/Provider、云备份/设备迁移排除、进程终止（force-stop/kill）全矩阵、完整BK2/BK4、64 MiB/256 MiB/500,000行边界、性能/ANR/OOM、F1/E2/F2最终UI与迟到Run内存取消接线、最终APK/合并/G2联合验收均NOT RUN或BLOCKED；G1完成门禁未因此通过。
 - **P1内存修复与剩余风险：** 导出路径已从“全量content→写ZIP→全量再读校验”改为单语句快照逐行写段文件、完成后用不保留行的ZIP verify；host/API34重跑通过。**导入preflight仍使用`LogicalZipReader.read`+全量validator**，在256 MiB/500,000行上限下仍有内存风险，必须在G1完整验收前流式化或提供覆盖上限的内存/性能证据；本批不把该风险标为已解除。
@@ -1502,14 +1502,15 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - 恢复尝试失败后保留进程内Run执行撤销：门禁获取后读取O的RUNNING id并登记，`RoomAgentHistoryService.completeRun()/failRun()`在写事务内检查；新增“活动Run→恢复失败→迟到完成拒绝且14表不变”真实测试。E2/F2真实取消接线仍为后续门禁。
 - `BackupExporter.export()`整体切换到`Dispatchers.IO`。
 - **第三轮 Run 生命周期修复：** 移除全局`fenceAll`，改为仅按RUNNING id撤销；无法枚举活动Run时直接拒绝本次恢复，不再影响后续新Run；新增`interruptRevokedRun()`受控中断路径，测试覆盖“恢复失败→旧Run撤销→受控中断→新Run成功”。
-- **CursorWindow 修复：** 快照元数据CursorWindow不再承载大JSON；每条payload通过同连接`SQLiteStatement.simpleQueryForString()`读取，1/2/4/7 MiB Note导出测试通过，避免`SQLiteBlobTooBigException`。8 MiB正文加JSON开销会超过8 MiB单行限额，因此边界按实际可容纳正文测试。
+- **快照一致性/CursorWindow修复：** 导出改为单条`WITH RECURSIVE`复合SELECT：同一读事务内按段/rowid/offset分块读取每行JSON，Kotlin按序拼接；CursorWindow只承载≤262,144字符块。新增并发多表原子更新测试证明ZIP只含完整前态；1/2/4/7 MiB Note导出通过，避免`SQLiteBlobTooBigException`。8 MiB正文加JSON开销会超过8 MiB单行限额，因此边界按实际可容纳正文测试。
+- **C0撤销接入：** `RoomProposalService.validRun()`在写事务内检查`RunExecutionRevoker`；测试覆盖恢复失败后旧Run `prepare()`/`revise()`均`RunInvalidated`且14表不变。
 - **真实草稿生命周期：** 通过`beginNewDraft()`+`saveDraft()`/`discardDraft()`产生SAVED/DISCARDED，验证导出过滤与恢复预检。
 - **未关闭：** 导入preflight/正式恢复仍用`LogicalZipReader.read()`全量content+validator；256 MiB/500,000行OOM风险未解除，需流式校验/有界暂存或覆盖上限的真实内存证据。
 
 **需负责人确认的实现偏差/风险：**
 
-1. **API34只读快照事务：** Android `SQLiteDatabase`在`OPEN_READONLY`连接上执行显式`BEGIN`会按写事务打开并以`SQLITE_READONLY`失败；本批改用同一只读连接、同一WAL、一个`UNION ALL`+`json_object`复合SELECT的隐式读事务，cursor遍历期间全部12表+`record_data_state`处于同一SQLite快照，仍不使用Room写事务、DB/WAL复制或多连接拼接。负责人2026-10-25已接受该等价实现，不再要求为字面SQL退回G0；但导出P1已按流式段文件修复，导入preflight内存风险仍归G1后续。
+1. **API34只读快照事务：** Android `SQLiteDatabase`在`OPEN_READONLY`连接上执行显式`BEGIN`会按写事务打开并以`SQLITE_READONLY`失败；本批改用同一只读连接、同一WAL、一个`WITH RECURSIVE`分块复合SELECT的隐式读事务，cursor遍历期间全部12表+`record_data_state`处于同一SQLite快照，仍不使用Room写事务、DB/WAL复制或多连接拼接。负责人2026-10-25已接受该等价实现，不再要求为字面SQL退回G0；但导出P1已按流式段文件修复，导入preflight内存风险仍归G1后续。
 2. **写入门禁层级：** gate接入现有Room服务的写事务边界，并覆盖当前所有生产写服务；未来新增写入口（E2/D1/F2等）必须复用`ProcessDataOperationGate.gate`，本批不提供SQLite authorizer级强制。`RestoreMemoryBarrier`只提供内存失效钩子，真实Run/工具协程取消由E2/F2接线并另测。
 3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
 
-- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、复审修复`d2c8f8c`、第三轮修复`359307f`，最终head以GitHub当前引用为准。2026-10-25复审仍为**REQUEST CHANGES**，本轮修复后待再次审阅；未合并main、未关闭issue #19。
+- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、复审修复`d2c8f8c`、第三轮修复`359307f`、第四轮修复`7f0ad92`，最终head以GitHub当前引用为准。2026-10-25复审仍为**REQUEST CHANGES**，本轮修复后待再次审阅；未合并main、未关闭issue #19。
