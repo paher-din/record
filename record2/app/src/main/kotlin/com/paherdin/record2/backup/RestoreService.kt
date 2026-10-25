@@ -1,6 +1,7 @@
 package com.paherdin.record2.backup
 
 import java.io.File
+import java.io.IOException
 import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -52,6 +53,8 @@ internal class RestoreService(
     private val processOwnerId: String? = null,
     private val currentAppVersionCode: Long = 1,
     private val cleanupStaging: (File) -> Boolean = { it.deleteRecursively() },
+    /** Observability hook only: cleanup failure never changes a committed restore or the gate. */
+    private val onStagingCleanupFailure: (File, Throwable) -> Unit = { _, _ -> },
 ) : RestoreEngine {
     override suspend fun preflight(source: BackupSource): RestoreCandidate = withContext(Dispatchers.IO) {
         if (gate.isRestoreInProgress) throw DataOperationBusyException("Restore is already in progress")
@@ -118,10 +121,21 @@ internal class RestoreService(
                     resultFromReceipt(committed)
                 }
             } finally {
-                runCatching { cleanupStaging(work) }
+                cleanupAfterRestore(work)
             }
         } finally {
             lease.close()
+        }
+    }
+
+    private fun cleanupAfterRestore(work: File) {
+        val failure = try {
+            if (cleanupStaging(work)) null else IOException("staging cleanup did not complete")
+        } catch (error: Exception) {
+            error
+        }
+        if (failure != null) {
+            runCatching { onStagingCleanupFailure(work, failure) }
         }
     }
 

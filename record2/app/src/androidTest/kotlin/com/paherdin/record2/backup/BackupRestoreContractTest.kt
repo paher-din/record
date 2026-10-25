@@ -418,6 +418,43 @@ class BackupRestoreContractTest {
     }
 
     @Test
+    fun successfulRestoreSurvivesStagingCleanupFailure() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-cleanup-false-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "cleanup-false.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-cleanup-false-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        val gate = DataOperationGate()
+        val failures = ArrayList<Pair<File, Throwable>>()
+        val service = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, gate, clock,
+            availableBytes = { Long.MAX_VALUE },
+            cleanupStaging = { false },
+            onStagingCleanupFailure = { work, error -> failures += work to error },
+        )
+        val candidate = service.preflight(FileSource(zip))
+        val result = service.restore(candidate)
+
+        assertNotNull(result.restoredGeneration)
+        assertEquals(1, failures.size)
+        assertTrue(failures.single().second is java.io.IOException)
+        assertFalse(gate.isRestoreInProgress)
+        runBlocking { gate.withWrite { Unit } }
+        assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath, clock).check().kind)
+        val report = BackupStaging.sweep(staging)
+        assertTrue(report.failed.isEmpty())
+        assertTrue(staging.listFiles().orEmpty().none { it.name.startsWith("restore-") })
+
+        source.close()
+        target.close()
+    }
+
+    @Test
     fun coordinatorReusesCommittedReceiptWithoutASecondImport() = runBlocking {
         val data = BackupTestDataFactory.create()
         val sourceName = "g1-coordinator-source-${UUID.randomUUID()}.db"

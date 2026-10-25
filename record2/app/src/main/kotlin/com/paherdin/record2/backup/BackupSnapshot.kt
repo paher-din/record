@@ -31,13 +31,15 @@ internal class FileSystemExportResourceMonitor(
     private val databasePath: File,
     private val stagingDirectory: File,
     private val freeSpace: (File) -> Long = { path -> StatFs(path.absolutePath).availableBytes },
+    /** Test seam for the real monitor; production keeps the frozen 384 MiB limit. */
+    private val maxWalGrowthBytes: Long = BackupLimits.MAX_EXPORT_WAL_GROWTH_BYTES,
 ) : ExportResourceMonitor {
     private val wal = File(databasePath.absolutePath + "-wal")
     private val baseline = if (wal.isFile) wal.length() else 0L
 
     override fun check() {
         val growth = (if (wal.isFile) wal.length() else 0L) - baseline
-        if (growth > BackupLimits.MAX_EXPORT_WAL_GROWTH_BYTES) {
+        if (growth > maxWalGrowthBytes) {
             fail(BackupError.StorageFull, "WAL grew beyond the export monitoring limit")
         }
         if (freeSpace(databasePath.parentFile ?: databasePath) < BackupLimits.EXPORT_FREE_RESERVE_BYTES) {

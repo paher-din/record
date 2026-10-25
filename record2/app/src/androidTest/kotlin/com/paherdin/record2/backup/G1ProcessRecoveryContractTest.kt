@@ -20,9 +20,11 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -58,6 +60,14 @@ class G1ProcessRecoveryContractTest {
         val checkpoint = if (checkpointName == "PREFLIGHT") null else RestoreCheckpoint.valueOf(checkpointName)
         root.mkdirs()
         staging.mkdirs()
+        val orphan = File(
+            BackupStaging.appDirectory(context),
+            "preflight-${UUID.randomUUID()}",
+        ).apply {
+            mkdirs()
+            File(this, "source.zip").writeText("orphan")
+        }
+        val orphanPath = orphan.absolutePath
         val work = File(root, checkpointName).apply {
             deleteRecursively()
             mkdirs()
@@ -94,6 +104,7 @@ class G1ProcessRecoveryContractTest {
             .put("baseline", baselineDigest)
             .put("baselineGeneration", BASELINE_GENERATION)
             .put("checkpointFile", checkpointName)
+            .put("orphan", orphanPath)
         var preflightGeneration: String? = null
         val service = RestoreService(
             RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
@@ -131,6 +142,10 @@ class G1ProcessRecoveryContractTest {
         try {
             val startup = RestoreStartupGate(targetPath, clock).check()
             assertEquals(StartupKind.NORMAL, startup.kind)
+            val orphan = File(metadata.getString("orphan"))
+            val orphanDeadline = System.currentTimeMillis() + 10_000
+            while (orphan.exists() && System.currentTimeMillis() < orphanDeadline) delay(100)
+            assertFalse("RecordApplication must sweep orphan staging at startup", orphan.exists())
             val zip = File(metadata.getString("zip"))
             val zipSha = metadata.getString("zipSha")
             assertEquals(zipSha, sha256(zip))

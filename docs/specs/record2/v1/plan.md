@@ -1674,4 +1674,13 @@ PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，iss
 - **资源（API34 `record-api34`，最终debug APK `819263c8…`=提交`63662c5`）：** notes 500k/105.9 MB/13.3 MB ZIP（40.8s预检、222.7s恢复、PSS 64.7 MB）；large 500k/231.7 MB/46.5 MB ZIP（50.1s、247.5s、PSS 64.9 MB，覆盖约126 MiB单段与7.4 MiB行）；zip 500k/179.9 MB/60.4 MB ZIP=57.6 MiB（46.9s、231.4s、PSS 64.6 MB）。均无OOM/ANR；模拟器墙钟不构成真机性能PASS。
 - **故障/联合：** 真实`am force-stop`5场景（PREFLIGHT、AFTER_DELETE、BEFORE_RECEIPT、BEFORE_COMMIT、AFTER_COMMIT）PASS；前四者14表基线不变/无receipt/重启后可正常恢复，AFTER_COMMIT数据/receipt完整且按预检代际得到Committed不重导入。`G1E2JointContractTest`证明真实Owner撤销、无终态写、迟到完成NotFound、AI拒绝。`G1SafContractTest`通过MediaStore Downloads的ContentResolver写出/回读/恢复；真实DocumentsUI picker UI未接线（F1）。
 - **验证：** host **179/179**；G1 device 25/25（20+E2联合1+SAF4）；确定性storage/AI **177/177**；强停5/5；build isolation PASS；release PASS；APK debug `819263c8…`、test `f8775c80…`、release `6a6054a6…`。详见[G1 evidence §4.2](../../../engineering/evidence/2026-10-25-g1.md#42-2026-10-25-有界流式导入资源与恢复故障验收)。
-- **未完成：** F1/F2/D-SAFE最终UI与真实DocumentsUI picker、真机/Keystore/Provider/云备份/设备迁移、preflight强停孤儿staging自动清扫、G2联合与负责人最终验收；issue #19保持OPEN，未合并main。
+- **未完成（staging项已由§35.3关闭）：** F1/F2/D-SAFE最终UI与真实DocumentsUI picker、真机/Keystore/Provider/云备份/设备迁移、G2联合与负责人最终验收；issue #19保持OPEN，未合并main。
+
+### 35.3 2026-10-25 真实 Room 导出审计与 staging 收口（第十一轮）
+
+- **导出测试事实：** `G1ExportResourceContractTest`使用真实Room DB文件（批量SQLite灌入500,000行）调用`BackupExporter.export()`，采样PSS/WAL/staging/DB文件/temp/剩余空间。500k notes（原版查询）导出717,191ms、ZIP 21,936,175B、峰值PSS **855,049KB**、staging 127,824,438B、DB文件+WAL+SHM 114,479,104B、`etilqs_*`临时文件0、WAL增长0；资源监控仍只在cursor迭代期检查WAL/空间，首个cursor行前/附近的SQLite物化峰值无PSS守卫。
+- **P1 FAIL：** 50,000行导出首行后并发插入1条note，写入成功但导出以`snapshot chunk gap`失败；该问题在原版查询上复现，是导出单语句快照的并发正确性缺陷。50,000行+17×7.4MiB的查询实验变体（已回退）为1,201s/512,419KB；原版查询下同类组合在一次约30分钟观察仍停留1/17大事务行，未完成。500k行+大载荷组合未PASS。
+- **WAL故障：** `G1ExportFaultContractTest` 1/1 PASS：真实monitor注入1KiB WAL阈值+快照期间写入→`StorageFull`，export staging删除、gate释放、DB仍可写，重试导出成功（312行）。
+- **staging P2：** `BackupStaging.sweep`只删除私有专用root下`preflight|restore|export-<canonical UUID>`直接目录，跳过symlink/非目录/非规范名，失败不抛出；`RecordApplication`启动后台清扫；强停矩阵在每个场景预置`preflight-<uuid>`孤儿并在重启后由生产Application清除（5/5）；`RestoreService.onStagingCleanupFailure`+`successfulRestoreSurvivesStagingCleanupFailure`证明cleanup失败不破坏成功恢复/receipt/gate。host `BackupStagingTest` 3/3。
+- **回归：** host 182/182；G1 device 26/26；storage/AI 177/177；强停5/5；WAL故障1/1；build isolation/release PASS。APK debug `009ddf1b…`、test `947b7697…`、release `72be6b76…`。
+- **状态：** 导入/恢复/staging通过；**导出P1仍OPEN**，不能合并/关闭issue #19；下一步需单独批准导出快照/监控设计或G0限额复审，不能以导入资源数据替代导出PASS。
