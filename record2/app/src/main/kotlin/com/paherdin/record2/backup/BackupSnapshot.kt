@@ -172,7 +172,7 @@ internal object ReadOnlyBackupSnapshot {
             val payload = StringBuilder()
             fun flush() {
                 if (currentSegment < 0) return
-                if (currentOffset != payload.length) {
+                if (currentOffset != payload.codePointCount(0, payload.length)) {
                     fail(BackupError.Internal, "snapshot chunk sequence is incomplete")
                 }
                 consume(currentSegment, payload.toString())
@@ -197,7 +197,7 @@ internal object ReadOnlyBackupSnapshot {
                     }
                     if (offset != currentOffset) fail(BackupError.Internal, "snapshot chunk gap")
                     payload.append(chunk)
-                    currentOffset += chunk.length
+                    currentOffset += chunk.codePointCount(0, chunk.length)
                     if (payload.length > BackupLimits.MAX_LINE_BYTES) {
                         fail(BackupError.StorageFull, "snapshot row exceeds 8 MiB")
                     }

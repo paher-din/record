@@ -248,6 +248,41 @@ class BackupRestoreContractTest {
     }
 
     @Test
+    fun emojiAndMixedTextCrossChunkBoundary() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val body = "中文abc😀".repeat(60_000)
+        assertTrue(body.codePointCount(0, body.length) > 262_144)
+        val content = data.content.copy(
+            notes = data.content.notes.map {
+                if (it.id == BackupTestDataFactory.NOTE_ACTIVE) it.copy(body = body) else it
+            },
+        )
+        val sourceName = "g1-emoji-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seedContent(source, content, data.generation, data.owner)
+        val sourcePath = context.getDatabasePath(sourceName)
+        val zip = File(staging, "emoji.zip")
+        export(sourcePath, zip, DataOperationGate())
+        assertEquals(
+            body,
+            LogicalZipReader.read(zip).backup.content.notes
+                .first { it.id == BackupTestDataFactory.NOTE_ACTIVE }.body,
+        )
+
+        val targetName = "g1-emoji-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        restore(target, targetPath, zip, DataOperationGate())
+        assertEquals(
+            body,
+            ReadOnlyBackupSnapshot.read(targetPath, clock.millis(), NoopExportResourceMonitor())
+                .content.notes.first { it.id == BackupTestDataFactory.NOTE_ACTIVE }.body,
+        )
+        source.close()
+        target.close()
+    }
+
+    @Test
     fun exportSnapshotIsPointInTimeAcrossTables() = runBlocking {
         val data = BackupTestDataFactory.create()
         val sourceName = "g1-atomic-${UUID.randomUUID()}.db"
