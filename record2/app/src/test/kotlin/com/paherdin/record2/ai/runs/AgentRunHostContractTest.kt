@@ -17,6 +17,9 @@ import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.SafeRunErrorCode
 import java.io.IOException
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +57,9 @@ class AgentRunHostContractTest {
         processOwnerId = "owner-host",
         historyWindow = window,
         toolRegistry = tools,
+        // FakeHistoryService stamps startedAt=0; the coordinator must use the same clock domain
+        // so the run wall-clock deadline does not look already exhausted.
+        clock = Clock.fixed(Instant.ofEpochMilli(0), ZoneOffset.UTC),
         httpClientFactory = object : KoogHttpClient.Factory {
             override fun create(
                 clientName: String, baseUrl: String, headers: Map<String, String>,
