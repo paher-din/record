@@ -74,6 +74,18 @@ internal interface SessionDao {
     fun interruptAllRunning(finishedAt: Long): Int
 
     @Query(
+        "UPDATE agent_run SET state = 'INTERRUPTED', finishedAt = :finishedAt, activeSlot = NULL " +
+            "WHERE id = :id AND state = 'RUNNING' AND activeSlot = 1 " +
+            "AND processOwnerId = :processOwnerId AND dataGeneration = :dataGeneration",
+    )
+    fun interruptRevokedRun(
+        id: String,
+        finishedAt: Long,
+        processOwnerId: String,
+        dataGeneration: String,
+    ): Int
+
+    @Query(
         "SELECT m.role AS role, m.body AS body FROM agent_message m " +
             "JOIN agent_run r ON r.id = m.runId AND r.sessionId = m.sessionId " +
             "WHERE m.sessionId = :sessionId AND m.sequence < :beforeSequence AND r.state = 'COMPLETED' " +

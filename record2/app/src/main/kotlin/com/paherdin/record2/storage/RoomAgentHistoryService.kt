@@ -368,6 +368,26 @@ internal class RoomAgentHistoryService(
         }
     }
 
+    override suspend fun interruptRevokedRun(runId: String, processOwnerId: String): RunTerminalReceipt = io {
+        write {
+            val run = dao.run(runId) ?: fail(AgentHistoryError.NotFound)
+            if (!runExecutionRevoker.isRevoked(runId)) fail(AgentHistoryError.RunInvalidated)
+            if (run.state != RunState.RUNNING.name || run.activeSlot == null) {
+                return@write RunTerminalReceipt(runId, parseState(run.state), run.safeErrorCode, true)
+            }
+            val state = records.dataState() ?: fail(AgentHistoryError.RecoveryRequired)
+            if (run.processOwnerId != processOwnerId || state.processOwnerId != processOwnerId) {
+                fail(AgentHistoryError.RunInvalidated)
+            }
+            if (state.dataGeneration != run.dataGeneration) fail(AgentHistoryError.RunInvalidated)
+            val now = clock.millis()
+            if (dao.interruptRevokedRun(runId, now, processOwnerId, run.dataGeneration) != 1) {
+                fail(AgentHistoryError.ConcurrentUpdate)
+            }
+            RunTerminalReceipt(runId, RunState.INTERRUPTED, null, false)
+        }
+    }
+
     override suspend fun beginProcessOwnership(processOwnerId: String): ProcessOwnershipReceipt = io {
         write {
             val state = records.dataState()

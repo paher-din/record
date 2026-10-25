@@ -190,6 +190,13 @@ internal interface AgentHistoryService {
 
     /** Terminal FAILED/CANCELLED without a final reply; idempotent for already-terminal runs. */
     suspend fun failRun(runId: String, state: RunTerminal, safeErrorCode: SafeRunErrorCode): RunTerminalReceipt
+    /**
+     * Controlled recovery for a run revoked by a failed restore. Only a revoked RUNNING run can
+     * be interrupted; this frees the session slot without allowing the old callback to complete.
+     */
+    suspend fun interruptRevokedRun(runId: String, processOwnerId: String): RunTerminalReceipt =
+        throw AgentHistoryException(AgentHistoryError.RunInvalidated)
+
 
     /**
      * Process-start gate (B0 §6): adopt [processOwnerId], mark every RUNNING run INTERRUPTED

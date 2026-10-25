@@ -10,7 +10,9 @@ import com.paherdin.record2.ai.security.CredentialStatus
 import com.paherdin.record2.ai.security.CredentialVault
 import com.paherdin.record2.proposals.CommitStatus
 import com.paherdin.record2.proposals.ProposalState
+import com.paherdin.record2.records.FinanceDirection
 import com.paherdin.record2.records.FinanceDraft
+import com.paherdin.record2.records.FinanceInput
 import com.paherdin.record2.records.FinanceRecord
 import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.AgentHistoryException
@@ -243,6 +245,43 @@ class BackupRestoreContractTest {
     }
 
     @Test
+    fun largeNoteBodiesExportAtCursorWindowBoundaries() = runBlocking {
+        for (mib in listOf(1, 2, 4, 7)) {
+            val data = BackupTestDataFactory.create()
+            val body = "界".repeat(mib * 1024 * 1024 / 3)
+            val content = data.content.copy(
+                notes = data.content.notes.map {
+                    if (it.id == BackupTestDataFactory.NOTE_ACTIVE) it.copy(body = body) else it
+                },
+            )
+            val sourceName = "g1-large-note-$mib-${UUID.randomUUID()}.db"
+            val source = open(sourceName)
+            seedContent(source, content, data.generation, data.owner)
+            SQLiteDatabase.openDatabase(
+                context.getDatabasePath(sourceName).absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            ).use { direct ->
+                val statement = direct.compileStatement("SELECT body FROM note WHERE id = ?")
+                try {
+                    statement.bindString(1, BackupTestDataFactory.NOTE_ACTIVE)
+                    assertEquals(body, statement.simpleQueryForString())
+                } finally {
+                    statement.close()
+                }
+            }
+            val zip = File(staging, "large-note-$mib.zip")
+            export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+            val read = LogicalZipReader.read(zip)
+            assertEquals(
+                body,
+                read.backup.content.notes.first { it.id == BackupTestDataFactory.NOTE_ACTIVE }.body,
+            )
+            source.close()
+        }
+    }
+
+    @Test
     fun emptySegmentsRoundTripThroughRestore() = runBlocking {
         val content = BackupTestDataFactory.seedOnly()
         val sourceName = "g1-empty-source-${UUID.randomUUID()}.db"
@@ -310,6 +349,49 @@ class BackupRestoreContractTest {
     }
 
     @Test
+    fun realDraftLifecycleIsExcludedAndRestorable() = runBlocking {
+        for (state in listOf("SAVED", "DISCARDED")) {
+            val content = BackupTestDataFactory.seedOnly()
+            val sourceName = "g1-real-draft-$state-${UUID.randomUUID()}.db"
+            val source = open(sourceName)
+            seedContent(
+                source, content,
+                BackupTestDataFactory.GENERATION, BackupTestDataFactory.OWNER,
+            )
+            val finance = RoomFinanceService(source, clock)
+            val input = FinanceInput(
+                amountText = "12.34",
+                direction = FinanceDirection.EXPENSE,
+                accountId = com.paherdin.record2.records.FinanceSeeds.ACCOUNT_ID,
+                accountVersion = 1,
+                categoryId = null,
+                categoryVersion = null,
+                memo = "real draft",
+                localDateTime = "2023-11-14T22:13:20",
+                zoneId = "UTC",
+            )
+            val draft = finance.beginNewDraft(BackupTestDataFactory.GENERATION, input)
+            if (state == "SAVED") {
+                assertNotNull(finance.saveDraft(BackupTestDataFactory.GENERATION, draft.id, draft.revision))
+            } else {
+                finance.discardDraft(BackupTestDataFactory.GENERATION, draft.id, draft.revision)
+            }
+            val sourcePath = context.getDatabasePath(sourceName)
+            val zip = File(staging, "real-draft-$state.zip")
+            export(sourcePath, zip, DataOperationGate())
+            assertTrue(LogicalZipReader.read(zip).backup.content.drafts.isEmpty())
+
+            val targetName = "g1-real-draft-target-$state-${UUID.randomUUID()}.db"
+            val target = open(targetName)
+            val targetPath = context.getDatabasePath(targetName)
+            restore(target, targetPath, zip, DataOperationGate())
+            assertTrue(ReadOnlyBackupSnapshot.read(targetPath, clock.millis(), NoopExportResourceMonitor()).content.drafts.isEmpty())
+            source.close()
+            target.close()
+        }
+    }
+
+    @Test
     fun failedRestoreRevokesLateRunCompletion() = runBlocking {
         val data = BackupTestDataFactory.create()
         val sourceName = "g1-late-source-${UUID.randomUUID()}.db"
@@ -331,8 +413,6 @@ class BackupRestoreContractTest {
         val barrier = object : RestoreMemoryBarrier {
             override fun invalidateInMemory() = Unit
             override fun revokeRuns(runIds: Set<String>) = revoker.revoke(runIds)
-            override fun fenceAllRuns() = revoker.fenceAll()
-            override fun restoreCommitted() = revoker.restoreCommitted()
         }
         val targetPath = context.getDatabasePath(targetName)
         val service = RestoreService(
@@ -360,6 +440,18 @@ class BackupRestoreContractTest {
         }
         assertEquals(AgentHistoryError.RunInvalidated, error.code)
         assertEquals(before, tables(targetPath))
+
+        val interrupted = history.interruptRevokedRun(BackupTestDataFactory.RUN_EDITABLE, data.owner)
+        assertEquals(RunState.INTERRUPTED, interrupted.state)
+        val started = history.startRun(
+            BackupTestDataFactory.SESSION_EDITABLE,
+            "new run after failed restore",
+            BackupTestDataFactory.RECEIVER,
+            1,
+            data.owner,
+            history.newRunIdentity(),
+        )
+        assertEquals(BackupTestDataFactory.SESSION_EDITABLE, started.sessionId)
         source.close()
         target.close()
     }
@@ -552,21 +644,12 @@ class BackupRestoreContractTest {
 
     private class FreshRunExecutionRevoker : RunExecutionRevoker {
         private val revoked = HashSet<String>()
-        private var fenced = false
 
         override fun revoke(runIds: Set<String>) {
             revoked.addAll(runIds)
         }
 
-        override fun fenceAll() {
-            fenced = true
-        }
-
-        override fun isRevoked(runId: String): Boolean = fenced || runId in revoked
-
-        override fun restoreCommitted() {
-            fenced = false
-        }
+        override fun isRevoked(runId: String): Boolean = runId in revoked
     }
 
     private companion object {

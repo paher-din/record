@@ -89,7 +89,8 @@ internal class RestoreService(
         val zip = File(work, "source.zip")
         try {
             val running = runCatching { ReadOnlyTargetInspector.runningRunIds(databasePath) }.getOrNull()
-            if (running == null) memoryBarrier.fenceAllRuns() else memoryBarrier.revokeRuns(running)
+                ?: fail(BackupError.RecoverableIO, "cannot enumerate active runs; restore aborted")
+            memoryBarrier.revokeRuns(running)
             memoryBarrier.invalidateInMemory()
             if (candidate.appVersionCode != currentAppVersionCode) {
                 fail(BackupError.TargetInvalid, "app version changed since preflight")
@@ -169,7 +170,6 @@ internal class RestoreService(
                 candidate.targetGeneration,
                 target.authEpoch,
             )
-            memoryBarrier.restoreCommitted()
             RestoreResult(
                 restoredGeneration = restoredGeneration,
                 processOwnerId = owner,

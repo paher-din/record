@@ -1,6 +1,7 @@
 package com.paherdin.record2.backup
 
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteStatement
 import android.os.StatFs
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -107,6 +108,7 @@ internal object ReadOnlyBackupSnapshot {
             fail(BackupError.RecoverableIO, "could not create snapshot staging directory")
         }
         val writers = LinkedHashMap<LogicalSegment, SegmentFileWriter>()
+        val payloadStatements = arrayOfNulls<SQLiteStatement>(LogicalSegment.entries.size + 1)
         var database: SQLiteDatabase? = null
         try {
             for (segment in LogicalSegment.entries) {
@@ -134,15 +136,32 @@ internal object ReadOnlyBackupSnapshot {
                 fail(BackupError.Unsupported, "database schema version is not 1")
             }
             monitor.check()
+            for (segment in LogicalSegment.entries) {
+                payloadStatements[segment.ordinal] = database.compileStatement(
+                    "SELECT ${payloadJson(segment)} FROM ${table(segment)} WHERE rowid = ?",
+                )
+            }
+            payloadStatements[LogicalSegment.entries.size] = database.compileStatement(
+                "SELECT ${dataStateJson()} FROM record_data_state WHERE rowid = ?",
+            )
             var dataGeneration: String? = null
             var businessRevision: Long? = null
             var snapshotOpened = false
             var totalRows = 0L
-            database.rawQuery(snapshotQuery(), null).use { cursor ->
+            database.rawQuery(metadataQuery(), null).use { cursor ->
                 while (cursor.moveToNext()) {
                     val index = cursor.getInt(0)
-                    val payload = cursor.getString(3)
-                    if (payload == null) fail(BackupError.InvalidSource, "snapshot row is null")
+                    val rowId = cursor.getLong(3)
+                    val statement = payloadStatements[index]
+                        ?: fail(BackupError.Internal, "missing payload statement for snapshot row")
+                    statement.clearBindings()
+                    statement.bindLong(1, rowId)
+                    val payload = try {
+                        statement.simpleQueryForString()
+                    } finally {
+                        statement.clearBindings()
+                    }
+                    if (payload.isEmpty()) fail(BackupError.InvalidSource, "snapshot row is empty")
                     if (payload.toByteArray(StandardCharsets.UTF_8).size > BackupLimits.MAX_LINE_BYTES) {
                         fail(BackupError.StorageFull, "snapshot row exceeds 8 MiB")
                     }
@@ -191,25 +210,32 @@ internal object ReadOnlyBackupSnapshot {
         } catch (error: Exception) {
             throw BackupException(BackupError.RecoverableIO, "could not take the read-only backup snapshot", error)
         } finally {
+            payloadStatements.forEach { runCatching { it?.close() } }
             writers.values.forEach { runCatching { it.close() } }
             runCatching { database?.close() }
         }
     }
 
-    private fun snapshotQuery(): String {
+    private fun metadataQuery(): String {
         val parts = LogicalSegment.entries.mapIndexed { index, segment ->
-            val projection = segment.fields.joinToString(",") { field -> "'$field', $field" }
             val order = orderKeys(segment)
             val filter = if (segment == LogicalSegment.DRAFT) " WHERE state = 'EDITING'" else ""
             "SELECT $index AS segmentIndex, ${order.first} AS k1, ${order.second} AS k2, " +
-                "json_object($projection) AS payload FROM ${table(segment)}$filter"
+                "rowid AS rowId FROM ${table(segment)}$filter"
         } + (
-            "SELECT ${LogicalSegment.entries.size} AS segmentIndex, 0 AS k1, '' AS k2, " +
-                "json_object('dataGeneration', dataGeneration, 'businessRevision', businessRevision) AS payload " +
+            "SELECT ${LogicalSegment.entries.size} AS segmentIndex, 0 AS k1, '' AS k2, rowid AS rowId " +
                 "FROM record_data_state WHERE id = 1"
             )
         return parts.joinToString(" UNION ALL ") + " ORDER BY segmentIndex ASC, k1 ASC, k2 ASC"
     }
+
+    private fun payloadJson(segment: LogicalSegment): String {
+        val projection = segment.fields.joinToString(",") { field -> "'$field', $field" }
+        return "json_object($projection)"
+    }
+
+    private fun dataStateJson(): String =
+        "json_object('dataGeneration', dataGeneration, 'businessRevision', businessRevision)"
 
     private fun orderKeys(segment: LogicalSegment): Pair<String, String> = when (segment) {
         LogicalSegment.ACCOUNT, LogicalSegment.CATEGORY -> "id" to "''"
