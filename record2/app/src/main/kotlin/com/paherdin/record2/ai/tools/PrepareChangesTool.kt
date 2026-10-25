@@ -361,9 +361,15 @@ internal class PrepareChangesTool(private val context: RecordToolContext) :
     }
 
     private suspend fun activeProposalExists(): String {
-        val existing = runCatching {
+        val existing = try {
             context.deps.proposals.activeProposal(context.start.dataGeneration, context.start.sessionId)
-        }.getOrNull()
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: ProposalException) {
+            // Do not swallow generation/recovery failures while formatting the soft conflict
+            // result; they invalidate the run and must reach the hard-failure path.
+            context.poisonFrom(error)
+        }
         context.onClarification(listOf("active proposal exists; revise it instead of creating a second one"))
         return buildJsonObject {
             put("ok", false)

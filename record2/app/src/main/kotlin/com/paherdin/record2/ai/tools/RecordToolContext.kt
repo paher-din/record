@@ -7,6 +7,8 @@ import com.paherdin.record2.proposals.ProposalException
 import com.paherdin.record2.proposals.ProposalService
 import com.paherdin.record2.proposals.ProposalState
 import com.paherdin.record2.proposals.ProposalView
+import com.paherdin.record2.records.FinanceError
+import com.paherdin.record2.records.FinanceException
 import com.paherdin.record2.records.FinanceService
 import com.paherdin.record2.records.TimelineService
 import com.paherdin.record2.records.TimelineError
@@ -233,6 +235,16 @@ internal class RecordToolContext(
                 TimelineError.StorageFull ->
                     RecordToolException(RecordToolFailure.StorageFull, "timeline service: ${error.code}")
                 else -> RecordToolException(RecordToolFailure.RecoveryRequired, "timeline service: ${error.code}")
+            }
+            is FinanceException -> when (error.code) {
+                FinanceError.GenerationMismatch ->
+                    RecordToolException(RecordToolFailure.GenerationMoved, "finance service: ${error.code}")
+                FinanceError.RecoverableIO ->
+                    RecordToolException(RecordToolFailure.RecoverableIO, "finance service: ${error.code}")
+                FinanceError.StorageFull ->
+                    RecordToolException(RecordToolFailure.StorageFull, "finance service: ${error.code}")
+                else ->
+                    RecordToolException(RecordToolFailure.RecoveryRequired, "finance service: ${error.code}")
             }
             else -> RecordToolException(RecordToolFailure.RecoveryRequired, error.message ?: "tool failure")
         }

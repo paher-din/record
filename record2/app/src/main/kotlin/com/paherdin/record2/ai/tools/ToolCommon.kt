@@ -3,6 +3,7 @@ package com.paherdin.record2.ai.tools
 import com.paherdin.record2.records.FinanceCatalog
 import com.paherdin.record2.records.FinanceCategory
 import com.paherdin.record2.records.FinanceDirection
+import com.paherdin.record2.records.FinanceException
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -49,8 +50,12 @@ internal fun interface ToolResultExtra {
  * tool call through the real finance service; no DAO is exposed.
  */
 internal object ToolCatalog {
-    suspend fun catalog(context: RecordToolContext): FinanceCatalog =
+    suspend fun catalog(context: RecordToolContext): FinanceCatalog = try {
         context.deps.finance.initialize()
+    } catch (error: FinanceException) {
+        // A catalog read failure is a hard run failure, never a model-recoverable tool result.
+        context.poisonFrom(error)
+    }
 
     suspend fun categories(context: RecordToolContext): List<FinanceCategory> =
         catalog(context).categories

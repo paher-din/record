@@ -19,6 +19,8 @@ import com.paherdin.record2.proposals.ProposalState
 import com.paherdin.record2.proposals.ProposalView
 import com.paherdin.record2.records.FinanceCatalog
 import com.paherdin.record2.records.FinanceDirection
+import com.paherdin.record2.records.FinanceError
+import com.paherdin.record2.records.FinanceException
 import com.paherdin.record2.records.FinanceRecord
 import com.paherdin.record2.records.FinanceService
 import com.paherdin.record2.records.NoteRecord
@@ -186,8 +188,10 @@ private class ToolFakeProposals : ProposalService {
 
 private class ToolFakeFinance : FinanceService {
     var initializeCalls = 0
+    var initializeError: Exception? = null
     override suspend fun initialize(): FinanceCatalog {
         initializeCalls += 1
+        initializeError?.let { throw it }
         return FinanceCatalog("gen-1", com.paherdin.record2.records.FinanceSeeds.account, com.paherdin.record2.records.FinanceSeeds.categories)
     }
     override suspend fun renameAccount(generation: String, expectedVersion: Long, name: String) = error("unused")
@@ -383,6 +387,60 @@ internal class RecordToolsHostTest {
         assertEquals(RecordToolFailure.BudgetExceeded, (staged as RecordToolException).code)
         assertTrue(harness.proposals.prepares.isEmpty())
         assertTrue(harness.proposals.revises.isEmpty())
+    }
+
+    @Test
+    fun catalogReadFailurePoisonsAndBlocksTheNextRequest() = runBlocking {
+        val harness = ToolHarness()
+        harness.finance.initializeError = FinanceException(FinanceError.StorageFull)
+        val failure = runCatching {
+            harness.prepare.execute(
+                PrepareChangesArgs(
+                    ops = listOf(
+                        PrepareOpArgs(
+                            op = "CREATE_TRANSACTION", localRef = "#t1", direction = "EXPENSE",
+                            amountText = "1.00", accountName = "日常账户", categoryName = "餐饮",
+                            localDateTime = "2026-10-24T12:30:00", zoneId = "Asia/Shanghai",
+                        ),
+                    ),
+                ),
+            )
+        }.exceptionOrNull()
+        assertTrue("expected a hard catalog failure, got $failure", failure is RecordToolException)
+        assertEquals(RecordToolFailure.StorageFull, (failure as RecordToolException).code)
+        assertEquals(RecordToolFailure.StorageFull, harness.context.poisoned)
+        assertTrue(harness.proposals.prepares.isEmpty())
+
+        val delegate = GuardFailingHttpClient()
+        val guard = GuardedHttpClient(delegate, harness.context)
+        val request = runCatching {
+            guard.post("chat", "{}", String::class, String::class, emptyMap(), emptyMap())
+        }.exceptionOrNull()
+        assertTrue("poisoned request must be blocked, got $request", request is RecordToolException)
+        assertEquals(RecordToolFailure.StorageFull, (request as RecordToolException).code)
+        assertEquals(0, delegate.posts)
+    }
+
+    @Test
+    fun activeProposalReadFailureIsHardNotSwallowed() = runBlocking {
+        val harness = ToolHarness()
+        harness.proposals.prepareError = ProposalException(ProposalError.ActiveProposalExists)
+        harness.proposals.activeError = ProposalException(ProposalError.GenerationMismatch)
+        val failure = runCatching {
+            harness.prepare.execute(
+                PrepareChangesArgs(
+                    ops = listOf(
+                        PrepareOpArgs(
+                            op = "CREATE_NOTE", localRef = "#n1", body = "x",
+                            localDateTime = "2026-10-24T12:00:00", zoneId = "Asia/Shanghai",
+                        ),
+                    ),
+                ),
+            )
+        }.exceptionOrNull()
+        assertTrue("expected a hard active-proposal read failure, got $failure", failure is RecordToolException)
+        assertEquals(RecordToolFailure.GenerationMoved, (failure as RecordToolException).code)
+        assertEquals(RecordToolFailure.GenerationMoved, harness.context.poisoned)
     }
 
     @Test
