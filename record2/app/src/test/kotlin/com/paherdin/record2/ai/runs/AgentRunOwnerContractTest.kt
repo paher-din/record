@@ -6,6 +6,9 @@ import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.SafeRunErrorCode
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -40,6 +43,9 @@ class AgentRunOwnerContractTest {
             security = security,
             history = history,
             processOwnerId = "e2-owner",
+            // FakeHistoryService stamps startedAt=0; use the same clock domain for the D1 run
+            // wall-clock deadline.
+            clock = Clock.fixed(Instant.ofEpochMilli(0), ZoneOffset.UTC),
             httpClientFactory = httpFactory(http),
         ),
         history = history,

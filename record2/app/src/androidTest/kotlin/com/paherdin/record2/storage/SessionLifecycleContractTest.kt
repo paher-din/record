@@ -63,6 +63,7 @@ class SessionLifecycleContractTest {
         security = fixture.security,
         history = fixture.history,
         processOwnerId = fixture.owner,
+        clock = sessionClock,
         httpClientFactory = deviceScriptFactory(http),
     )
 
@@ -461,6 +462,7 @@ class SessionLifecycleContractTest {
                 security = fixture.security,
                 history = fixture.history,
                 processOwnerId = nextOwner,
+                clock = sessionClock,
                 httpClientFactory = deviceScriptFactory(http),
             ),
             history = fixture.history,

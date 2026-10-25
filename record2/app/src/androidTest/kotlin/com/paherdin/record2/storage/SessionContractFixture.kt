@@ -51,6 +51,8 @@ internal class ScriptedDeviceHttp(
 ) : KoogHttpClient {
     override val clientName: String = "record2-e1-scripted-device"
     val requests = CopyOnWriteArrayList<String>()
+    var closed: Boolean = false
+        private set
 
     override suspend fun <R : Any> get(
         path: String, responseType: KClass<R>, parameters: Map<String, String>, headers: Map<String, String>,
@@ -77,7 +79,9 @@ internal class ScriptedDeviceHttp(
         parameters: Map<String, String>, headers: Map<String, String>,
     ) = error("ScriptedDeviceHttp does not support lines")
 
-    override fun close() = Unit
+    override fun close() {
+        closed = true
+    }
 }
 
 internal fun deviceScriptFactory(http: ScriptedDeviceHttp): KoogHttpClient.Factory =

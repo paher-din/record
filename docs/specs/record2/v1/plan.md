@@ -1527,3 +1527,89 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - **集成后重验 PASS：** 任务组BUILD SUCCESSFUL；host Debug/Release各114项（新增审阅回归6项）fail/error/skip=0；设备`OK (95 tests)`（生命周期9项[含新增回执丢失]+Schema/SessionRun/Proposal/Commit/Note/AiSecurity/Init 86项），安装前后test APK摘要一致；进程矩阵`RUN_LIFECYCLE: PASS`（pid`4364`force-stop→`4435`新前台，冷启动请求计数不变、新Run恰+1）。最终APK：debug`0f03db93…`、release-unsigned`63be6e7e…`、androidTest`fd714d7d…`（[apk-hashes-review.txt](../../../../record2/build/e2/apk-hashes-review.txt)）。AVD曾在验证间隙离线，本批自行重启同一`record2-schema-api34`实例后完成全部复验；未wipe/卸载/清库。
 - **边界不变：** F2/D1/G1/G2职责与§32.4一致；本修复轮未改Schema、未引入Service、未做UI。
 
+## 33. D1：真实 Record Tools 与完整 Agent 行为（issue #14）
+
+### 33.1 D1授权与范围（2026-10-24/25）
+
+负责人2026-10-24深夜要求“现在来完成issue d1”。本批按§6 D1合同与G-CODE执行四工具参数/Registry/结果适配、Coordinator接入与必要合同调整及全部确定性测试；沿用A1/Schema v1/B0/B1–B4/C0/C1/D0/E0/E1交付，不新增ADR、不修改Schema v1物理结构、不实现F1/F2 UI、不启动E2取消矩阵、不操作真实用户数据或发布。执行于独立工作树`D:/record/.worktrees/d1-record-tools`（分支`codex/d1-record-tools`，基于含全部前置交付的main合并基线`64daa57`）。
+
+2026-10-25负责人进一步要求“完成d1的真实大模型部分”。该授权仅补真实DeepSeek端到端（环境中的D0专用测试Key、D1专用AVD、D0 $1批次上限）、真实费用/请求边界/DB证据，以及真实运行暴露的必要D1修复（活动提案焦点、终态安全提示构建、真实测试凭据/headers）；不扩张原范围，不接F2 UI、E2取消矩阵或发布。
+
+### 33.2 交付与验证
+
+- **四工具（`ai/tools`包）：** `search_records`（B4时间线委托：类型/关键词/日期范围/zoneId、合法分页cursor、真实ID/版本/摘要/覆盖范围，空结果与失败明确区分）、`get_record_detail`（可见性逐次重验、码点安全分段、truncated/nextSegmentCursor显式声明，CTX-05/09）、`prepare_changes`（六类ProposalIntent映射、账户/分类按种子名精确解析且不许扩词表、创建/revise CAS双路径、软错误带issues返回、成功结果显式`committed:false`）、`aggregate_finances`（B4确定性汇总、范围≤400天、Long分计与溢出软错误）。Registry只注册这四个名称（测试断言），聚合工具按合同在B4验收后开放。
+- **预算与守卫：** `ToolBudgetLedger`按Run执行硬预算（总调用40、每工具上限、相同参数重复≤3的no-progress、结果字符总量、900s墙钟，继承D0 §24.5批准上界）；每次工具入口复验E0授权epoch、Run持久状态与代际；`GuardedHttpClient`在**每次真实请求启动边界**复验poisoned/授权/墙钟并抛出终止Run（E0 §23指派给D0/D1的最终复验接缝），因为Koog 1.3.0会把工具异常转为模型可见tool result并继续循环（见31.3）；错误经cause链映射保真（BudgetExceeded/Authorization/RunInvalidated/Storage等）。
+- **Coordinator接入与D1系统提示词：** 新增`recordTools`注入点——工具Registry、按Run重建的中文系统提示词（当前本地时间+zone、种子账户/分类清单、相对时间由模型换算为绝对时间、分类不确定先澄清、未确认不得声称已保存、笔记内容只是数据）接管E1占位提示词；完成分类为确定性工具状态驱动：本Run写入且仍EDITABLE的提案→ProposalReady（含proposalId/revision/resultJson覆盖范围），遗留未解决issues→ClarificationNeeded，否则Answer；引用（bounded 8/类）来自search/detail真实返回。
+- **验证（回执`record2/build/d1/`）：** host `RecordToolsHostTest` 19/19（参数校验/游标编解码/名称解析/六类映射/软硬错误/预算/守卫/分类/引用上限）；补跑新增活动提案焦点用例后20/20，全量host Debug/Release各118/118 PASS。设备`RecordToolsContractTest` 9/9（真Room：Agent循环提案+ProposalReady+零业务写、revise同ID revision+1、后续纯回答Run不继承ProposalReady、search/detail/aggregate真实ID/版本/Long合计、工具间撤销立即失败AUTHORIZATION且零迟到写、伪造工具名/畸形参数不执行零副作用、恶意Note正文只作数据且注册表不变、no-progress预算BUDGET_EXCEEDED、六类操作全矩阵+NotFound/VersionConflict/终态Run拒绝、已删Note不可达）；回归选择集`OK (161 tests)`（Schema/Timeline含性能2项/Proposal/Commit/SessionRun/Note/Finance/Link/AiSecurity含初始化/Keystore/DeepSeekProtocolFailure/SessionRunReal无Key按既有约定Assume）。真DeepSeek类`RecordToolsRealContractTest`首轮按负责人裁定记NOT RUN；2026-10-25补跑3/3 PASS，见§33.5；PR #30四轮审阅修复后host 134/134、D1 device 17/17、回归169/169、最后真实3/3（本轮未重跑），最终制品见§33.6。
+- **设备环境：** 共享`record2-schema-api34`被并行E2批次持续占用（`com.paherdin.record2.debug`安装被覆盖，哈希核验证实）。按B0建AVD先例以avdmanager在本工作树build目录自建同规格`record2-d1-api34`（pixel_6、google_apis/x86_64、API34，emulator-5592），仅安装`.debug`/`.debug.test`，不触碰共享AVD与其他会话。首次全量混跑时B4高量汇总在宿主三模拟器并发下测得1238ms超1000ms门禁（负载污染，非代码回归；该类单独重跑与随后整组重跑均`OK`，回执保留首次失败记录）。
+
+### 33.3 D1实际发现（E2/F2/G2输入）
+
+1. **Koog 1.3.0工具异常语义：** 工具`execute`抛出的异常不会终止Agent循环——Koog把它包装成tool result文本（`Tool with name 'X' failed to execute due to the error: …`）回传模型并继续；伪造工具名与畸形参数同样只回传错误而不执行、不产生副作用（设备断言）。因此D1的撤销/预算/失效必须同时具备工具层poison状态与请求边界拦截，否则模型可继续消耗请求（CTX-04风险）；E2的取消/迟到写回接入时不得假设工具异常会自然终止循环。
+2. **请求边界是唯一可靠拦截点：** E0 §23“实际请求启动边界最终复验”由`GuardedHttpClient`落实；LLM客户端会包装底层异常，错误码须经cause链恢复（`safeRunError`先查RecordToolException再分类）。
+3. **并发批次资源冲突：** E2与D1同时使用同一AVD与包名会互相覆盖安装（本批以哈希核验捕获）。后续批次在并行执行时应自建工作树内AVD或显式协调设备窗口；B4性能门禁对宿主负载敏感，联合测量需独占窗口。
+4. **模型行为不信任：** 完成分类、引用、覆盖范围均由持久工具状态确定性导出；模型成功回答不作为任何验收依据（D0发现#8延续）。prepare成功结果显式`committed:false`+中文告知，抑制模型自称已保存；分类/日期歧义由issues回传模型澄清（ClarificationNeeded）。
+5. **跨Run修订需要活动提案焦点：** Room历史只保存用户可见消息，不保存tool流量；新Run若不注入活动提案ID/revision，真实模型可能声称“无法修改待确认提案”。D1系统提示词现注入本Session仍EDITABLE提案的身份/revision及修订规则（仅焦点，不是业务事实）；LOCKED不注入，避免把不可编辑提案当成可修订。
+6. **真实测试的凭据/认证链：** 真机类必须经E0 `replaceCredential`写入真实Key（不能沿用确定性fixture的合成凭据），并使用透传`create(...headers)`的HTTP factory；否则会401或假阴性。D1已修正并保留请求/token/费用计量。
+7. **固定时钟/时区一致性：** 固定时钟12:00Z+设备GMT会让合成事件12:30成为未来时间，工具按P0正确拒绝；真实补跑将专用AVD设为Asia/Shanghai（固定时钟=20:00本地）。这不是放宽未来时间规则；生产使用设备本地时区。
+
+### 33.4 边界与未完成
+
+- **真DeepSeek端到端（首轮NOT RUN；2026-10-25补跑PASS，见§33.5）：** 首轮负责人裁定不跑真实请求，故当时issue #14保持OPEN；补跑已完成真实Provider、费用/预算、DB快照和撤销零请求证据，issue #14收口待负责人明确接受。
+- 工具级Token/费用预算沿用D0测试上界证据，产品默认预算仍不冻结（待D1真实数据+E2）；F2的原生确认展示/导航/聊天UI、E2的取消/删除/恢复矩阵、G0/G1备份恢复、G2真机与联合验收均未启动。工具不能也不宣称提交成功；真正确认提交仍归C1/F2。
+- 确定性批次未操作Provider网络/凭据；真实补跑仅使用D0专用测试Key和合成数据，未操作真实用户数据、Schema/索引、备份或发布。过程合同测试（`*ProcessContractTest`）为脚本门控用例，未随裸instrument运行（无参运行按设计报Missing databaseName）。
+
+### 33.5 真实DeepSeek补跑与D1修复（2026-10-25）
+
+- **授权/环境：** 负责人2026-10-25要求“完成d1的真实大模型部分”；仅使用环境中的D0专用测试Key（指纹`9612f585b3ef`，非产品/用户Key）和专用AVD `record2-d1-api34`/`emulator-5592`，费用沿用D0批次$1上限。Key经stdin注入`files/d1/deepseek.key`并首读即删，测试后目录为空。首次以GMT运行时时区与固定时钟使合成12:30成为未来时间，工具按P0正确拒绝；将专用AVD设为Asia/Shanghai后重跑（固定时钟=20:00本地），未放宽生产规则。
+- **真实结果（3/3 PASS）：** prepare/revise各attempt 1：同一提案`556bdd64…` revision 1→2、金额3650→4000分、三操作、2条COMPLETED Run、确认前0业务写；search：Answer+2条真实transaction引用、0 proposal/commit；撤销：0请求、0 Run/消息/业务事实。合计9请求、24,181 input/1,529 output tokens、估算$0.0090891，远低于$1；每个请求断言Flash、thinking disabled、四工具白名单、请求体无Key。DB快照摘要与SHA-256见[2026-10-25-d1.md](../../../engineering/evidence/2026-10-25-d1.md#real-deepseek-completion-2026-10-25)；回执`build/d1/instrument-real-e2e5.txt`、`logcat-real-e2e5.txt`、`instrument-real-regression-full.txt`。
+- **修复：** (1) 真机类改用E0 `replaceCredential`写入真实Key，不再沿用合成凭据；(2) 真实HTTP factory改用D0 `RecordingFactory`透传`create(...headers)`，修复丢失Bearer导致的401；(3) D1系统提示词注入会话内仍EDITABLE提案的proposalId/revision及修订规则，修复新Run无法修订待确认提案（AI-AC3），LOCKED不注入；(4) 工具上下文/提示词构建移入终态捕获try并映射`ProposalException`，避免读取失败留下RUNNING slot；(5) 真实测试增加revise受控重试/最终payload断言与每请求四工具/Key零泄漏断言。
+- **最终制品（被§33.6审阅修复构建取代）：** debug `cf7f34a1…`、release-unsigned `8d46d88e…`、androidTest `f87cc400…`；设备安装的debug/test摘要与构建产物一致。host 118/118、D1 device 9/9、回归161/161、真实3/3。设备已停止；未操作共享AVD/其他设备/真实用户数据/Schema/备份/发布。
+- **收口：** D1真实完成门禁证据已取得；issue #14关闭仍需负责人明确接受。C1/F2真正确认提交、F2 UI/原生交接、E2取消/迟到写回、G2真机联合验收仍未启动；产品默认预算不冻结。
+
+### 33.6 PR #30审阅修复（2026-10-25）
+
+负责人对`fb82351`、`680afc6`、`fe839dc`与`f1103bb`各给出Request Changes；按“定向修复，不重构架构”处理，§33.5的中间制品由本节最终构建取代。
+
+- **P1-1 Run墙钟：** `AgentRunCoordinator`以`runWallClockMillis`（默认900,000，D0 §24.5上界）和`start.startedAt`计算剩余时间，`withTimeout`包住整个agent执行；超时映射BUDGET_EXCEEDED而非CANCELLED；工具上下文使用同一墙钟。设备`runWallClockStopsTheAgentAsBudgetExceeded`：FAILED/BUDGET_EXCEEDED、1请求、无最终回复、slot释放。
+- **P1-2 最大步数：** cause链识别`AIAgentMaxNumberOfIterationsReachedException`→BUDGET_EXCEEDED（不再PROVIDER_FAILURE）。设备`maxAgentIterationsExhaustionIsBudgetNotProviderFailure`：FAILED/BUDGET_EXCEEDED、请求≤2。
+- **P1-3 持久Run状态：** `GuardedHttpClient.check()`每次请求读取`persistedResult`并要求RUNNING；E2式取消/删除即使epoch不变也拦截下一请求。设备`persistedRunInvalidationBlocksTheNextRequest`：1请求、CANCELLED。
+- **P2：** 新增生产`RunUsageLedger`（累计token/费用；64,000 tokens、Flash $0.10、Pro $0.25为临时上限，产品默认不冻结；越界→FAILED/BUDGET_EXCEEDED）；`linkedRecords`改为JSON数组（host/设备类型断言）；`DeepSeekLLMClient`在finally关闭（设备断言）；E1 host/device coordinator显式使用与历史服务相同时钟域，避免固定时钟夹具误判超时。
+- **第二轮审阅（UsageUnknown）：** usage块缺失、字段缺失/非整数、负数、累计溢出或费用非有限值→`RunUsageVerdict.Unknown`→`RecordToolFailure.UsageUnknown`→`AgentRunError.UsageUnknown`→持久`FAILED/PROVIDER_FAILURE`，绝不`COMPLETED`；已批准的64,000 tokens与临时费用阈值不变。host 10项账本测试；设备`unmeasurableUsageFailsAsUsageUnknownInsteadOfCompleting`覆盖missing/malformed/negative/overflow（各1请求、无assistant、slot释放）。D1为非流式，`sse/lines`显式拒绝（RecoveryRequired），避免未计量的预算旁路；F2启用流式前必须先接用量账本。`SessionRunRealContractTest.verify`要求marker与重新注入Key同时存在，并清理遗留marker，避免无Key回归误跑。
+- **第三轮审阅（poisoned）：** `RecordToolContext.guard()`第一步检查`poisoned`；同一模型响应中硬失败后的后续工具调用在业务服务/提案写入前被拒绝。host `poisonedRunRejectsLaterToolsBeforeBusinessWrites`（no-progress后prepare被拒、ProposalService prepare/revise为0）；API34 `poisonedRunRejectsLaterToolCallsInTheSameResponse`（同响应4次search+prepare → FAILED/BUDGET_EXCEEDED、1请求、0 proposal）。按审阅要求本轮未重跑真实DeepSeek全量。
+- **第四轮审阅（业务目录硬失败）：** `ToolCatalog.catalog()`统一捕获`FinanceException`并`poisonFrom()`；`RecordToolContext.hard`新增Finance映射（GenerationMismatch→GenerationMoved、RecoverableIO、StorageFull，其余→RecoveryRequired）；`PrepareChangesTool.activeProposalExists()`不再`runCatching`吞异常，取消原样上抛、`ProposalException`进入`poisonFrom`。host `catalogReadFailurePoisonsAndBlocksTheNextRequest`（StorageFull→poisoned→后续HTTP请求在委托前被拦截、无提案）与`activeProposalReadFailureIsHardNotSwallowed`（GenerationMismatch→GenerationMoved）。生产代码变更后D1 device 17/17、回归169/169；按审阅要求未重跑真实DeepSeek。
+- **验证（最终APK）：** host 134/134；D1 host 26+10；D1 device 17/17；回归169/169；最后真实DeepSeek 3/3（fe839dc，本轮未重跑）。最后真实：prepare/revise各attempt 1、提案`254a8099…` revision 1→2、金额3650→4000分、0业务写/commit；search 2真实引用；撤销0请求；8请求、20,906 input/1,373 output、$0.0079194。最终制品debug `753deffb…`、release `acc8ccea…`、test `1086ce55…`；设备安装摘要一致。
+- **未完成：** PR #30仍与origin/main冲突（G0 §31），未强行同步；D1/E2的Coordinator `RunIdentity`接口留待合并时统一；系统提示词构造/持久化仍在agent超时块外，严格端到端Run超时归E2；E1真实跨进程未重跑（确定性E1回归PASS）；issue #14功能验收已获APPROVE，合并/关闭待集成；F2/E2/G0/G1/G2及产品预算冻结未启动。
+
+#### 第五轮审阅：D1 功能验收批准（2026-10-25）
+
+负责人对`cf29bad`给出**APPROVE**：四工具与真实Room接线、确认前零业务写、授权/Run失效/poisoned阻断、Token/费用/墙钟/迭代预算（D1约定范围）、Finance/Proposal硬失败传播、Host/API34/真实模型证据均通过；不再要求D1作者进行局部重构。批准范围仅为**D1独立功能验收**：PR #30合并、与最新main同步、D1+E2的`RunIdentity`/取消/恢复联调、G2联合验收均未包含；issue #14保持OPEN，合并/关闭需负责人另行明确授权。后续转入统一集成任务，D1代码冻结（除集成回归发现的问题）。
+
+## 34. D1+E2 集成与组合回归（2026-10-25）
+
+### 34.1 授权、基线与冲突解决
+
+负责人2026-10-25在D1功能验收APPROVE后同意启动独立集成任务。执行于独立工作树`D:/record/.worktrees/d1-e2-integration`（分支`codex/d1-e2-integration`，基于`origin/main=c612e89`）：先合入E2 PR #29（`0b68bb6`），再合入D1 PR #30（`52e3398`，代码`cf29bad`）；E2 PR #29已合入main `992181f`，集成分支同步main `8d74329`后推送为[PR #32](https://github.com/paher-din/record/pull/32)。PR #32 是集成交付载体；D1 #30 由其替代，issue #14 由 #32 关闭；issue #13 由 E2 #29 处理。F2/G0/G1/G2不在本任务。
+
+E2合入干净；D1合并仅在`docs/index.md`与`plan.md`冲突。解决：保留G0 §31、E2 §32，D1顺延为§33（标题/子节/内部引用/index链接同步）；源码自动合并后人工核对。E2的`AgentRunCoordinator.run(sessionId,userText,identity:RunIdentity?=null)`保留，`AgentRunOwner.launchRun`传入预生成身份；D1 `recordTools`/Run墙钟/GuardedHttpClient/用量账本/UsageUnknown/poisoned/业务硬失败全部保留。
+
+### 34.2 测试适配与新增联调用例
+
+- E2 host/device coordinator显式传入与history/security相同的时钟（`sessionClock`/epoch 0），避免D1 Run墙钟把固定时钟夹具误判为超时。
+- D1 host `ToolFakeHistory`补齐E2新增的`activeRun/deleteSession`接口。
+- 新增`D1E2IntegrationContractTest.ownedRunWithRecordToolsIsCancelledBeforeLateReply`：`AgentRunOwner`+D1 `recordTools`+真实Room，首个请求触发`search_records`、第二个请求阻塞时owner取消；持久CANCELLED、handle取消、无assistant消息。1/1 PASS。
+
+### 34.3 组合验证与制品
+
+| Suite | Result |
+|---|---|
+| host Debug/Release | **150/150 PASS** |
+| combined device regression | **OK (179 tests)**：D1 tools 17、集成交错1、E2 lifecycle 9、E1 SessionRun 15及既有Schema/Proposal/Commit/Note/Finance/Link/AiSecurity/Keystore/D0Failure等；SessionRunReal无Key Assume |
+| E2 process matrix | **RUN_LIFECYCLE: PASS**（真实force-stop/冷启动零自动模型/工具调用、新Run恰+1；原始证据`record2/build/e2/process-94852b01681045f8979f267f3186b268/`） |
+| build | check+debug/test/release APK PASS |
+
+APK：debug `3aa2b037…`、release-unsigned `0f88685c…`、androidTest `b681389e…`；设备安装摘要一致。证据见[2026-10-25-d1-e2-integration.md](../../../engineering/evidence/2026-10-25-d1-e2-integration.md)。本轮未重跑真实DeepSeek；D1分支最后真实3/3保留。
+
+### 34.4 边界
+
+PR #32 是集成交付载体，基于 main + E2；E2 #29 已合并，D1 #30 由 #32 替代，issue #14 由 #32 关闭。合并后的 main 仍需执行 G2 联合验收。F2 绑定、G0/G1/G2 及产品预算冻结不在本任务范围。
