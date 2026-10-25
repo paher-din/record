@@ -27,25 +27,35 @@ internal object LogicalBackupValidator {
     private val SAFE_ERRORS = SafeRunErrorCode.entries.map { it.name }.toSet()
     private val SHA256 = Regex("[0-9a-f]{64}")
 
-    fun validate(backup: LogicalBackup, nowMillis: Long) {
+    fun validate(
+        backup: LogicalBackup,
+        nowMillis: Long,
+        cancellationCheck: () -> Unit = {},
+    ) {
         requireTimestamp(backup.manifest.exportedAt, "manifest.exportedAt", nowMillis)
-        validateContent(backup.content, nowMillis)
+        validateContent(backup.content, nowMillis, cancellationCheck)
     }
 
-    fun validateContent(content: LogicalBackupContent, nowMillis: Long) {
+    fun validateContent(
+        content: LogicalBackupContent,
+        nowMillis: Long,
+        cancellationCheck: () -> Unit = {},
+    ) {
+        cancellationCheck()
         val account = validateAccounts(content.accounts, nowMillis)
         val categories = validateCategories(content.categories, nowMillis)
         val transactions = unique(content.transactions, "record_transaction.id") { it.id }
         val notes = unique(content.notes, "note.id") { it.id }
-        transactions.values.forEach { validateTransaction(it, account, categories, nowMillis) }
-        notes.values.forEach { validateNote(it, nowMillis) }
+        transactions.values.forEach { cancellationCheck(); validateTransaction(it, account, categories, nowMillis) }
+        notes.values.forEach { cancellationCheck(); validateNote(it, nowMillis) }
         validateLinks(content.links, transactions, notes)
         validateDraft(content.drafts, transactions, nowMillis)
         val sessions = unique(content.sessions, "agent_session.id") { it.id }
-        sessions.values.forEach { validateSession(it, nowMillis) }
+        sessions.values.forEach { cancellationCheck(); validateSession(it, nowMillis) }
         val runs = unique(content.runs, "agent_run.id") { it.id }
         val runRequests = HashSet<String>()
         runs.values.forEach {
+            cancellationCheck()
             validateRun(it, sessions, nowMillis)
             if (!runRequests.add(it.proposalCreationRequestId)) {
                 invalid("agent_run.proposalCreationRequestId is not unique")
@@ -53,7 +63,7 @@ internal object LogicalBackupValidator {
         }
         val proposals = unique(content.proposals, "change_proposal.id") { it.id }
         val creationRequests = HashSet<String>()
-        validateProposals(proposals, runs, sessions, nowMillis) { proposal ->
+        validateProposals(proposals, runs, sessions, nowMillis, cancellationCheck) { proposal ->
             if (!creationRequests.add(proposal.creationRequestId)) {
                 invalid("change_proposal.creationRequestId is not unique")
             }
@@ -61,7 +71,7 @@ internal object LogicalBackupValidator {
         val operations = unique(content.operations, "commit_operation.id") { it.id }
         val operationsByProposal = HashMap<String, OperationRow>()
         val frozenOperations = HashMap<String, FrozenCommit>()
-        validateOperations(operations, transactions, notes, proposals, nowMillis) { operation, frozen ->
+        validateOperations(operations, transactions, notes, proposals, nowMillis, cancellationCheck) { operation, frozen ->
             if (operationsByProposal.put(operation.proposalId, operation) != null) {
                 invalid("commit_operation.proposalId is not unique")
             }
@@ -71,8 +81,8 @@ internal object LogicalBackupValidator {
         val messages = unique(content.messages, "agent_message.id") { it.id }
         val messagesByRun = messages.values.groupBy { it.runId }
         val messagesBySession = messages.values.groupBy { it.sessionId }
-        validateMessages(messages, messagesByRun, runs, sessions, proposals, nowMillis)
-        validateReferences(content.references, messages, transactions, notes)
+        validateMessages(messages, messagesByRun, runs, sessions, proposals, nowMillis, cancellationCheck)
+        validateReferences(content.references, messages, transactions, notes, cancellationCheck)
         validateRunMessages(runs, messagesByRun)
         validateSequences(sessions, messagesBySession)
         validateActiveSlots(runs, proposals)
@@ -289,9 +299,11 @@ internal object LogicalBackupValidator {
         runs: Map<String, RunRow>,
         sessions: Map<String, SessionRow>,
         nowMillis: Long,
+        cancellationCheck: () -> Unit,
         onCreationRequest: (ProposalRow) -> Unit,
     ) {
         for (row in proposals.values) {
+            cancellationCheck()
             requireIdentity(row.id, "change_proposal.id")
             requireIdentity(row.sessionId, "change_proposal.sessionId")
             requireIdentity(row.originRunId, "change_proposal.originRunId")
@@ -348,9 +360,11 @@ internal object LogicalBackupValidator {
         notes: Map<String, NoteRow>,
         proposals: Map<String, ProposalRow>,
         nowMillis: Long,
+        cancellationCheck: () -> Unit,
         onOperation: (OperationRow, FrozenCommit) -> Unit,
     ) {
         for (row in operations.values) {
+            cancellationCheck()
             requireIdentity(row.id, "commit_operation.id")
             requireIdentity(row.proposalId, "commit_operation.proposalId")
             requireVersion(row.confirmedRevision, "commit_operation.confirmedRevision")
@@ -481,10 +495,12 @@ internal object LogicalBackupValidator {
         sessions: Map<String, SessionRow>,
         proposals: Map<String, ProposalRow>,
         nowMillis: Long,
+        cancellationCheck: () -> Unit,
     ) {
         val byRunRole = HashSet<Pair<String, String>>()
         val bySessionSequence = HashSet<Pair<String, Long>>()
         for (row in messages.values) {
+            cancellationCheck()
             requireIdentity(row.id, "agent_message.id")
             requireIdentity(row.sessionId, "agent_message.sessionId")
             requireIdentity(row.runId, "agent_message.runId")
@@ -544,10 +560,12 @@ internal object LogicalBackupValidator {
         messages: Map<String, MessageRow>,
         transactions: Map<String, TransactionRow>,
         notes: Map<String, NoteRow>,
+        cancellationCheck: () -> Unit,
     ) {
         unique(references, "agent_message_reference (messageId, ordinal)") { it.messageId to it.ordinal }
         val byMessage = references.groupBy { it.messageId }
         for ((messageId, refs) in byMessage) {
+            cancellationCheck()
             requireIdentity(messageId, "agent_message_reference.messageId")
             val message = messages[messageId] ?: invalid("agent_message_reference message is missing")
             if (message.role != SessionRole.ASSISTANT.name) invalid("only ASSISTANT messages may have references")

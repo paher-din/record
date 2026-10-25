@@ -70,7 +70,7 @@ internal class RestoreService(
             val read = LogicalZipReader.read(zip, check)
             check()
             val now = clock.millis()
-            LogicalBackupValidator.validate(read.backup, now)
+            LogicalBackupValidator.validate(read.backup, now, check)
             check()
             val target = ReadOnlyTargetInspector.inspect(databasePath)
             checkDisk(read.backup.manifest, bytes, target)
