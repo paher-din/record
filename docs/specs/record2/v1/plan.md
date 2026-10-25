@@ -1555,7 +1555,7 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 ### 33.4 边界与未完成
 
-- **真DeepSeek端到端（首轮NOT RUN；2026-10-25补跑PASS，见§33.5）：** 首轮负责人裁定不跑真实请求，故当时issue #14保持OPEN；补跑已完成真实Provider、费用/预算、DB快照和撤销零请求证据，issue #14收口待负责人明确接受。
+- **真DeepSeek端到端（首轮NOT RUN；2026-10-25补跑PASS，见§33.5）：** 首轮负责人裁定不跑真实请求，故当时issue #14保持OPEN；补跑已完成真实Provider、费用/预算、DB快照和撤销零请求证据；后续由§34 PR #32合并关闭。
 - 工具级Token/费用预算沿用D0测试上界证据，产品默认预算仍不冻结（待D1真实数据+E2）；F2的原生确认展示/导航/聊天UI、E2的取消/删除/恢复矩阵、G0/G1备份恢复、G2真机与联合验收均未启动。工具不能也不宣称提交成功；真正确认提交仍归C1/F2。
 - 确定性批次未操作Provider网络/凭据；真实补跑仅使用D0专用测试Key和合成数据，未操作真实用户数据、Schema/索引、备份或发布。过程合同测试（`*ProcessContractTest`）为脚本门控用例，未随裸instrument运行（无参运行按设计报Missing databaseName）。
 
@@ -1579,17 +1579,17 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - **第三轮审阅（poisoned）：** `RecordToolContext.guard()`第一步检查`poisoned`；同一模型响应中硬失败后的后续工具调用在业务服务/提案写入前被拒绝。host `poisonedRunRejectsLaterToolsBeforeBusinessWrites`（no-progress后prepare被拒、ProposalService prepare/revise为0）；API34 `poisonedRunRejectsLaterToolCallsInTheSameResponse`（同响应4次search+prepare → FAILED/BUDGET_EXCEEDED、1请求、0 proposal）。按审阅要求本轮未重跑真实DeepSeek全量。
 - **第四轮审阅（业务目录硬失败）：** `ToolCatalog.catalog()`统一捕获`FinanceException`并`poisonFrom()`；`RecordToolContext.hard`新增Finance映射（GenerationMismatch→GenerationMoved、RecoverableIO、StorageFull，其余→RecoveryRequired）；`PrepareChangesTool.activeProposalExists()`不再`runCatching`吞异常，取消原样上抛、`ProposalException`进入`poisonFrom`。host `catalogReadFailurePoisonsAndBlocksTheNextRequest`（StorageFull→poisoned→后续HTTP请求在委托前被拦截、无提案）与`activeProposalReadFailureIsHardNotSwallowed`（GenerationMismatch→GenerationMoved）。生产代码变更后D1 device 17/17、回归169/169；按审阅要求未重跑真实DeepSeek。
 - **验证（最终APK）：** host 134/134；D1 host 26+10；D1 device 17/17；回归169/169；最后真实DeepSeek 3/3（fe839dc，本轮未重跑）。最后真实：prepare/revise各attempt 1、提案`254a8099…` revision 1→2、金额3650→4000分、0业务写/commit；search 2真实引用；撤销0请求；8请求、20,906 input/1,373 output、$0.0079194。最终制品debug `753deffb…`、release `acc8ccea…`、test `1086ce55…`；设备安装摘要一致。
-- **未完成：** PR #30仍与origin/main冲突（G0 §31），未强行同步；D1/E2的Coordinator `RunIdentity`接口留待合并时统一；系统提示词构造/持久化仍在agent超时块外，严格端到端Run超时归E2；E1真实跨进程未重跑（确定性E1回归PASS）；issue #14功能验收已获APPROVE，合并/关闭待集成；F2/E2/G0/G1/G2及产品预算冻结未启动。
+- **未完成（截至D1分支）：** PR #30与origin/main冲突、D1/E2的Coordinator `RunIdentity`接口统一、E1真实跨进程未重跑；上述集成项已由§34 PR #32处理，issue #14已关闭。系统提示词构造/持久化仍在agent超时块外，严格端到端Run超时归E2；F2/E2/G0/G1/G2及产品预算冻结未启动。
 
 #### 第五轮审阅：D1 功能验收批准（2026-10-25）
 
-负责人对`cf29bad`给出**APPROVE**：四工具与真实Room接线、确认前零业务写、授权/Run失效/poisoned阻断、Token/费用/墙钟/迭代预算（D1约定范围）、Finance/Proposal硬失败传播、Host/API34/真实模型证据均通过；不再要求D1作者进行局部重构。批准范围仅为**D1独立功能验收**：PR #30合并、与最新main同步、D1+E2的`RunIdentity`/取消/恢复联调、G2联合验收均未包含；issue #14保持OPEN，合并/关闭需负责人另行明确授权。后续转入统一集成任务，D1代码冻结（除集成回归发现的问题）。
+负责人对`cf29bad`给出**APPROVE**：四工具与真实Room接线、确认前零业务写、授权/Run失效/poisoned阻断、Token/费用/墙钟/迭代预算（D1约定范围）、Finance/Proposal硬失败传播、Host/API34/真实模型证据均通过；不再要求D1作者进行局部重构。批准范围仅为**D1独立功能验收**：PR #30合并、与最新main同步、D1+E2的`RunIdentity`/取消/恢复联调、G2联合验收均未包含；当时issue #14保持OPEN，后续由§34 PR #32合并关闭。后续转入统一集成任务，D1代码冻结（除集成回归发现的问题）。
 
 ## 34. D1+E2 集成与组合回归（2026-10-25）
 
 ### 34.1 授权、基线与冲突解决
 
-负责人2026-10-25在D1功能验收APPROVE后同意启动独立集成任务。执行于独立工作树`D:/record/.worktrees/d1-e2-integration`（分支`codex/d1-e2-integration`，基于`origin/main=c612e89`）：先合入E2 PR #29（`0b68bb6`），再合入D1 PR #30（`52e3398`，代码`cf29bad`）；E2 PR #29已合入main `992181f`，集成分支同步main `8d74329`后推送为[PR #32](https://github.com/paher-din/record/pull/32)。PR #32 是集成交付载体；D1 #30 由其替代，issue #14 由 #32 关闭；issue #13 由 E2 #29 处理。F2/G0/G1/G2不在本任务。
+负责人2026-10-25在D1功能验收APPROVE后同意启动独立集成任务。执行于独立工作树`D:/record/.worktrees/d1-e2-integration`（分支`codex/d1-e2-integration`，基于`origin/main=c612e89`）：先合入E2 PR #29（`0b68bb6`），再合入D1 PR #30（`52e3398`，代码`cf29bad`）；E2 PR #29已合入main `992181f`，集成分支同步main `8d74329`后推送为[PR #32](https://github.com/paher-din/record/pull/32)。PR #32 已合并 main `4f92878`；D1 #30 由其替代，issue #14 已关闭；issue #13 由 E2 #29 合并关闭。F2/G0/G1/G2不在本任务。
 
 E2合入干净；D1合并仅在`docs/index.md`与`plan.md`冲突。解决：保留G0 §31、E2 §32，D1顺延为§33（标题/子节/内部引用/index链接同步）；源码自动合并后人工核对。E2的`AgentRunCoordinator.run(sessionId,userText,identity:RunIdentity?=null)`保留，`AgentRunOwner.launchRun`传入预生成身份；D1 `recordTools`/Run墙钟/GuardedHttpClient/用量账本/UsageUnknown/poisoned/业务硬失败全部保留。
 
@@ -1612,4 +1612,4 @@ APK：debug `3aa2b037…`、release-unsigned `0f88685c…`、androidTest `b68138
 
 ### 34.4 边界
 
-PR #32 是集成交付载体，基于 main + E2；E2 #29 已合并，D1 #30 由 #32 替代，issue #14 由 #32 关闭。合并后的 main 仍需执行 G2 联合验收。F2 绑定、G0/G1/G2 及产品预算冻结不在本任务范围。
+PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，issue #13/#14 已关闭。合并后的 main 仍需执行 G2 联合验收。F2 绑定、G0/G1/G2 及产品预算冻结不在本任务范围。
