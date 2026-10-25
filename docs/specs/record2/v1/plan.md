@@ -1589,7 +1589,7 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 ### 34.1 授权、基线与冲突解决
 
-负责人2026-10-25在D1功能验收APPROVE后同意启动独立集成任务。执行于独立工作树`D:/record/.worktrees/d1-e2-integration`（分支`codex/d1-e2-integration`，基于`origin/main=c612e89`）：先合入E2 PR #29（`0b68bb6`，已含main），再合入D1 PR #30（`52e3398`，代码`cf29bad`）。仅本地集成/联调，不推送、不创建/合并PR、不关闭issue、不进入G2。
+负责人2026-10-25在D1功能验收APPROVE后同意启动独立集成任务。执行于独立工作树`D:/record/.worktrees/d1-e2-integration`（分支`codex/d1-e2-integration`，基于`origin/main=c612e89`）：先合入E2 PR #29（`0b68bb6`），再合入D1 PR #30（`52e3398`，代码`cf29bad`）；E2 PR #29已合入main `992181f`，集成分支同步main `8d74329`后推送为[PR #32](https://github.com/paher-din/record/pull/32)。PR #32 是集成交付载体；D1 #30 由其替代，issue #14 由 #32 关闭；issue #13 由 E2 #29 处理。F2/G0/G1/G2不在本任务。
 
 E2合入干净；D1合并仅在`docs/index.md`与`plan.md`冲突。解决：保留G0 §31、E2 §32，D1顺延为§33（标题/子节/内部引用/index链接同步）；源码自动合并后人工核对。E2的`AgentRunCoordinator.run(sessionId,userText,identity:RunIdentity?=null)`保留，`AgentRunOwner.launchRun`传入预生成身份；D1 `recordTools`/Run墙钟/GuardedHttpClient/用量账本/UsageUnknown/poisoned/业务硬失败全部保留。
 
@@ -1612,4 +1612,4 @@ APK：debug `3aa2b037…`、release-unsigned `0f88685c…`、androidTest `b68138
 
 ### 34.4 边界
 
-这是本地集成候选，不是main合并或PR交付；PR #30/#29仍OPEN，issue #13/#14未关闭。F2绑定、G0/G1/G2及产品预算冻结不在本任务范围。负责人需决定PR/合并顺序，并在main合并后执行G2联合验收。
+PR #32 是集成交付载体，基于 main + E2；E2 #29 已合并，D1 #30 由 #32 替代，issue #14 由 #32 关闭。合并后的 main 仍需执行 G2 联合验收。F2 绑定、G0/G1/G2 及产品预算冻结不在本任务范围。

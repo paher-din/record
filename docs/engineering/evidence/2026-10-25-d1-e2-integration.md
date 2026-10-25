@@ -3,8 +3,8 @@
 ## Authorization and scope
 
 - 负责人2026-10-25在D1独立功能验收APPROVE（`cf29bad`）后同意启动独立集成任务，目标为：同步/合并D1与E2、统一Coordinator接口、重新构建并联调回归；不合并main、不创建/合并PR、不关闭issue、不进入G2。
-- 工作树：`D:/record/.worktrees/d1-e2-integration`（分支`codex/d1-e2-integration`，基于`origin/main=c612e89`）。先合入E2 PR #29（`0b68bb6`，已含main），再合入D1 PR #30（`52e3398`，代码`cf29bad`）。
-- 仅本地集成；未推送、未创建PR、未合并、未关闭issue #13/#14。
+- 工作树：`D:/record/.worktrees/d1-e2-integration`（分支`codex/d1-e2-integration`，基于`origin/main=c612e89`）。先合入E2 PR #29（`0b68bb6`，已含main），再合入D1 PR #30（`52e3398`，代码`cf29bad`）；E2 PR #29已合入main `992181f`，集成分支同步main `8d74329`后推送为 [PR #32](https://github.com/paher-din/record/pull/32)。
+- PR #32 是集成交付载体；D1 PR #30 由其替代，issue #14 由 PR #32 关闭；issue #13 由 E2 #29 合并处理。
 
 ## Integration result
 
@@ -28,6 +28,6 @@
 
 ## Boundaries / next steps
 
-- 这是本地集成候选，不是main合并或PR交付；PR #30/#29仍未合并，issue #13/#14仍未关闭。
-- 组合验证覆盖D1工具+E2 owner的RunIdentity/取消/进程恢复/既有Room回归；仍需负责人在集成分支上决定PR/合并顺序，并在合并到main后执行G2联合验收。
-- F2 UI绑定、备份/G0/G1/G2及产品默认预算冻结不在本任务范围。
+- PR #32 是集成交付载体，基于 main + E2；E2 #29 已合并，D1 #30 由 #32 替代，issue #14 由 #32 关闭。合并后的 main 仍需执行 G2 联合验收。
+- 组合验证覆盖 D1 工具 + E2 owner 的 RunIdentity/取消/进程恢复/既有 Room 回归；真实 DeepSeek 组合全量未重跑。
+- F2 UI 绑定、备份/G0/G1/G2 及产品默认预算冻结不在本任务范围。
