@@ -73,6 +73,31 @@ internal interface SessionDao {
     )
     fun interruptAllRunning(finishedAt: Long): Int
 
+    // Authorization-change invalidation (E2): same transaction as the ai_control epoch bump.
+    // Every RUNNING row holds a strictly older epoch, so scope-by-epoch is redundant here.
+    @Query(
+        "UPDATE agent_run SET state = 'FAILED', finishedAt = :finishedAt, activeSlot = NULL, " +
+            "safeErrorCode = 'AUTHORIZATION' WHERE state = 'RUNNING'",
+    )
+    fun failAllRunningForAuthorization(finishedAt: Long): Int
+
+    // Session deletion (B0 §8): explicit child-to-parent order; every FK is RESTRICT, so a miss
+    // would abort the transaction rather than orphan anything.
+    @Query(
+        "DELETE FROM agent_message_reference WHERE messageId IN " +
+            "(SELECT id FROM agent_message WHERE sessionId = :sessionId)",
+    )
+    fun deleteReferencesForSession(sessionId: String): Int
+
+    @Query("DELETE FROM agent_message WHERE sessionId = :sessionId")
+    fun deleteMessagesForSession(sessionId: String): Int
+
+    @Query("DELETE FROM agent_run WHERE sessionId = :sessionId")
+    fun deleteRunsForSession(sessionId: String): Int
+
+    @Query("DELETE FROM agent_session WHERE id = :sessionId")
+    fun deleteSessionRow(sessionId: String): Int
+
     @Query(
         "SELECT m.role AS role, m.body AS body FROM agent_message m " +
             "JOIN agent_run r ON r.id = m.runId AND r.sessionId = m.sessionId " +

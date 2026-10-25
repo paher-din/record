@@ -26,6 +26,7 @@ import com.paherdin.record2.sessions.AgentSessionMessage
 import com.paherdin.record2.sessions.MessageResultKind
 import com.paherdin.record2.sessions.ProcessOwnershipReceipt
 import com.paherdin.record2.sessions.RunCompletionReceipt
+import com.paherdin.record2.sessions.RunIdentity
 import com.paherdin.record2.sessions.RunOutcome
 import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
@@ -98,7 +99,11 @@ internal class AgentRunCoordinator(
 
     suspend fun sessionMessages(sessionId: String): List<AgentSessionMessage> = history.sessionMessages(sessionId)
 
-    suspend fun run(sessionId: String, userText: String): RunResult = withContext(Dispatchers.IO) {
+    suspend fun run(
+        sessionId: String,
+        userText: String,
+        identity: RunIdentity? = null,
+    ): RunResult = withContext(Dispatchers.IO) {
         if (userText.isBlank()) fail(AgentRunError.Validation)
         val permit = try {
             security.requirePermit(receiver)
@@ -108,16 +113,18 @@ internal class AgentRunCoordinator(
         // Identities are generated before the start transaction: if the commit lands but the
         // receipt is lost (crash, cancellation in the commit window, lost post-commit receipt),
         // the exact orphan is still addressable by identity and can be terminally reconciled
-        // instead of holding the session's single run slot forever.
-        val identity = history.newRunIdentity()
+        // instead of holding the session's single run slot forever. The application-level owner
+        // (E2) pre-generates the identity so its own invalidation sweeps can address the run
+        // before the start receipt exists.
+        val runIdentity = identity ?: history.newRunIdentity()
         val start = try {
             history.startRun(
-                sessionId, userText, receiver.identity, permit.authEpoch, processOwnerId, identity,
+                sessionId, userText, receiver.identity, permit.authEpoch, processOwnerId, runIdentity,
             )
         } catch (error: CancellationException) {
             // Preserve cancellation semantics; clean up any run this attempt may have committed.
             withContext(NonCancellable) {
-                markTerminal(identity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+                markTerminal(runIdentity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
             }
             throw error
         } catch (error: Exception) {
@@ -125,7 +132,7 @@ internal class AgentRunCoordinator(
                 // Committed but the receipt was lost: reconcile the orphan by identity so the
                 // session's slot frees deterministically instead of waiting for a future gate.
                 withContext(NonCancellable) {
-                    markTerminal(identity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.INTERNAL)
+                    markTerminal(runIdentity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.INTERNAL)
                 }
                 throw AgentRunException(AgentRunError.OutcomeUnknown, error)
             }
@@ -277,6 +284,13 @@ internal class AgentRunCoordinator(
                 com.paherdin.record2.sessions.AgentHistoryError.StorageFull -> AgentRunError.StorageFull
                 com.paherdin.record2.sessions.AgentHistoryError.RecoverableIO -> AgentRunError.RecoverableIO
                 com.paherdin.record2.sessions.AgentHistoryError.OutcomeUnknown -> AgentRunError.OutcomeUnknown
+                // E2: a run refused because its identity is no longer valid (cancelled by the
+                // user, failed by an authorization change, deleted with its session) surfaces as
+                // RunInvalidated, not as a provider failure.
+                com.paherdin.record2.sessions.AgentHistoryError.RunInvalidated ->
+                    AgentRunError.RunInvalidated
+                com.paherdin.record2.sessions.AgentHistoryError.NotFound ->
+                    AgentRunError.RunInvalidated
                 else -> AgentRunError.Internal
             }
         is AgentRunException -> error.code

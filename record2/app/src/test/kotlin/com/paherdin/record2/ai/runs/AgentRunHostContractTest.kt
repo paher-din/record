@@ -400,10 +400,11 @@ class AgentRunHostContractTest {
         } catch (error: AgentRunException) {
             assertEquals(AgentRunError.OutcomeUnknown, error.code)
         }
-        assertEquals(
-            listOf(Triple("run-1", RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)),
-            history.failedRuns,
-        )
+        // E2 fake alignment: Room already COMPLETED this run (the receipt was lost after the
+        // commit), so the coordinator's FAILED mark is an already-terminal no-op — the durable
+        // state stays COMPLETED with the mismatched outcome, exactly like the real service.
+        assertTrue(history.failedRuns.isEmpty())
+        assertEquals(RunState.COMPLETED, history.stateOf("run-1"))
     }
 
     @Test
@@ -424,10 +425,9 @@ class AgentRunHostContractTest {
             assertEquals(AgentHistoryError.OutcomeUnknown, original.code)
             assertTrue(original.suppressed.any { it === readError })
         }
-        assertEquals(
-            listOf(Triple("run-1", RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)),
-            history.failedRuns,
-        )
+        // Same E2 alignment as above: the committed COMPLETED row is the durable truth.
+        assertTrue(history.failedRuns.isEmpty())
+        assertEquals(RunState.COMPLETED, history.stateOf("run-1"))
     }
 
     private companion object {
