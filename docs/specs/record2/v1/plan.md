@@ -1490,11 +1490,18 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 
 **本批验证（仅证据见[G1 evidence](../../../engineering/evidence/2026-10-25-g1.md)）：**
 
-- **Host（T1）：** `:app:testDebugUnitTest`通过109项/0失败；其中backup新增`LogicalFormatTest`8项与`DataOperationGateTest`3项，覆盖严格JSON、manifest、ZIP空段/DEFLATE空块拒绝、往返、校验器合法/损坏历史、gate drain/互斥。
-- **API34 instrumentation（T3）：** `emulator-5594`（AVD `record-api34`，API34）运行`BackupRestoreContractTest` 5项全部通过：完整业务/聊天/Applied/旧Pending轮转与owner重读、14表零写门禁、authEpoch MAX-1拒绝/MAX-2→MAX-1、receipt损坏/NULL边界、WAL只读导出与并发写、空段恢复再导出。构建`assembleDebug`/`assembleDebugAndroidTest`通过。
-- **回归：** `RecordSchemaContractTest`+`AiSecurityInitializationContractTest` 13项通过；Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`，无Schema/迁移/Manifest/data-extraction规则改动。
+- **Host（T1）：** `:app:testDebugUnitTest`通过110项/0失败；其中backup新增`LogicalFormatTest`8项与`DataOperationGateTest`4项，覆盖严格JSON、manifest、ZIP空段/DEFLATE空块拒绝、往返、校验器合法/损坏历史、gate drain/互斥。
+- **API34 instrumentation（T3）：** `emulator-5594`（AVD `record-api34`，API34）运行`BackupRestoreContractTest` 7项全部通过：完整业务/聊天/Applied/旧Pending轮转与owner重读、14表零写门禁、authEpoch MAX-1拒绝/MAX-2→MAX-1、receipt损坏/NULL边界、WAL只读导出与并发写、空段恢复再导出、SAVED/DISCARDED草稿导出过滤、失败恢复后旧Run迟到完成拒绝。构建`assembleDebug`/`assembleDebugAndroidTest`通过。
+- **回归：** `SessionRunContractTest`+`SessionRunRealContractTest`+`RecordSchemaContractTest`+`AiSecurityInitializationContractTest` 30项通过；Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`，无Schema/迁移/Manifest/data-extraction规则改动。
 - **未运行/阻塞：** 真机与真实DocumentsUI SAF create/write/flush/close/回读、真实Keystore/Provider、云备份/设备迁移排除、进程终止（force-stop/kill）全矩阵、完整BK2/BK4、64 MiB/256 MiB/500,000行边界、性能/ANR/OOM、F1/E2/F2最终UI与迟到Run内存取消接线、最终APK/合并/G2联合验收均NOT RUN或BLOCKED；G1完成门禁未因此通过。
 - **P1内存修复与剩余风险：** 导出路径已从“全量content→写ZIP→全量再读校验”改为单语句快照逐行写段文件、完成后用不保留行的ZIP verify；host/API34重跑通过。**导入preflight仍使用`LogicalZipReader.read`+全量validator**，在256 MiB/500,000行上限下仍有内存风险，必须在G1完整验收前流式化或提供覆盖上限的内存/性能证据；本批不把该风险标为已解除。
+
+**2026-10-25 复审 REQUEST CHANGES 的修复：**
+- 导出快照查询草稿段限定`state='EDITING'`，SAVED/DISCARDED不进入ZIP；新增真实状态导出→恢复测试。
+- `DataOperationGate.beginRestore()`把RESTORE→排空等待→Lease交付视为资源获取，超时/取消/异常均在`finally`释放未交付的门禁；新增取消等待后继续写测试。
+- 恢复尝试失败后保留进程内Run执行撤销：门禁获取后读取O的RUNNING id并登记，`RoomAgentHistoryService.completeRun()/failRun()`在写事务内检查；新增“活动Run→恢复失败→迟到完成拒绝且14表不变”真实测试。E2/F2真实取消接线仍为后续门禁。
+- `BackupExporter.export()`整体切换到`Dispatchers.IO`。
+- **未关闭：** 导入preflight/正式恢复仍用`LogicalZipReader.read()`全量content+validator；256 MiB/500,000行OOM风险未解除，需流式校验/有界暂存或覆盖上限的真实内存证据。
 
 **需负责人确认的实现偏差/风险：**
 
@@ -1502,4 +1509,4 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 2. **写入门禁层级：** gate接入现有Room服务的写事务边界，并覆盖当前所有生产写服务；未来新增写入口（E2/D1/F2等）必须复用`ProcessDataOperationGate.gate`，本批不提供SQLite authorizer级强制。`RestoreMemoryBarrier`只提供内存失效钩子，真实Run/工具协程取消由E2/F2接线并另测。
 3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
 
-- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、文档证据至`1a6be42`，最终head以GitHub当前引用为准。未合并main、未关闭issue #19。
+- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、复审修复`d2c8f8c`，最终head以GitHub当前引用为准。2026-10-25复审为**REQUEST CHANGES**，修复后待再次审阅；未合并main、未关闭issue #19。
