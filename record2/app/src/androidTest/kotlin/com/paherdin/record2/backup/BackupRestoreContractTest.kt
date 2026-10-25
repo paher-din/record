@@ -349,6 +349,75 @@ class BackupRestoreContractTest {
     }
 
     @Test
+    fun gateIsReleasedWhenProgressThrows() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-progress-throw-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "progress-throw.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-progress-throw-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        val gate = DataOperationGate()
+        val service = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, gate, clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val candidate = service.preflight(FileSource(zip))
+        val before = tables(targetPath)
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                service.restore(candidate) { point ->
+                    if (point == RestoreProgress.PREPARING) error("progress callback failed")
+                }
+            }
+        }
+        assertFalse(gate.isRestoreInProgress)
+        runBlocking { gate.withWrite { Unit } }
+        assertEquals(before, tables(targetPath))
+
+        source.close()
+        target.close()
+    }
+
+    @Test
+    fun gateIsReleasedWhenStagingCleanupThrows() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-cleanup-throw-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "cleanup-throw.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-cleanup-throw-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        val gate = DataOperationGate()
+        val service = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, gate, clock,
+            availableBytes = { Long.MAX_VALUE },
+            cleanupStaging = { throw IllegalStateException("staging cleanup failed") },
+        )
+        val candidate = service.preflight(FileSource(zip))
+        val before = tables(targetPath)
+        // Corrupt the source after preflight so the restore fails before commit; cleanup also
+        // throws, and the gate must still be released by the outer finally.
+        zip.writeBytes(zip.readBytes().copyOf(zip.length().toInt() / 2))
+        assertThrows(BackupException::class.java) {
+            runBlocking { service.restore(candidate) }
+        }
+        assertFalse(gate.isRestoreInProgress)
+        runBlocking { gate.withWrite { Unit } }
+        assertEquals(before, tables(targetPath))
+        staging.listFiles()?.forEach { it.deleteRecursively() }
+
+        source.close()
+        target.close()
+    }
+
+    @Test
     fun coordinatorReusesCommittedReceiptWithoutASecondImport() = runBlocking {
         val data = BackupTestDataFactory.create()
         val sourceName = "g1-coordinator-source-${UUID.randomUUID()}.db"
@@ -478,8 +547,12 @@ class BackupRestoreContractTest {
             RoomRestoreStore(targetDb, clock), targetPath2, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
         )
+        val firstCoordinator = RestoreCoordinator(first)
         val candidateA = first.preflight(FileSource(aZip))
-        val resultA = first.restore(candidateA)
+        val resultA = withTimeout(30_000) {
+            (firstCoordinator.confirm(candidateA) as RestoreStart.Started).handle.await()
+        }
+        firstCoordinator.close()
         val generationA = targetDb.records().dataState()!!.dataGeneration
         assertEquals(resultA.restoredGeneration, generationA)
 
@@ -487,9 +560,13 @@ class BackupRestoreContractTest {
             RoomRestoreStore(targetDb, clock), targetPath2, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
         )
+        val secondCoordinator = RestoreCoordinator(second)
         val candidateB = second.preflight(FileSource(bZip))
         assertEquals(generationA, candidateB.targetGeneration)
-        val resultB = second.restore(candidateB)
+        val resultB = withTimeout(30_000) {
+            (secondCoordinator.confirm(candidateB) as RestoreStart.Started).handle.await()
+        }
+        secondCoordinator.close()
         assertTrue(resultB.restoredGeneration != generationA)
         assertEquals(resultB.restoredGeneration, targetDb.records().dataState()!!.dataGeneration)
         val body = targetDb.query(
@@ -522,8 +599,12 @@ class BackupRestoreContractTest {
             RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
         )
+        val firstCoordinator = RestoreCoordinator(first)
         val candidate = first.preflight(FileSource(zip))
-        first.restore(candidate)
+        withTimeout(30_000) {
+            (firstCoordinator.confirm(candidate) as RestoreStart.Started).handle.await()
+        }
+        firstCoordinator.close()
         val generation = target.records().dataState()!!.dataGeneration
         val extraId = UUID.randomUUID().toString()
         assertNotNull(
@@ -536,9 +617,13 @@ class BackupRestoreContractTest {
             RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
         )
+        val secondCoordinator = RestoreCoordinator(second)
         val fresh = second.preflight(FileSource(zip))
         assertEquals(generation, fresh.targetGeneration)
-        val result = second.restore(fresh)
+        val result = withTimeout(30_000) {
+            (secondCoordinator.confirm(fresh) as RestoreStart.Started).handle.await()
+        }
+        secondCoordinator.close()
         assertTrue(result.restoredGeneration != generation)
         val extraCount = target.query(
             "SELECT COUNT(*) FROM note WHERE id = ?", arrayOf(extraId),
@@ -575,9 +660,13 @@ class BackupRestoreContractTest {
             RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
         )
+        val coordinator = RestoreCoordinator(service)
         val candidate = service.preflight(FileSource(zip))
         assertEquals(target.records().dataState()!!.dataGeneration, candidate.targetGeneration)
-        val result = service.restore(candidate)
+        val result = withTimeout(30_000) {
+            (coordinator.confirm(candidate) as RestoreStart.Started).handle.await()
+        }
+        coordinator.close()
         assertTrue(result.restoredGeneration != candidate.targetGeneration)
         assertNotNull(target.records().dataState()?.restoreReceipt)
         assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath, clock).check().kind)

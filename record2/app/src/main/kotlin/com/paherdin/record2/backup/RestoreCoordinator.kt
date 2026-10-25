@@ -61,6 +61,9 @@ internal sealed interface RestoreStart {
  *
  * A persisted receipt is the commit authority. If a receipt already matches the candidate, the
  * coordinator returns a receipt-rebuilt result (transform counts Unknown) without importing again.
+ * The composition root must keep exactly one instance per process and must not persist or reuse an
+ * unfinished candidate across process death; the receipt proves the current database content, not
+ * a permanent cross-process attempt identity.
  */
 internal class RestoreCoordinator(
     private val engine: RestoreEngine,

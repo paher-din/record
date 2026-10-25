@@ -51,6 +51,7 @@ internal class RestoreService(
     private val memoryBarrier: RestoreMemoryBarrier = ProcessRestoreMemoryBarrier,
     private val processOwnerId: String? = null,
     private val currentAppVersionCode: Long = 1,
+    private val cleanupStaging: (File) -> Boolean = { it.deleteRecursively() },
 ) : RestoreEngine {
     override suspend fun preflight(source: BackupSource): RestoreCandidate = withContext(Dispatchers.IO) {
         if (gate.isRestoreInProgress) throw DataOperationBusyException("Restore is already in progress")
@@ -95,21 +96,27 @@ internal class RestoreService(
     ): RestoreResult = withContext(Dispatchers.IO) {
         progress(RestoreProgress.WAITING_FOR_GATE)
         val lease = gate.beginRestore()
-        progress(RestoreProgress.PREPARING)
-        stagingDirectory.mkdirs()
-        val work = File(stagingDirectory, "restore-${UUID.randomUUID()}")
-        val zip = File(work, "source.zip")
+        // The lease is acquired before any staging/progress work and released by the outermost
+        // finally. A throwing PREPARING callback or a failing staging cleanup must never leave
+        // the process-wide gate stuck in RESTORE.
         try {
+            progress(RestoreProgress.PREPARING)
+            stagingDirectory.mkdirs()
+            val work = File(stagingDirectory, "restore-${UUID.randomUUID()}")
+            val zip = File(work, "source.zip")
             try {
-                withContext(NonCancellable) {
-                    restoreLocked(candidate, work, zip, progress)
+                try {
+                    withContext(NonCancellable) {
+                        restoreLocked(candidate, work, zip, progress)
+                    }
+                } catch (cancelled: CancellationException) {
+                    val committed = committedReceipt(candidate) ?: throw cancelled
+                    resultFromReceipt(committed)
                 }
-            } catch (cancelled: CancellationException) {
-                val committed = committedReceipt(candidate) ?: throw cancelled
-                resultFromReceipt(committed)
+            } finally {
+                runCatching { cleanupStaging(work) }
             }
         } finally {
-            work.deleteRecursively()
             lease.close()
         }
     }
