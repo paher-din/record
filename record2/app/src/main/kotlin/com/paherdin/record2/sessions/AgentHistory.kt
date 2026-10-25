@@ -119,6 +119,42 @@ internal data class ProcessOwnershipReceipt(
     val emptyDatabase: Boolean,
 )
 
+/** Read-only view of the run currently holding a session's single active slot (B0 §3.4). */
+internal data class ActiveRunView(
+    val runId: String,
+    val sessionId: String,
+    val state: RunState,
+    val startedAt: Long,
+)
+
+/** Retained commit_operation rows of a deleted session, by persisted state (E2 deletion report). */
+internal data class SessionOperationCensus(
+    val pending: Int,
+    val applied: Int,
+    val rejectedConflict: Int,
+    val rejectedInvalid: Int,
+) {
+    val total: Int get() = pending + applied + rejectedConflict + rejectedInvalid
+}
+
+/**
+ * Disclosure data for the explicit session-deletion entry (Spec 5.2, B0 §8): what the single
+ * Room transaction cancelled, discarded, deleted and — always — retained. Business facts,
+ * Applied mappings and Pending operations are never deleted by this protocol; the census is
+ * the input the F2 disclosure UI will present before/after deletion.
+ */
+internal data class SessionDeletionReport(
+    val sessionId: String,
+    val cancelledActiveRuns: Int,
+    /** Proposals deleted without any operation — the unconfirmed ones B0 §8 discards. */
+    val discardedProposals: Int,
+    /** Proposals deleted whose operation row stays behind as the verification basis. */
+    val proposalsWithRetainedOperations: Int,
+    val deletedRuns: Int,
+    val deletedMessages: Int,
+    val retainedOperations: SessionOperationCensus,
+)
+
 internal enum class AgentHistoryError {
     Validation,
     NotFound,
@@ -131,6 +167,9 @@ internal enum class AgentHistoryError {
     OutcomeUnknown,
     RecoverableIO,
     StorageFull,
+    /** A session row's derived content (e.g. an unparseable commit_operation state) cannot be
+     * certified safe for independent retention, so the deletion refuses (Spec 5.2). */
+    UnsafeSessionContent,
 }
 
 internal class AgentHistoryException(val code: AgentHistoryError, cause: Throwable? = null) :
@@ -204,4 +243,18 @@ internal interface AgentHistoryService {
      * slots. A repeated call with the current owner is a no-op that never touches live runs.
      */
     suspend fun beginProcessOwnership(processOwnerId: String): ProcessOwnershipReceipt
+
+    /** The run currently holding [sessionId]'s single active slot, or null when the slot is free. */
+    suspend fun activeRun(sessionId: String): ActiveRunView?
+
+    /**
+     * Explicit user session deletion in one short Room transaction (Spec 5.2, B0 §8): the active
+     * run is cancelled, unconfirmed proposals discarded, message references/messages/proposals/
+     * runs deleted and finally the session row — leaving no row a late writer could resurrect.
+     * Business facts and every commit_operation row are never touched: operations stay behind as
+     * the independent verification basis. Refuses with [AgentHistoryError.UnsafeSessionContent]
+     * when an operation state cannot be parsed (unknown operations are never cascade-deleted)
+     * and leaves the whole history intact.
+     */
+    suspend fun deleteSession(sessionId: String, processOwnerId: String): SessionDeletionReport
 }

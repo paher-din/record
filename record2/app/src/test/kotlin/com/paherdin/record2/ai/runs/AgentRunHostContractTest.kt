@@ -17,6 +17,9 @@ import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.SafeRunErrorCode
 import java.io.IOException
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +57,9 @@ class AgentRunHostContractTest {
         processOwnerId = "owner-host",
         historyWindow = window,
         toolRegistry = tools,
+        // FakeHistoryService stamps startedAt=0; the coordinator must use the same clock domain
+        // so the run wall-clock deadline does not look already exhausted.
+        clock = Clock.fixed(Instant.ofEpochMilli(0), ZoneOffset.UTC),
         httpClientFactory = object : KoogHttpClient.Factory {
             override fun create(
                 clientName: String, baseUrl: String, headers: Map<String, String>,
@@ -400,10 +406,11 @@ class AgentRunHostContractTest {
         } catch (error: AgentRunException) {
             assertEquals(AgentRunError.OutcomeUnknown, error.code)
         }
-        assertEquals(
-            listOf(Triple("run-1", RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)),
-            history.failedRuns,
-        )
+        // E2 fake alignment: Room already COMPLETED this run (the receipt was lost after the
+        // commit), so the coordinator's FAILED mark is an already-terminal no-op — the durable
+        // state stays COMPLETED with the mismatched outcome, exactly like the real service.
+        assertTrue(history.failedRuns.isEmpty())
+        assertEquals(RunState.COMPLETED, history.stateOf("run-1"))
     }
 
     @Test
@@ -424,10 +431,9 @@ class AgentRunHostContractTest {
             assertEquals(AgentHistoryError.OutcomeUnknown, original.code)
             assertTrue(original.suppressed.any { it === readError })
         }
-        assertEquals(
-            listOf(Triple("run-1", RunTerminal.FAILED, SafeRunErrorCode.INTERNAL)),
-            history.failedRuns,
-        )
+        // Same E2 alignment as above: the committed COMPLETED row is the durable truth.
+        assertTrue(history.failedRuns.isEmpty())
+        assertEquals(RunState.COMPLETED, history.stateOf("run-1"))
     }
 
     private companion object {

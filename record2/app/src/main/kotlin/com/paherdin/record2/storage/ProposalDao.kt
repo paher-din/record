@@ -29,6 +29,14 @@ internal interface ProposalDao {
     @Query("SELECT * FROM commit_operation WHERE id = :id")
     fun operation(id: String): CommitOperationEntity?
 
+    // Session deletion (E2, B0 §8): enumerate one session's proposals for the retention census,
+    // then remove them inside the same transaction. Operations are never deleted here.
+    @Query("SELECT * FROM change_proposal WHERE sessionId = :sessionId")
+    fun proposalsForSession(sessionId: String): List<ChangeProposalEntity>
+
+    @Query("DELETE FROM change_proposal WHERE sessionId = :sessionId")
+    fun deleteProposalsForSession(sessionId: String): Int
+
     // Transaction A locks the confirmed proposal; LOCKED keeps occupying the active slot.
     @Query("""
         UPDATE change_proposal SET state = 'LOCKED', updatedAt = :updatedAt

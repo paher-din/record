@@ -71,6 +71,7 @@ class SessionRunRealContractTest {
                 security = fixture.security,
                 history = fixture.history,
                 processOwnerId = fixture.owner,
+                clock = sessionClock,
             )
             val first = coord.run(session.id, "请记住编号 $code。只回复OK。")
             assertTrue("first reply was blank", first.answer.isNotBlank())
@@ -87,7 +88,12 @@ class SessionRunRealContractTest {
 
     @Test
     fun verify() = runBlocking {
-        Assume.assumeTrue("requires the prepare marker file", markerFile().isFile)
+        // A stale marker from an earlier batch must not activate verify without the re-injected
+        // key; the two-phase contract always requires both files.
+        Assume.assumeTrue(
+            "requires the prepare marker and the re-injected key file",
+            markerFile().isFile && keyFile().isFile,
+        )
         val fixture = SessionContractFixture("real")
         try {
             val sessionId = markerFile().readText().trim().lineSequence().first()
@@ -103,6 +109,7 @@ class SessionRunRealContractTest {
                 security = fixture.security,
                 history = fixture.history,
                 processOwnerId = "${fixture.owner}-verify",
+                clock = sessionClock,
             )
             val third = coord.run(sessionId, "我之前让你记住的编号是什么？只回复编号本身。")
             val messages = fixture.history.sessionMessages(sessionId)

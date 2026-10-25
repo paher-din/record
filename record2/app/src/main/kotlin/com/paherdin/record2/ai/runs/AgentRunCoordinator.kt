@@ -2,6 +2,7 @@ package com.paherdin.record2.ai.runs
 
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
+import ai.koog.agents.core.agent.exception.AIAgentMaxNumberOfIterationsReachedException
 import ai.koog.agents.chatMemory.feature.ChatMemory
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.http.client.KoogHttpClient
@@ -18,6 +19,17 @@ import com.paherdin.record2.ai.security.AiSecurityService
 import com.paherdin.record2.ai.security.AiSendPermit
 import com.paherdin.record2.ai.security.ProviderReceiver
 import com.paherdin.record2.ai.security.RecordProviderReceivers
+import com.paherdin.record2.ai.tools.GuardedHttpClientFactory
+import com.paherdin.record2.ai.tools.RecordToolBudget
+import com.paherdin.record2.ai.tools.RecordToolContext
+import com.paherdin.record2.ai.tools.RecordToolDeps
+import com.paherdin.record2.ai.tools.RecordToolException
+import com.paherdin.record2.ai.tools.RecordToolFailure
+import com.paherdin.record2.ai.tools.RecordToolRegistry
+import com.paherdin.record2.proposals.ProposalError
+import com.paherdin.record2.proposals.ProposalException
+import com.paherdin.record2.records.FinanceError
+import com.paherdin.record2.records.FinanceException
 import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.AgentHistoryService
@@ -26,15 +38,19 @@ import com.paherdin.record2.sessions.AgentSessionMessage
 import com.paherdin.record2.sessions.MessageResultKind
 import com.paherdin.record2.sessions.ProcessOwnershipReceipt
 import com.paherdin.record2.sessions.RunCompletionReceipt
+import com.paherdin.record2.sessions.RunIdentity
 import com.paherdin.record2.sessions.RunOutcome
 import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.SafeRunErrorCode
 import java.time.Clock
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 internal enum class AgentRunError {
     Validation,
@@ -44,6 +60,7 @@ internal enum class AgentRunError {
     RunInvalidated,
     OutcomeUnknown,
     ProviderFailure,
+    UsageUnknown,
     BudgetExceeded,
     RecoverableIO,
     StorageFull,
@@ -86,8 +103,12 @@ internal class AgentRunCoordinator(
     private val processOwnerId: String,
     private val historyWindow: Int = AgentRunDefaults.HISTORY_WINDOW,
     private val maxAgentIterations: Int = AgentRunDefaults.MAX_AGENT_ITERATIONS,
+    /** Hard wall clock for the agent execution; D0 §24.5 provisional upper bound. */
+    private val runWallClockMillis: Long = RecordToolBudget.WALL_MS_PER_RUN,
     private val systemPrompt: String = DeepSeekProtocol.DEFAULT_SYSTEM_PROMPT,
     private val toolRegistry: ToolRegistry = ToolRegistry.EMPTY,
+    /** D1 record tools; when present the per-run registry and the real D1 system prompt take over. */
+    private val recordTools: RecordToolDeps? = null,
     private val httpClientFactory: KoogHttpClient.Factory? = null,
     private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -98,7 +119,11 @@ internal class AgentRunCoordinator(
 
     suspend fun sessionMessages(sessionId: String): List<AgentSessionMessage> = history.sessionMessages(sessionId)
 
-    suspend fun run(sessionId: String, userText: String): RunResult = withContext(Dispatchers.IO) {
+    suspend fun run(
+        sessionId: String,
+        userText: String,
+        identity: RunIdentity? = null,
+    ): RunResult = withContext(Dispatchers.IO) {
         if (userText.isBlank()) fail(AgentRunError.Validation)
         val permit = try {
             security.requirePermit(receiver)
@@ -108,16 +133,18 @@ internal class AgentRunCoordinator(
         // Identities are generated before the start transaction: if the commit lands but the
         // receipt is lost (crash, cancellation in the commit window, lost post-commit receipt),
         // the exact orphan is still addressable by identity and can be terminally reconciled
-        // instead of holding the session's single run slot forever.
-        val identity = history.newRunIdentity()
+        // instead of holding the session's single run slot forever. The application-level owner
+        // (E2) pre-generates the identity so its own invalidation sweeps can address the run
+        // before the start receipt exists.
+        val runIdentity = identity ?: history.newRunIdentity()
         val start = try {
             history.startRun(
-                sessionId, userText, receiver.identity, permit.authEpoch, processOwnerId, identity,
+                sessionId, userText, receiver.identity, permit.authEpoch, processOwnerId, runIdentity,
             )
         } catch (error: CancellationException) {
             // Preserve cancellation semantics; clean up any run this attempt may have committed.
             withContext(NonCancellable) {
-                markTerminal(identity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+                markTerminal(runIdentity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
             }
             throw error
         } catch (error: Exception) {
@@ -125,7 +152,7 @@ internal class AgentRunCoordinator(
                 // Committed but the receipt was lost: reconcile the orphan by identity so the
                 // session's slot frees deterministically instead of waiting for a future gate.
                 withContext(NonCancellable) {
-                    markTerminal(identity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.INTERNAL)
+                    markTerminal(runIdentity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.INTERNAL)
                 }
                 throw AgentRunException(AgentRunError.OutcomeUnknown, error)
             }
@@ -134,29 +161,81 @@ internal class AgentRunCoordinator(
         var reply: String? = null
         var outcome: RunOutcome? = null
         try {
+            // D1: one tool context per run — entry guards, hard budgets and native handoff
+            // evidence. Construction stays inside the terminal-catching scope: a catalog or
+            // proposal-focus read failure must fail this run instead of stranding its slot.
+            val toolContext = recordTools?.let {
+                RecordToolContext(it, permit, start, clock, runWallClockMillis)
+            }
+            val activeProposal = recordTools?.proposals
+                ?.activeProposal(start.dataGeneration, start.sessionId)
+            // The system prompt is rebuilt per run so the model sees the current local time, the
+            // seeded catalog names and the session's still-editable proposal (identity/revision
+            // only; Room history has no tool traffic, so a later run needs this focus to revise).
+            val runSystemPrompt = if (recordTools != null) {
+                RecordToolRegistry.systemPrompt(
+                    recordTools.finance.initialize(),
+                    clock,
+                    ZoneId.systemDefault(),
+                    activeProposal,
+                )
+            } else {
+                systemPrompt
+            }
+            val runToolRegistry = toolContext?.let(RecordToolRegistry::forRun) ?: toolRegistry
             // The plaintext exists only inside the E0 callback: build the client there, clear the
             // array, then run the agent. The client keeps its own copy for the network calls the
-            // same way D0's seam does; mid-run revocation is enforced by the completion
-            // transaction's epoch revalidation, and network cancellation stays with E2.
+            // same way D0's seam does; mid-run revocation is enforced at every request by the
+            // guarded factory plus the completion transaction's epoch revalidation, and network
+            // cancellation stays with E2.
             val client = security.useCredential(permit) { secret ->
+                val baseFactory = httpClientFactory ?: DefaultHttpFactory
                 DeepSeekProtocol.client(
                     apiKey = String(secret),
-                    httpClientFactory = httpClientFactory ?: DefaultHttpFactory,
+                    httpClientFactory = if (toolContext != null) {
+                        GuardedHttpClientFactory(baseFactory, toolContext)
+                    } else {
+                        baseFactory
+                    },
                 )
             }
-            val executor = MultiLLMPromptExecutor(LLMProvider.DeepSeek to client)
-            reply = agent(start, executor).run(userText)
-            if (reply.isBlank()) fail(AgentRunError.ProviderFailure)
-            val completedOutcome = RunOutcome(resultKind = MessageResultKind.Answer, body = reply)
-            outcome = completedOutcome
-            val completion = history.completeRun(
-                runId = start.runId,
-                receiverIdentity = receiver.identity,
-                authEpoch = permit.authEpoch,
-                processOwnerId = processOwnerId,
-                outcome = completedOutcome,
-            )
-            RunResult(start.runId, sessionId, reply, completion)
+            try {
+                val executor = MultiLLMPromptExecutor(LLMProvider.DeepSeek to client)
+                val remaining = (runWallClockMillis - (clock.millis() - start.startedAt))
+                    .coerceAtLeast(0L)
+                if (remaining <= 0L) fail(AgentRunError.BudgetExceeded)
+                reply = try {
+                    // A request may start close to the deadline and run for minutes; only a
+                    // deadline on the whole agent execution stops it before completion.
+                    withTimeout(remaining) {
+                        agent(start, executor, runSystemPrompt, runToolRegistry).run(userText)
+                    }
+                } catch (error: TimeoutCancellationException) {
+                    // The run wall clock is a budget stop, not a user cancellation.
+                    throw AgentRunException(AgentRunError.BudgetExceeded, error)
+                }
+                if (reply.isBlank()) fail(AgentRunError.ProviderFailure)
+                // Cumulative provider usage is charged after every response by the guarded
+                // client; never accept a final answer that already crossed the bound.
+                toolContext?.ensureUsageWithinBudget()
+                // Classification is deterministic from tool state, never from the model's own
+                // claim: a proposal this run wrote and that is still editable is ProposalReady;
+                // unresolved prepare issues are ClarificationNeeded; tools never commit.
+                val completedOutcome = toolContext?.classifyOutcome(reply)
+                    ?: RunOutcome(resultKind = MessageResultKind.Answer, body = reply)
+                outcome = completedOutcome
+                val completion = history.completeRun(
+                    runId = start.runId,
+                    receiverIdentity = receiver.identity,
+                    authEpoch = permit.authEpoch,
+                    processOwnerId = processOwnerId,
+                    outcome = completedOutcome,
+                )
+                RunResult(start.runId, sessionId, reply, completion)
+            } finally {
+                // The client owns its HTTP resources; release them on success and every failure.
+                runCatching { client.close() }
+            }
         } catch (error: CancellationException) {
             // The coroutine is already cancelled: a plain suspend call could be skipped
             // entirely, stranding the run as RUNNING with its slot held. Run the terminal
@@ -217,11 +296,15 @@ internal class AgentRunCoordinator(
         }
     }
 
-    private fun agent(start: com.paherdin.record2.sessions.RunStartReceipt, executor: PromptExecutor): AIAgent<String, String> {
+    private fun agent(
+        start: com.paherdin.record2.sessions.RunStartReceipt,
+        executor: PromptExecutor,
+        runSystemPrompt: String,
+        runToolRegistry: ToolRegistry,
+    ): AIAgent<String, String> {
         val config = AIAgentConfig(
-            prompt = prompt("record2-e1", params = DeepSeekProtocol.params(thinking = false)) {
-                // D1 owns the real system prompt; the D0 seam default keeps the protocol unchanged.
-                system(systemPrompt)
+            prompt = prompt("record2-agent", params = DeepSeekProtocol.params(thinking = false)) {
+                system(runSystemPrompt)
             },
             model = DeepSeekProtocol.Flash,
             maxAgentIterations = maxAgentIterations,
@@ -229,7 +312,7 @@ internal class AgentRunCoordinator(
         return AIAgent(
             promptExecutor = executor,
             agentConfig = config,
-            toolRegistry = toolRegistry,
+            toolRegistry = runToolRegistry,
         ) {
             install(ChatMemory) {
                 // The provider owns the system message and window: Koog's merge replaces the
@@ -238,7 +321,7 @@ internal class AgentRunCoordinator(
                     history = history,
                     sessionId = start.sessionId,
                     boundarySequence = start.boundarySequence,
-                    systemPrompt = systemPrompt,
+                    systemPrompt = runSystemPrompt,
                     window = historyWindow,
                 )
             }
@@ -264,7 +347,26 @@ internal class AgentRunCoordinator(
 
     private fun safeStartError(error: Exception): AgentRunError = safeRunError(error)
 
-    private fun safeRunError(error: Exception): AgentRunError = when (error) {
+    private fun safeRunError(error: Exception): AgentRunError {
+        // The guarded HTTP client throws inside the LLM client, which may wrap the cause; the tool
+        // failure must survive the wrapping so the run fails with its real code.
+        val causes = generateSequence<Throwable>(error) { it.cause }.toList()
+        causes.filterIsInstance<RecordToolException>().firstOrNull()?.let { return toolRunError(it) }
+        if (causes.any { it is AIAgentMaxNumberOfIterationsReachedException }) {
+            return AgentRunError.BudgetExceeded
+        }
+        return when (error) {
+        is FinanceException -> when (error.code) {
+            FinanceError.GenerationMismatch -> AgentRunError.RunInvalidated
+            FinanceError.RecoveryRequired -> AgentRunError.Internal
+            else -> AgentRunError.Internal
+        }
+        is ProposalException -> when (error.code) {
+            ProposalError.RunInvalidated, ProposalError.GenerationMismatch -> AgentRunError.RunInvalidated
+            ProposalError.RecoverableIO -> AgentRunError.RecoverableIO
+            ProposalError.StorageFull -> AgentRunError.StorageFull
+            else -> AgentRunError.Internal
+        }
         is AiSecurityException -> safeAuthorization(error)
         is com.paherdin.record2.sessions.AgentHistoryException ->
             when (error.code) {
@@ -277,6 +379,13 @@ internal class AgentRunCoordinator(
                 com.paherdin.record2.sessions.AgentHistoryError.StorageFull -> AgentRunError.StorageFull
                 com.paherdin.record2.sessions.AgentHistoryError.RecoverableIO -> AgentRunError.RecoverableIO
                 com.paherdin.record2.sessions.AgentHistoryError.OutcomeUnknown -> AgentRunError.OutcomeUnknown
+                // E2: a run refused because its identity is no longer valid (cancelled by the
+                // user, failed by an authorization change, deleted with its session) surfaces as
+                // RunInvalidated, not as a provider failure.
+                com.paherdin.record2.sessions.AgentHistoryError.RunInvalidated ->
+                    AgentRunError.RunInvalidated
+                com.paherdin.record2.sessions.AgentHistoryError.NotFound ->
+                    AgentRunError.RunInvalidated
                 else -> AgentRunError.Internal
             }
         is AgentRunException -> error.code
@@ -284,13 +393,26 @@ internal class AgentRunCoordinator(
         is kotlinx.serialization.SerializationException -> AgentRunError.ProviderFailure
         is java.io.IOException -> AgentRunError.RecoverableIO
         else -> AgentRunError.ProviderFailure
+        }
+    }
+
+    private fun toolRunError(error: RecordToolException): AgentRunError = when (error.code) {
+        RecordToolFailure.BudgetExceeded -> AgentRunError.BudgetExceeded
+        RecordToolFailure.UsageUnknown -> AgentRunError.UsageUnknown
+        RecordToolFailure.AuthorizationRevoked -> AgentRunError.AuthorizationRequired
+        RecordToolFailure.RunInvalidated, RecordToolFailure.GenerationMoved -> AgentRunError.RunInvalidated
+        RecordToolFailure.RecoverableIO -> AgentRunError.RecoverableIO
+        RecordToolFailure.StorageFull -> AgentRunError.StorageFull
+        RecordToolFailure.RecoveryRequired -> AgentRunError.Internal
     }
 
     private fun safeErrorCode(error: Exception): SafeRunErrorCode = when (safeRunError(error)) {
         AgentRunError.BudgetExceeded -> SafeRunErrorCode.BUDGET_EXCEEDED
         AgentRunError.AuthorizationRequired, AgentRunError.CredentialUnavailable -> SafeRunErrorCode.AUTHORIZATION
-        AgentRunError.Internal, AgentRunError.RecoverableIO, AgentRunError.StorageFull ->
-            SafeRunErrorCode.INTERNAL
+        AgentRunError.RunInvalidated, AgentRunError.Internal, AgentRunError.RecoverableIO,
+        AgentRunError.StorageFull -> SafeRunErrorCode.INTERNAL
+        // UsageUnknown is a provider-protocol/terminal failure, never a completed budget claim.
+        AgentRunError.UsageUnknown -> SafeRunErrorCode.PROVIDER_FAILURE
         else -> SafeRunErrorCode.PROVIDER_FAILURE
     }
 

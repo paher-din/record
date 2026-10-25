@@ -31,6 +31,8 @@ import com.paherdin.record2.storage.RoomCommitService
 import com.paherdin.record2.storage.RoomFinanceService
 import com.paherdin.record2.storage.RoomNoteService
 import com.paherdin.record2.storage.RoomProposalService
+import com.paherdin.record2.storage.RoomRestoreStore
+import com.paherdin.record2.storage.toEntity
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -174,7 +176,7 @@ class BackupRestoreContractTest {
         val refusedPath = context.getDatabasePath(refusedName)
         val refusedBefore = tables(refusedPath)
         val refusedService = RestoreService(
-            refused, refusedPath, staging, DataOperationGate(), clock,
+            RoomRestoreStore(refused, clock), refusedPath, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
         )
         val rejected = assertThrows(BackupException::class.java) {
@@ -189,7 +191,7 @@ class BackupRestoreContractTest {
         seedTargetControl(accepted, Long.MAX_VALUE - 2)
         val acceptedPath = context.getDatabasePath(acceptedName)
         val acceptedService = RestoreService(
-            accepted, acceptedPath, staging, DataOperationGate(), clock,
+            RoomRestoreStore(accepted, clock), acceptedPath, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
         )
         val candidate = acceptedService.preflight(FileSource(zip))
@@ -288,7 +290,7 @@ class BackupRestoreContractTest {
             }
         }
         val service = RestoreService(
-            target, targetPath, privateStaging, DataOperationGate(), clock,
+            RoomRestoreStore(target, clock), targetPath, privateStaging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
         )
         val before = tables(targetPath)
@@ -321,7 +323,7 @@ class BackupRestoreContractTest {
         val targetPath = context.getDatabasePath(targetName)
         var job: Job? = null
         val service = RestoreService(
-            target, targetPath, staging, DataOperationGate(), clock,
+            RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE },
             checkpoint = { point -> if (point == RestoreCheckpoint.BEFORE_COMMIT) job?.cancel() },
         )
@@ -616,7 +618,7 @@ class BackupRestoreContractTest {
         }
         val targetPath = context.getDatabasePath(targetName)
         val service = RestoreService(
-            target, targetPath, staging, DataOperationGate(), clock,
+            RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
             availableBytes = { Long.MAX_VALUE }, memoryBarrier = barrier,
         )
         val candidate = service.preflight(FileSource(zip))
@@ -753,7 +755,7 @@ class BackupRestoreContractTest {
         gate: DataOperationGate,
     ): RestoreResult = runBlocking {
         val service = RestoreService(
-            database, path, staging, gate, clock,
+            RoomRestoreStore(database, clock), path, staging, gate, clock,
             availableBytes = { Long.MAX_VALUE },
         )
         val candidate = service.preflight(FileSource(zip))

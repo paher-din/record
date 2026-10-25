@@ -8,6 +8,8 @@ import com.paherdin.record2.backup.DataOperationGate
 import com.paherdin.record2.backup.ProcessDataOperationGate
 import com.paherdin.record2.backup.ProcessRunExecutionRevoker
 import com.paherdin.record2.backup.RunExecutionRevoker
+import com.paherdin.record2.proposals.CommitStatus
+import com.paherdin.record2.sessions.ActiveRunView
 import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.AgentHistoryException
 import com.paherdin.record2.sessions.AgentSessionInfo
@@ -26,6 +28,8 @@ import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
 import com.paherdin.record2.sessions.RunTerminalReceipt
 import com.paherdin.record2.sessions.SafeRunErrorCode
+import com.paherdin.record2.sessions.SessionDeletionReport
+import com.paherdin.record2.sessions.SessionOperationCensus
 import com.paherdin.record2.sessions.SessionRole
 import java.time.Clock
 import java.util.UUID
@@ -44,6 +48,9 @@ internal enum class SessionCheckpoint {
     TERMINAL_WRITTEN,
     TERMINAL_COMMITTED,
     OWNERSHIP_COMMITTED,
+    DELETION_VERIFIED,
+    SESSION_DELETED,
+    DELETION_COMMITTED,
 }
 
 /**
@@ -61,6 +68,7 @@ internal class RoomAgentHistoryService(
     private val dao = database.sessions()
     private val records = database.records()
     private val control = database.aiControl()
+    private val proposals = database.proposals()
 
     override suspend fun createSession(title: String?): AgentSessionInfo = io {
         write {
@@ -402,6 +410,84 @@ internal class RoomAgentHistoryService(
             if (records.updateProcessOwner(processOwnerId) != 1) fail(AgentHistoryError.ConcurrentUpdate)
             mark(SessionCheckpoint.OWNERSHIP_COMMITTED)
             ProcessOwnershipReceipt(processOwnerId, true, interrupted, false)
+        }
+    }
+
+    override suspend fun activeRun(sessionId: String): ActiveRunView? = io {
+        database.withTransaction {
+            readSession(sessionId)
+            dao.activeRun(sessionId)?.let { row ->
+                ActiveRunView(
+                    runId = row.id,
+                    sessionId = row.sessionId,
+                    state = parseState(row.state),
+                    startedAt = row.startedAt,
+                )
+            }
+        }
+    }
+
+    override suspend fun deleteSession(
+        sessionId: String,
+        processOwnerId: String,
+    ): SessionDeletionReport = io {
+        database.withTransaction {
+            val state = requireGeneration()
+            if (state.processOwnerId != processOwnerId) fail(AgentHistoryError.RecoveryRequired)
+            readSession(sessionId)
+            val now = clock.millis()
+            val cancelledActiveRuns = dao.activeRun(sessionId)?.let { active ->
+                // Same-terminal semantics as failRun(CANCELLED), inline so the cancellation and
+                // the deletion commit or roll back together (B0 §8).
+                if (dao.failRun(active.id, RunTerminal.CANCELLED.name, now, SafeRunErrorCode.CANCELLED.name, processOwnerId) != 1) {
+                    fail(AgentHistoryError.ConcurrentUpdate)
+                }
+                1
+            } ?: 0
+            // Census first: every operation state must parse before anything is deleted, so an
+            // unknown operation refuses the whole deletion instead of being cascade-deleted.
+            val sessionProposals = proposals.proposalsForSession(sessionId)
+            var pending = 0
+            var applied = 0
+            var rejectedConflict = 0
+            var rejectedInvalid = 0
+            var withOperations = 0
+            for (proposal in sessionProposals) {
+                val operation = proposals.operationForProposal(proposal.id) ?: continue
+                withOperations += 1
+                val status = runCatching { CommitStatus.valueOf(operation.state) }.getOrNull()
+                    ?: fail(AgentHistoryError.UnsafeSessionContent)
+                when (status) {
+                    CommitStatus.Pending -> pending += 1
+                    CommitStatus.Applied -> applied += 1
+                    CommitStatus.RejectedConflict -> rejectedConflict += 1
+                    CommitStatus.RejectedInvalid -> rejectedInvalid += 1
+                }
+            }
+            mark(SessionCheckpoint.DELETION_VERIFIED)
+            // Child-to-parent order (all FKs are RESTRICT): references before their messages,
+            // proposals before their runs (change_proposal references agent_run), and the
+            // session row last. A miss aborts the transaction rather than orphaning anything.
+            dao.deleteReferencesForSession(sessionId)
+            val deletedMessages = dao.deleteMessagesForSession(sessionId)
+            proposals.deleteProposalsForSession(sessionId)
+            val deletedRuns = dao.deleteRunsForSession(sessionId)
+            if (dao.deleteSessionRow(sessionId) != 1) fail(AgentHistoryError.ConcurrentUpdate)
+            mark(SessionCheckpoint.SESSION_DELETED)
+            SessionDeletionReport(
+                sessionId = sessionId,
+                cancelledActiveRuns = cancelledActiveRuns,
+                discardedProposals = sessionProposals.size - withOperations,
+                proposalsWithRetainedOperations = withOperations,
+                deletedRuns = deletedRuns,
+                deletedMessages = deletedMessages,
+                retainedOperations = SessionOperationCensus(pending, applied, rejectedConflict, rejectedInvalid),
+            )
+        }.also { report ->
+            // Same post-commit tail rule as the other write transactions: a lost receipt must
+            // surface as OutcomeUnknown, and a re-read shows the session gone (NotFound).
+            withContext(NonCancellable) { committed(SessionCheckpoint.DELETION_COMMITTED) }
+            report
         }
     }
 
