@@ -40,12 +40,17 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -385,6 +390,64 @@ class BackupRestoreContractTest {
         second.close()
         source.close()
         target.close()
+    }
+
+    @Test
+    fun coordinatorSurvivesObserverCancellationAndDuplicateConfirmation() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-coordinator-observer-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "coordinator-observer.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-coordinator-observer-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val engine = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+            checkpoint = { point ->
+                if (point == RestoreCheckpoint.AFTER_DELETE) {
+                    entered.countDown()
+                    release.await(20, TimeUnit.SECONDS)
+                }
+            },
+        )
+        val firstCandidate = engine.preflight(FileSource(zip))
+        val secondCandidate = engine.preflight(FileSource(zip))
+        val coordinator = RestoreCoordinator(engine)
+        try {
+            val started = coordinator.confirm(firstCandidate) as RestoreStart.Started
+            assertTrue(entered.await(20, TimeUnit.SECONDS))
+
+            // The page observer dies while the restore transaction is in progress.
+            val observerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val observer = observerScope.async { runCatching { started.handle.await() } }
+            observer.cancelAndJoin()
+
+            val duplicate = coordinator.confirm(firstCandidate)
+            assertTrue(duplicate is RestoreStart.Existing)
+            assertEquals(
+                started.handle.operationId,
+                (duplicate as RestoreStart.Existing).handle.operationId,
+            )
+            val other = coordinator.confirm(secondCandidate)
+            assertTrue(other is RestoreStart.Busy)
+
+            release.countDown()
+            val result = withTimeout(30_000) { started.handle.await() }
+            assertEquals(firstCandidate.manifest.sourceGeneration, result.receipt.sourceGeneration)
+            assertEquals(RestorePhase.FINISHED, coordinator.currentStatus().phase)
+            assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath, clock).check().kind)
+        } finally {
+            release.countDown()
+            coordinator.close()
+            source.close()
+            target.close()
+        }
     }
 
     @Test

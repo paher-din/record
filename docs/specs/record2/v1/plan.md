@@ -1655,3 +1655,12 @@ PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，iss
 3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
 
 - **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、复审修复`d2c8f8c`、第三轮修复`359307f`、第四轮修复`7f0ad92`、Unicode修复`4efd92e`、取消边界修复`ac21574`，最终head以GitHub当前引用为准。2026-10-25复审仍为**REQUEST CHANGES**，本轮修复后待再次审阅；未合并main、未关闭issue #19。
+
+### 35.1 2026-10-25 集中修复：main同步与恢复生命周期
+
+- **基线同步：** 将`origin/main=a388caa`（含G0/E2/D1/集成）合入G1分支（merge `3ae9bab`）；保留G0 §31、E2 §32、D1 §33、集成 §34，G1顺延为§35；解决`RoomAgentHistoryService`导入冲突并保留E2 owner/D1工具/预算逻辑。
+- **架构门禁：** 新增`RestoreStore`接口与`storage/RoomRestoreStore`，把恢复单事务/实体映射/assert/receipt读取移入storage；`backup`不再引用Room/storage，`verifyBuildIsolation` PASS。
+- **RestoreCoordinator：** Application级独立scope、同进程单一已确认恢复、相同candidate重复确认返回原handle、其他candidate Busy；状态`IDLE/CONFIRMED/WAITING_FOR_GATE/PREPARING/IMPORTING/COMMITTED/POST_COMMIT/FINISHED/FAILED_NO_COMMIT/OUTCOME_UNKNOWN`；观察者取消不取消恢复；receipt作为提交权威，提交后/重启后按receipt复用结果，不重复导入；统计字段`RestoreTransformStats.Unknown`而非0。
+- **E2/D1接缝：** `AgentRunOwner.revokeForRestore()`在恢复开始时取消旧Run执行但不写终态/不释放slot；`OwnerRestoreMemoryBarrier`登记revoker并调用owner；`AgentRunCoordinator`对restore-revoked取消跳过终态写；D1工具/HTTP守卫检查revoker。失败恢复仍由`interruptRevokedRun()`受控中断，成功恢复由事务转INTERRUPTED/AI OFF。
+- **验证（最新APK）：** host **169/169**；G1 `BackupRestoreContractTest` **15/15**（新增真实receipt复用、observer取消/重复确认/Busy）；E1/E2/D1/C0基线 **97/97**；`verifyBuildIsolation` PASS。APK debug `b4da8d5f…`、test `0bad198f…`（最终制品以本轮提交后构建为准）。
+- **未完成（仍为G1阻塞）：** 64MiB/256MiB/500k行导入资源实测与导入器决策、进程强停恢复矩阵、真实SAF/DocumentsUI、F1/F2 UI与G2联合验收；issue #19保持OPEN，未合并main。
