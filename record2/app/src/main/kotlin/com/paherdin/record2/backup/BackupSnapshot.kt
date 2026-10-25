@@ -1,7 +1,6 @@
 package com.paherdin.record2.backup
 
 import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteStatement
 import android.os.StatFs
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -52,15 +51,14 @@ internal class FileSystemExportResourceMonitor(
 
 /**
  * Reads the whole snapshot with one SELECT statement on an OPEN_READONLY + query_only connection.
- * Android's SQLiteDatabase wrapper turns an explicit BEGIN into a writable transaction on a
- * read-only connection, so a single compound statement is the supported way to keep every table
- * on one SQLite read snapshot without acquiring a writer lock. The statement holds its implicit
- * read transaction until the cursor is exhausted; no other statement or connection participates.
- *
- * stream() writes each row directly to its segment staging file and retains only the cursor row
- * and 12 writers. read() remains the full-content form for small fixtures/tests.
+ * The statement itself is the read transaction: every segment and record_data_state is pinned to
+ * the same WAL snapshot until its cursor is exhausted. Large payloads are split into ASCII-safe
+ * character chunks inside that one statement, so CursorWindow never has to hold an entire row
+ * while the cross-statement snapshot guarantee is preserved.
  */
 internal object ReadOnlyBackupSnapshot {
+    private const val CHUNK_CHARS = 262_144
+
     fun read(
         databasePath: File,
         nowMillis: Long,
@@ -108,7 +106,6 @@ internal object ReadOnlyBackupSnapshot {
             fail(BackupError.RecoverableIO, "could not create snapshot staging directory")
         }
         val writers = LinkedHashMap<LogicalSegment, SegmentFileWriter>()
-        val payloadStatements = arrayOfNulls<SQLiteStatement>(LogicalSegment.entries.size + 1)
         var database: SQLiteDatabase? = null
         try {
             for (segment in LogicalSegment.entries) {
@@ -136,58 +133,78 @@ internal object ReadOnlyBackupSnapshot {
                 fail(BackupError.Unsupported, "database schema version is not 1")
             }
             monitor.check()
-            for (segment in LogicalSegment.entries) {
-                payloadStatements[segment.ordinal] = database.compileStatement(
-                    "SELECT ${payloadJson(segment)} FROM ${table(segment)} WHERE rowid = ?",
-                )
-            }
-            payloadStatements[LogicalSegment.entries.size] = database.compileStatement(
-                "SELECT ${dataStateJson()} FROM record_data_state WHERE rowid = ?",
-            )
             var dataGeneration: String? = null
             var businessRevision: Long? = null
             var snapshotOpened = false
             var totalRows = 0L
-            database.rawQuery(metadataQuery(), null).use { cursor ->
+
+            fun consume(index: Int, payload: String) {
+                if (payload.isEmpty()) fail(BackupError.InvalidSource, "snapshot row is empty")
+                if (payload.toByteArray(StandardCharsets.UTF_8).size > BackupLimits.MAX_LINE_BYTES) {
+                    fail(BackupError.StorageFull, "snapshot row exceeds 8 MiB")
+                }
+                val value = StrictJson.decodeObject(
+                    payload.toByteArray(StandardCharsets.UTF_8),
+                    BackupLimits.MAX_LINE_BYTES,
+                )
+                if (index == LogicalSegment.entries.size) {
+                    if (dataGeneration != null) fail(BackupError.InvalidSource, "duplicate data_state row")
+                    dataGeneration = value.string("dataGeneration", "record_data_state")
+                    businessRevision = value.long("businessRevision", "record_data_state")
+                } else {
+                    val segment = LogicalSegment.entries.getOrNull(index)
+                        ?: fail(BackupError.InvalidSource, "unknown snapshot segment $index")
+                    writers.getValue(segment).append(SegmentCodecs.decode(segment, value))
+                    totalRows++
+                    if (totalRows > BackupLimits.MAX_ROWS_TOTAL) {
+                        fail(BackupError.StorageFull, "export exceeds the 500,000 row limit")
+                    }
+                }
+                if (!snapshotOpened) {
+                    snapshotOpened = true
+                    onSnapshotOpen()
+                }
+            }
+
+            var currentSegment = -1
+            var currentRowId = 0L
+            var currentOffset = 0
+            val payload = StringBuilder()
+            fun flush() {
+                if (currentSegment < 0) return
+                if (currentOffset != payload.length) {
+                    fail(BackupError.Internal, "snapshot chunk sequence is incomplete")
+                }
+                consume(currentSegment, payload.toString())
+                payload.setLength(0)
+                currentSegment = -1
+                currentRowId = 0L
+                currentOffset = 0
+            }
+
+            database.rawQuery(chunkedSnapshotQuery(), null).use { cursor ->
                 while (cursor.moveToNext()) {
-                    val index = cursor.getInt(0)
+                    val segment = cursor.getInt(0)
                     val rowId = cursor.getLong(3)
-                    val statement = payloadStatements[index]
-                        ?: fail(BackupError.Internal, "missing payload statement for snapshot row")
-                    statement.clearBindings()
-                    statement.bindLong(1, rowId)
-                    val payload = try {
-                        statement.simpleQueryForString()
-                    } finally {
-                        statement.clearBindings()
+                    val offset = cursor.getInt(4)
+                    val chunk = cursor.getString(5)
+                        ?: fail(BackupError.InvalidSource, "snapshot chunk is null")
+                    if (segment != currentSegment || rowId != currentRowId) {
+                        flush()
+                        currentSegment = segment
+                        currentRowId = rowId
+                        currentOffset = 0
                     }
-                    if (payload.isEmpty()) fail(BackupError.InvalidSource, "snapshot row is empty")
-                    if (payload.toByteArray(StandardCharsets.UTF_8).size > BackupLimits.MAX_LINE_BYTES) {
+                    if (offset != currentOffset) fail(BackupError.Internal, "snapshot chunk gap")
+                    payload.append(chunk)
+                    currentOffset += chunk.length
+                    if (payload.length > BackupLimits.MAX_LINE_BYTES) {
                         fail(BackupError.StorageFull, "snapshot row exceeds 8 MiB")
-                    }
-                    val value = StrictJson.decodeObject(
-                        payload.toByteArray(StandardCharsets.UTF_8),
-                        BackupLimits.MAX_LINE_BYTES,
-                    )
-                    if (index == LogicalSegment.entries.size) {
-                        dataGeneration = value.string("dataGeneration", "record_data_state")
-                        businessRevision = value.long("businessRevision", "record_data_state")
-                    } else {
-                        val segment = LogicalSegment.entries.getOrNull(index)
-                            ?: fail(BackupError.InvalidSource, "unknown snapshot segment $index")
-                        writers.getValue(segment).append(SegmentCodecs.decode(segment, value))
-                        totalRows++
-                        if (totalRows > BackupLimits.MAX_ROWS_TOTAL) {
-                            fail(BackupError.StorageFull, "export exceeds the 500,000 row limit")
-                        }
-                    }
-                    if (!snapshotOpened) {
-                        snapshotOpened = true
-                        onSnapshotOpen()
                     }
                     monitor.check()
                 }
             }
+            flush()
             if (!snapshotOpened) fail(BackupError.InvalidSource, "snapshot is empty")
             val generation = dataGeneration ?: fail(BackupError.InvalidSource, "record_data_state is missing")
             val revision = businessRevision ?: fail(BackupError.InvalidSource, "record_data_state is missing")
@@ -210,23 +227,41 @@ internal object ReadOnlyBackupSnapshot {
         } catch (error: Exception) {
             throw BackupException(BackupError.RecoverableIO, "could not take the read-only backup snapshot", error)
         } finally {
-            payloadStatements.forEach { runCatching { it?.close() } }
             writers.values.forEach { runCatching { it.close() } }
             runCatching { database?.close() }
         }
     }
 
-    private fun metadataQuery(): String {
-        val parts = LogicalSegment.entries.mapIndexed { index, segment ->
+    private fun chunkedSnapshotQuery(): String {
+        val ctes = StringBuilder("WITH RECURSIVE ")
+        val selects = ArrayList<String>(LogicalSegment.entries.size + 1)
+        LogicalSegment.entries.forEachIndexed { index, segment ->
             val order = orderKeys(segment)
             val filter = if (segment == LogicalSegment.DRAFT) " WHERE state = 'EDITING'" else ""
-            "SELECT $index AS segmentIndex, ${order.first} AS k1, ${order.second} AS k2, " +
-                "rowid AS rowId FROM ${table(segment)}$filter"
-        } + (
-            "SELECT ${LogicalSegment.entries.size} AS segmentIndex, 0 AS k1, '' AS k2, rowid AS rowId " +
-                "FROM record_data_state WHERE id = 1"
-            )
-        return parts.joinToString(" UNION ALL ") + " ORDER BY segmentIndex ASC, k1 ASC, k2 ASC"
+            val source = "s$index"
+            val chunks = "c$index"
+            ctes.append("$source AS MATERIALIZED (SELECT rowid AS rid, ${order.first} AS k1, " +
+                "${order.second} AS k2, ${payloadJson(segment)} AS p FROM ${table(segment)}$filter), ")
+            ctes.append("$chunks(rid,k1,k2,off) AS (SELECT rid,k1,k2,0 FROM $source " +
+                "UNION ALL SELECT rid,k1,k2,off + $CHUNK_CHARS FROM $chunks " +
+                "WHERE off + $CHUNK_CHARS < (SELECT length(p) FROM $source WHERE rid = $chunks.rid)), ")
+            selects += "SELECT $index AS segmentIndex, k1, k2, rid, off, " +
+                "substr((SELECT p FROM $source WHERE rid = $chunks.rid), off + 1, $CHUNK_CHARS) AS chunk " +
+                "FROM $chunks"
+        }
+        val index = LogicalSegment.entries.size
+        val source = "s$index"
+        val chunks = "c$index"
+        ctes.append("$source AS MATERIALIZED (SELECT rowid AS rid, 0 AS k1, '' AS k2, " +
+            "${dataStateJson()} AS p FROM record_data_state WHERE id = 1), ")
+        ctes.append("$chunks(rid,k1,k2,off) AS (SELECT rid,k1,k2,0 FROM $source " +
+            "UNION ALL SELECT rid,k1,k2,off + $CHUNK_CHARS FROM $chunks " +
+            "WHERE off + $CHUNK_CHARS < (SELECT length(p) FROM $source WHERE rid = $chunks.rid)), ")
+        selects += "SELECT $index AS segmentIndex, k1, k2, rid, off, " +
+            "substr((SELECT p FROM $source WHERE rid = $chunks.rid), off + 1, $CHUNK_CHARS) AS chunk " +
+            "FROM $chunks"
+        return ctes.substring(0, ctes.length - 2) + " " +
+            selects.joinToString(" UNION ALL ") + " ORDER BY segmentIndex, k1, k2, rid, off"
     }
 
     private fun payloadJson(segment: LogicalSegment): String {

@@ -9,6 +9,9 @@ import com.paherdin.record2.ai.security.AiMode
 import com.paherdin.record2.ai.security.CredentialStatus
 import com.paherdin.record2.ai.security.CredentialVault
 import com.paherdin.record2.proposals.CommitStatus
+import com.paherdin.record2.proposals.ProposalError
+import com.paherdin.record2.proposals.ProposalException
+import com.paherdin.record2.proposals.ProposalRunContext
 import com.paherdin.record2.proposals.ProposalState
 import com.paherdin.record2.records.FinanceDirection
 import com.paherdin.record2.records.FinanceDraft
@@ -245,6 +248,75 @@ class BackupRestoreContractTest {
     }
 
     @Test
+    fun exportSnapshotIsPointInTimeAcrossTables() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-atomic-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val path = context.getDatabasePath(sourceName)
+        val oldBodies = data.content.notes.associate { it.id to it.body }
+        var writerDone = false
+        var writerAlive = true
+        val zip = File(staging, "atomic.zip")
+        val exporter = BackupExporter(
+            path, staging, DataOperationGate(), AppInfo(1, "0.1.0"), clock,
+            availableBytes = { Long.MAX_VALUE },
+            monitorFactory = { _, _ -> NoopExportResourceMonitor() },
+            snapshotHook = {
+                val writer = Thread {
+                    val database = SQLiteDatabase.openDatabase(
+                        path.absolutePath, null, SQLiteDatabase.OPEN_READWRITE,
+                    )
+                    try {
+                        database.beginTransaction()
+                        try {
+                            database.execSQL(
+                                "UPDATE note SET body = body || '-new', version = version + 1, updatedAt = ? " +
+                                    "WHERE id IN (?, ?)",
+                                arrayOf<Any>(
+                                    clock.millis() + 1,
+                                    BackupTestDataFactory.NOTE_ACTIVE,
+                                    BackupTestDataFactory.NOTE_DELETED,
+                                ),
+                            )
+                            database.execSQL(
+                                "UPDATE record_data_state SET businessRevision = businessRevision + 1 WHERE id = 1",
+                            )
+                            database.setTransactionSuccessful()
+                        } finally {
+                            database.endTransaction()
+                        }
+                    } finally {
+                        database.close()
+                    }
+                    writerDone = true
+                }
+                writer.start()
+                writer.join(10_000)
+                writerAlive = writer.isAlive
+            },
+        )
+        exporter.export(FileTarget(zip), zip.name)
+        assertTrue(writerDone)
+        assertFalse(writerAlive)
+        val read = LogicalZipReader.read(zip)
+        assertEquals(oldBodies, read.backup.content.notes.associate { it.id to it.body })
+        assertEquals(1L, read.backup.manifest.businessRevision)
+        SQLiteDatabase.openDatabase(
+            path.absolutePath, null, SQLiteDatabase.OPEN_READONLY,
+        ).use { database ->
+            database.rawQuery(
+                "SELECT businessRevision FROM record_data_state WHERE id = 1",
+                null,
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(2L, cursor.getLong(0))
+            }
+        }
+        source.close()
+    }
+
+    @Test
     fun largeNoteBodiesExportAtCursorWindowBoundaries() = runBlocking {
         for (mib in listOf(1, 2, 4, 7)) {
             val data = BackupTestDataFactory.create()
@@ -440,6 +512,28 @@ class BackupRestoreContractTest {
         }
         assertEquals(AgentHistoryError.RunInvalidated, error.code)
         assertEquals(before, tables(targetPath))
+
+        val c0 = RoomProposalService(target, clock)
+        c0.runExecutionRevoker = revoker
+        val context = ProposalRunContext(
+            BackupTestDataFactory.SESSION_EDITABLE,
+            BackupTestDataFactory.RUN_EDITABLE,
+            data.owner,
+            BackupTestDataFactory.RECEIVER,
+            1,
+        )
+        val beforeC0 = tables(targetPath)
+        val prepareError = assertThrows(ProposalException::class.java) {
+            runBlocking { c0.prepare(context, emptyList()) }
+        }
+        assertEquals(ProposalError.RunInvalidated, prepareError.code)
+        val reviseError = assertThrows(ProposalException::class.java) {
+            runBlocking {
+                c0.revise(context, BackupTestDataFactory.PROPOSAL_EDITABLE, 1, emptyList())
+            }
+        }
+        assertEquals(ProposalError.RunInvalidated, reviseError.code)
+        assertEquals(beforeC0, tables(targetPath))
 
         val interrupted = history.interruptRevokedRun(BackupTestDataFactory.RUN_EDITABLE, data.owner)
         assertEquals(RunState.INTERRUPTED, interrupted.state)
