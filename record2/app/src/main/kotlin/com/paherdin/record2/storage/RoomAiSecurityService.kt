@@ -33,6 +33,18 @@ internal class RoomAiSecurityService(
 ) : AiSecurityService {
     private val dao = database.aiControl()
     private val records = database.records()
+    private val sessions = database.sessions()
+
+    /**
+     * E2 invalidation rule (Spec 5.2): every epoch bump also fails all RUNNING runs, in the
+     * same Room transaction. A running permit is epoch-bound, so such a run can never complete
+     * (completeRun revalidates the current epoch); failing it here frees the session slot
+     * atomically with the authorization change instead of waiting for the doomed run to unwind.
+     * HTTP cancellation still needs the app-level owner (AgentRunOwner.onAuthorizationChanged).
+     */
+    private fun invalidateRunsBoundToOldEpoch() {
+        sessions.failAllRunningForAuthorization(clock.millis())
+    }
 
     override suspend fun state(): AiSecurityState = io {
         snapshot(database.withTransaction { ensureControl() })
@@ -44,6 +56,7 @@ internal class RoomAiSecurityService(
             if (current.mode == mode.name) return@withTransaction current
             val epoch = nextEpoch(current)
             if (dao.updateMode(mode.name, epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
+            invalidateRunsBoundToOldEpoch()
             readControl()
         }
         snapshot(control)
@@ -56,6 +69,7 @@ internal class RoomAiSecurityService(
             if (current.selectedReceiverIdentity == configured.identity) return@withTransaction current
             val epoch = nextEpoch(current)
             if (dao.selectReceiver(configured.identity, epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
+            invalidateRunsBoundToOldEpoch()
             readControl()
         }
         snapshot(control)
@@ -73,6 +87,7 @@ internal class RoomAiSecurityService(
             ) {
                 fail(AiSecurityError.ConcurrentUpdate)
             }
+            invalidateRunsBoundToOldEpoch()
             readControl()
         }
         snapshot(control)
@@ -83,6 +98,7 @@ internal class RoomAiSecurityService(
             val current = requireWritableControl()
             val epoch = nextEpoch(current)
             if (dao.revoke(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
+            invalidateRunsBoundToOldEpoch()
             readControl()
         }
         snapshot(control)
@@ -95,6 +111,7 @@ internal class RoomAiSecurityService(
                 val current = requireWritableControl()
                 val epoch = nextEpoch(current)
                 if (dao.bumpAuthEpoch(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
+                invalidateRunsBoundToOldEpoch()
                 readControl()
             }
             try {
@@ -118,6 +135,7 @@ internal class RoomAiSecurityService(
                 val current = requireWritableControl()
                 val epoch = nextEpoch(current)
                 if (dao.bumpAuthEpoch(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
+                invalidateRunsBoundToOldEpoch()
                 readControl()
             }
             try {
