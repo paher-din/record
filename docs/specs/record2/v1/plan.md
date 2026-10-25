@@ -1503,7 +1503,7 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 - `BackupExporter.export()`整体切换到`Dispatchers.IO`。
 - **第三轮 Run 生命周期修复：** 移除全局`fenceAll`，改为仅按RUNNING id撤销；无法枚举活动Run时直接拒绝本次恢复，不再影响后续新Run；新增`interruptRevokedRun()`受控中断路径，测试覆盖“恢复失败→旧Run撤销→受控中断→新Run成功”。
 - **快照一致性/CursorWindow修复：** 导出改为单条`WITH RECURSIVE`复合SELECT：同一读事务内按段/rowid/offset分块读取每行JSON，Kotlin按**Unicode码点**累计偏移并拼接；CursorWindow只承载≤262,144码点块。新增并发多表原子更新测试证明ZIP只含完整前态；1/2/4/7 MiB Note导出通过，避免`SQLiteBlobTooBigException`。8 MiB正文加JSON开销会超过8 MiB单行限额，因此边界按实际可容纳正文测试。
-- **取消边界修复：** 确认后的恢复在`NonCancellable`作用域执行；提交后取消通过`committedReceipt()`按持久化receipt判定，不重复执行；preflight的文档复制、ZIP读取/解压逐行/逐块检查协程取消，新增提交边界取消与预检取消清理测试。
+- **取消边界修复：** 确认后的恢复在`NonCancellable`作用域执行；提交后取消通过`committedReceipt()`按持久化receipt判定，不重复执行；preflight的文档复制、ZIP读取/解压逐行/逐块及校验器主循环检查协程取消，新增提交边界取消与预检取消清理测试。
 - **C0撤销接入：** `RoomProposalService.validRun()`在写事务内检查`RunExecutionRevoker`；测试覆盖恢复失败后旧Run `prepare()`/`revise()`均`RunInvalidated`且14表不变。
 - **真实草稿生命周期：** 通过`beginNewDraft()`+`saveDraft()`/`discardDraft()`产生SAVED/DISCARDED，验证导出过滤与恢复预检。
 - **未关闭：** 导入preflight/正式恢复仍用`LogicalZipReader.read()`全量content+validator；256 MiB/500,000行OOM风险未解除，需流式校验/有界暂存或覆盖上限的真实内存证据。
@@ -1514,4 +1514,4 @@ Transaction B按B0 §5.3：读完整持久payload并做digest/格式/行状态�
 2. **写入门禁层级：** gate接入现有Room服务的写事务边界，并覆盖当前所有生产写服务；未来新增写入口（E2/D1/F2等）必须复用`ProcessDataOperationGate.gate`，本批不提供SQLite authorizer级强制。`RestoreMemoryBarrier`只提供内存失效钩子，真实Run/工具协程取消由E2/F2接线并另测。
 3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
 
-- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、复审修复`d2c8f8c`、第三轮修复`359307f`、第四轮修复`7f0ad92`、Unicode修复`4efd92e`、取消边界修复`88fe1fa`，最终head以GitHub当前引用为准。2026-10-25复审仍为**REQUEST CHANGES**，本轮修复后待再次审阅；未合并main、未关闭issue #19。
+- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、复审修复`d2c8f8c`、第三轮修复`359307f`、第四轮修复`7f0ad92`、Unicode修复`4efd92e`、取消边界修复`ac21574`，最终head以GitHub当前引用为准。2026-10-25复审仍为**REQUEST CHANGES**，本轮修复后待再次审阅；未合并main、未关闭issue #19。
