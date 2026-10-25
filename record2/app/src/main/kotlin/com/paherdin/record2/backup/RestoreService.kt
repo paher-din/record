@@ -5,7 +5,11 @@ import com.paherdin.record2.storage.RecordDatabase
 import java.io.File
 import java.time.Clock
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 internal data class RestoreCandidate(
@@ -36,6 +40,7 @@ internal enum class RestoreCheckpoint {
     AFTER_DELETE,
     BEFORE_RECEIPT,
     BEFORE_COMMIT,
+    AFTER_COMMIT,
 }
 
 internal class RestoreService(
@@ -55,13 +60,18 @@ internal class RestoreService(
         stagingDirectory.mkdirs()
         val work = File(stagingDirectory, "preflight-${UUID.randomUUID()}")
         val zip = File(work, "source.zip")
+        val context = currentCoroutineContext()
+        val check = { context.ensureActive() }
         try {
             if (!work.mkdirs()) fail(BackupError.RecoverableIO, "could not create preflight directory")
             val bytes = source.copyTo(zip, BackupLimits.MAX_ZIP_BYTES)
+            check()
             if (bytes > BackupLimits.MAX_ZIP_BYTES) fail(BackupError.InvalidSource, "backup exceeds 64 MiB")
-            val read = LogicalZipReader.read(zip)
+            val read = LogicalZipReader.read(zip, check)
+            check()
             val now = clock.millis()
             LogicalBackupValidator.validate(read.backup, now)
+            check()
             val target = ReadOnlyTargetInspector.inspect(databasePath)
             checkDisk(read.backup.manifest, bytes, target)
             RestoreCandidate(
@@ -88,103 +98,145 @@ internal class RestoreService(
         val work = File(stagingDirectory, "restore-${UUID.randomUUID()}")
         val zip = File(work, "source.zip")
         try {
-            val running = runCatching { ReadOnlyTargetInspector.runningRunIds(databasePath) }.getOrNull()
-                ?: fail(BackupError.RecoverableIO, "cannot enumerate active runs; restore aborted")
-            memoryBarrier.revokeRuns(running)
-            memoryBarrier.invalidateInMemory()
-            if (candidate.appVersionCode != currentAppVersionCode) {
-                fail(BackupError.TargetInvalid, "app version changed since preflight")
-            }
-            if (!work.mkdirs()) fail(BackupError.RecoverableIO, "could not create restore staging directory")
-            val copied = candidate.source.copyTo(zip, BackupLimits.MAX_ZIP_BYTES)
-            if (copied != candidate.sourceBytes) {
-                fail(BackupError.InvalidSource, "source bytes changed since preflight")
-            }
-            val sourceSha = sha256File(zip)
-            if (sourceSha != candidate.sourceSha256) {
-                fail(BackupError.InvalidSource, "source digest changed since preflight")
-            }
-            val read = LogicalZipReader.read(zip)
-            if (read.backup.manifest != candidate.manifest) {
-                fail(BackupError.InvalidSource, "manifest changed since preflight")
-            }
-            val restoredAt = clock.millis()
-            LogicalBackupValidator.validate(read.backup, restoredAt)
-            val target = ReadOnlyTargetInspector.inspect(databasePath)
-            if (target.generation != candidate.targetGeneration) {
-                fail(BackupError.TargetInvalid, "target generation changed since preflight")
-            }
-            checkDisk(read.backup.manifest, copied, target)
-            val newEpoch = when (val old = target.authEpoch) {
-                null -> 1L
-                else -> old + 1L
-            }
-            if (newEpoch !in 1..Long.MAX_VALUE - 1) {
-                fail(BackupError.TargetInvalid, "restore would write an unusable authEpoch")
-            }
-            val restoredGeneration = UUID.randomUUID().toString()
-            if (restoredGeneration == read.backup.manifest.sourceGeneration) {
-                fail(BackupError.Internal, "new generation collided with source generation")
-            }
-            val owner = selectOwner(candidate.manifest, read.backup.content)
-            val receipt = RestoreReceipt(
-                formatVersion = 1,
-                sourceZipSha256 = read.zipSha256,
-                sourceZipBytes = copied,
-                sourceFormatVersion = read.backup.manifest.formatVersion,
-                sourceSchemaVersion = read.backup.manifest.databaseSchemaVersion,
-                sourceGeneration = read.backup.manifest.sourceGeneration,
-                restoredGeneration = restoredGeneration,
-                restoredAt = restoredAt,
-                contentDigest = read.backup.manifest.contentDigest,
-                importedRows = read.backup.manifest.totalRows,
-                businessRevisionAtRestore = read.backup.manifest.businessRevision,
-            )
-            val receiptText = RestoreReceiptCodec.encode(receipt)
-            val transformedRuns = read.backup.content.runs.map { run ->
-                if (run.state != "RUNNING") {
-                    run
-                } else {
-                    run.copy(
-                        state = "INTERRUPTED",
-                        activeSlot = null,
-                        finishedAt = maxOf(restoredAt, run.startedAt),
-                    )
+            try {
+                withContext(NonCancellable) {
+                    restoreLocked(candidate, work, zip)
                 }
+            } catch (cancelled: CancellationException) {
+                val committed = committedReceipt(candidate) ?: throw cancelled
+                resultFromReceipt(committed)
             }
-            val transformedProposals = read.backup.content.proposals.map { proposal ->
-                if (proposal.state == "EDITABLE" || proposal.state == "LOCKED") {
-                    proposal.copy(state = "NEEDS_REVIEW", activeSlot = null)
-                } else {
-                    proposal
-                }
-            }
-            importTransaction(
-                read.backup,
-                transformedRuns,
-                transformedProposals,
-                restoredGeneration,
-                owner,
-                newEpoch,
-                receiptText,
-                candidate.targetGeneration,
-                target.authEpoch,
-            )
-            RestoreResult(
-                restoredGeneration = restoredGeneration,
-                processOwnerId = owner,
-                authEpoch = newEpoch,
-                receipt = receipt,
-                importedRows = receipt.importedRows,
-                transformedRuns = read.backup.content.runs.count { it.state == "RUNNING" },
-                transformedProposals = read.backup.content.proposals.count {
-                    it.state == "EDITABLE" || it.state == "LOCKED"
-                },
-            )
         } finally {
             work.deleteRecursively()
             lease.close()
         }
+    }
+
+    /** Returns the canonical receipt if this candidate already committed, without re-running import. */
+    suspend fun committedReceipt(candidate: RestoreCandidate): RestoreReceipt? = withContext(Dispatchers.IO) {
+        val state = database.records().dataState() ?: return@withContext null
+        val text = state.restoreReceipt ?: return@withContext null
+        val receipt = runCatching { RestoreReceiptCodec.decode(text, clock.millis()) }.getOrNull()
+            ?: return@withContext null
+        if (receipt.restoredGeneration != state.dataGeneration ||
+            receipt.sourceZipSha256 != candidate.sourceSha256 ||
+            receipt.contentDigest != candidate.manifest.contentDigest ||
+            receipt.sourceGeneration != candidate.manifest.sourceGeneration
+        ) {
+            return@withContext null
+        }
+        receipt
+    }
+
+    private suspend fun restoreLocked(candidate: RestoreCandidate, work: File, zip: File): RestoreResult {
+        val running = runCatching { ReadOnlyTargetInspector.runningRunIds(databasePath) }.getOrNull()
+            ?: fail(BackupError.RecoverableIO, "cannot enumerate active runs; restore aborted")
+        memoryBarrier.revokeRuns(running)
+        memoryBarrier.invalidateInMemory()
+        if (candidate.appVersionCode != currentAppVersionCode) {
+            fail(BackupError.TargetInvalid, "app version changed since preflight")
+        }
+        if (!work.mkdirs()) fail(BackupError.RecoverableIO, "could not create restore staging directory")
+        val copied = candidate.source.copyTo(zip, BackupLimits.MAX_ZIP_BYTES)
+        if (copied != candidate.sourceBytes) {
+            fail(BackupError.InvalidSource, "source bytes changed since preflight")
+        }
+        val sourceSha = sha256File(zip)
+        if (sourceSha != candidate.sourceSha256) {
+            fail(BackupError.InvalidSource, "source digest changed since preflight")
+        }
+        val read = LogicalZipReader.read(zip)
+        if (read.backup.manifest != candidate.manifest) {
+            fail(BackupError.InvalidSource, "manifest changed since preflight")
+        }
+        val restoredAt = clock.millis()
+        LogicalBackupValidator.validate(read.backup, restoredAt)
+        val target = ReadOnlyTargetInspector.inspect(databasePath)
+        if (target.generation != candidate.targetGeneration) {
+            fail(BackupError.TargetInvalid, "target generation changed since preflight")
+        }
+        checkDisk(read.backup.manifest, copied, target)
+        val newEpoch = when (val old = target.authEpoch) {
+            null -> 1L
+            else -> old + 1L
+        }
+        if (newEpoch !in 1..Long.MAX_VALUE - 1) {
+            fail(BackupError.TargetInvalid, "restore would write an unusable authEpoch")
+        }
+        val restoredGeneration = UUID.randomUUID().toString()
+        if (restoredGeneration == read.backup.manifest.sourceGeneration) {
+            fail(BackupError.Internal, "new generation collided with source generation")
+        }
+        val owner = selectOwner(candidate.manifest, read.backup.content)
+        val receipt = RestoreReceipt(
+            formatVersion = 1,
+            sourceZipSha256 = read.zipSha256,
+            sourceZipBytes = copied,
+            sourceFormatVersion = read.backup.manifest.formatVersion,
+            sourceSchemaVersion = read.backup.manifest.databaseSchemaVersion,
+            sourceGeneration = read.backup.manifest.sourceGeneration,
+            restoredGeneration = restoredGeneration,
+            restoredAt = restoredAt,
+            contentDigest = read.backup.manifest.contentDigest,
+            importedRows = read.backup.manifest.totalRows,
+            businessRevisionAtRestore = read.backup.manifest.businessRevision,
+        )
+        val receiptText = RestoreReceiptCodec.encode(receipt)
+        val transformedRuns = read.backup.content.runs.map { run ->
+            if (run.state != "RUNNING") {
+                run
+            } else {
+                run.copy(
+                    state = "INTERRUPTED",
+                    activeSlot = null,
+                    finishedAt = maxOf(restoredAt, run.startedAt),
+                )
+            }
+        }
+        val transformedProposals = read.backup.content.proposals.map { proposal ->
+            if (proposal.state == "EDITABLE" || proposal.state == "LOCKED") {
+                proposal.copy(state = "NEEDS_REVIEW", activeSlot = null)
+            } else {
+                proposal
+            }
+        }
+        importTransaction(
+            read.backup,
+            transformedRuns,
+            transformedProposals,
+            restoredGeneration,
+            owner,
+            newEpoch,
+            receiptText,
+            candidate.targetGeneration,
+            target.authEpoch,
+        )
+        checkpoint(RestoreCheckpoint.AFTER_COMMIT)
+        return RestoreResult(
+            restoredGeneration = restoredGeneration,
+            processOwnerId = owner,
+            authEpoch = newEpoch,
+            receipt = receipt,
+            importedRows = receipt.importedRows,
+            transformedRuns = read.backup.content.runs.count { it.state == "RUNNING" },
+            transformedProposals = read.backup.content.proposals.count {
+                it.state == "EDITABLE" || it.state == "LOCKED"
+            },
+        )
+    }
+
+    private suspend fun resultFromReceipt(receipt: RestoreReceipt): RestoreResult {
+        val state = database.records().dataState() ?: fail(BackupError.RecoverableIO, "restored data state is missing")
+        val control = database.aiControl().control()
+        return RestoreResult(
+            restoredGeneration = receipt.restoredGeneration,
+            processOwnerId = state.processOwnerId,
+            authEpoch = control?.authEpoch ?: 0,
+            receipt = receipt,
+            importedRows = receipt.importedRows,
+            transformedRuns = 0,
+            transformedProposals = 0,
+        )
     }
 
     private suspend fun importTransaction(

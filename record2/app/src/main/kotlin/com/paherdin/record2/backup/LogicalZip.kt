@@ -234,8 +234,8 @@ internal data class VerifiedLogicalBackup(
 internal object LogicalZipReader {
     private val expectedNames = listOf("manifest.json") + LogicalSegment.entries.map { it.path }
 
-    fun read(file: File): ReadLogicalBackup {
-        val parsed = readInternal(file, collectRows = true)
+    fun read(file: File, cancellationCheck: () -> Unit = {}): ReadLogicalBackup {
+        val parsed = readInternal(file, collectRows = true, cancellationCheck = cancellationCheck)
         return ReadLogicalBackup(
             backup = LogicalBackup(parsed.manifest, buildContent(parsed.rows)),
             zipBytes = parsed.zipBytes,
@@ -246,11 +246,11 @@ internal object LogicalZipReader {
 
     /** Container/hash/row verification without retaining the decoded rows. */
     fun verify(file: File): VerifiedLogicalBackup {
-        val parsed = readInternal(file, collectRows = false)
+        val parsed = readInternal(file, collectRows = false, cancellationCheck = {})
         return VerifiedLogicalBackup(parsed.manifest, parsed.zipBytes, parsed.zipSha256, parsed.stats)
     }
 
-    private fun readInternal(file: File, collectRows: Boolean): ParsedZip {
+    private fun readInternal(file: File, collectRows: Boolean, cancellationCheck: () -> Unit): ParsedZip {
         if (!file.isFile) fail(BackupError.InvalidSource, "backup ZIP does not exist")
         val size = file.length()
         if (size <= 0 || size > BackupLimits.MAX_ZIP_BYTES) {
@@ -275,8 +275,9 @@ internal object LogicalZipReader {
                 val stats = LinkedHashMap<LogicalSegment, SegmentStats>()
                 val rows = LinkedHashMap<LogicalSegment, List<SegmentRow>>()
                 for (segment in LogicalSegment.entries) {
+                    cancellationCheck()
                     val entry = central.getValue(segment.path)
-                    val payload = readEntry(raf, entry, segment, collectRows)
+                    val payload = readEntry(raf, entry, segment, collectRows, cancellationCheck)
                     if (payload.stats.uncompressedBytes > BackupLimits.MAX_ENTRY_UNCOMPRESSED) {
                         fail(BackupError.InvalidSource, "${segment.path} exceeds 128 MiB")
                     }
@@ -504,7 +505,7 @@ internal object LogicalZipReader {
 
     private fun readManifestBytes(raf: RandomAccessFile, entry: CentralEntry): ByteArray {
         val out = ByteArrayOutputStream()
-        val result = readUncompressed(raf, entry) { buffer, length ->
+        val result = readUncompressed(raf, entry, {}) { buffer, length ->
             if (out.size().toLong() + length > BackupLimits.MAX_MANIFEST_BYTES) {
                 fail(BackupError.InvalidSource, "manifest exceeds 1 MiB")
             }
@@ -524,11 +525,12 @@ internal object LogicalZipReader {
         entry: CentralEntry,
         segment: LogicalSegment,
         collectRows: Boolean,
+        cancellationCheck: () -> Unit,
     ): EntryRead {
         validateSegmentContainer(entry, segment)
         val rows = if (collectRows) ArrayList<SegmentRow>() else null
-        val decoder = LineDecoder(segment, rows)
-        val result = readUncompressed(raf, entry) { buffer, length -> decoder.accept(buffer, length) }
+        val decoder = LineDecoder(segment, rows, cancellationCheck)
+        val result = readUncompressed(raf, entry, cancellationCheck) { buffer, length -> decoder.accept(buffer, length) }
         decoder.finish()
         if (result.uncompressedBytes == 0L) {
             if (decoder.lineCount != 0L) fail(BackupError.InvalidSource, "${segment.path} empty bytes with rows")
@@ -550,12 +552,14 @@ internal object LogicalZipReader {
     private class LineDecoder(
         private val segment: LogicalSegment,
         private val rows: MutableList<SegmentRow>?,
+        private val cancellationCheck: () -> Unit,
     ) {
         private val line = ByteArrayOutputStream()
         var lineCount: Long = 0
             private set
 
         fun accept(buffer: ByteArray, length: Int) {
+            cancellationCheck()
             var index = 0
             while (index < length) {
                 var lf = index
@@ -622,6 +626,7 @@ internal object LogicalZipReader {
     private fun readUncompressed(
         raf: RandomAccessFile,
         entry: CentralEntry,
+        cancellationCheck: () -> Unit,
         sink: (ByteArray, Int) -> Unit,
     ): UncompressedResult {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -640,6 +645,7 @@ internal object LogicalZipReader {
         if (entry.method == 0) {
             val buffer = ByteArray(65_536)
             while (true) {
+                cancellationCheck()
                 val read = slice.read(buffer)
                 if (read < 0) break
                 consume(buffer, read)
@@ -650,6 +656,7 @@ internal object LogicalZipReader {
                 val input = ByteArray(65_536)
                 val output = ByteArray(65_536)
                 while (!inflater.finished()) {
+                    cancellationCheck()
                     if (inflater.needsInput()) {
                         val read = slice.read(input)
                         if (read < 0) fail(BackupError.InvalidSource, "truncated DEFLATE stream")

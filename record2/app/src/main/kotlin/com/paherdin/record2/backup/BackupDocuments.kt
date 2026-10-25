@@ -10,6 +10,8 @@ import java.io.IOException
 import java.io.InputStream
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 internal interface BackupSource {
@@ -36,6 +38,7 @@ internal class ContentResolverBackupSource(
                 val buffer = ByteArray(65_536)
                 var total = 0L
                 while (true) {
+                    currentCoroutineContext().ensureActive()
                     val read = stream.read(buffer)
                     if (read < 0) break
                     total += read
@@ -77,6 +80,7 @@ internal class ContentResolverBackupTarget(
         resolver.openInputStream(uri)?.use { input ->
             val buffer = ByteArray(65_536)
             while (true) {
+                currentCoroutineContext().ensureActive()
                 val read = input.read(buffer)
                 if (read < 0) break
                 digest.update(buffer, 0, read)
@@ -90,6 +94,7 @@ internal class ContentResolverBackupTarget(
             var total = 0L
             val buffer = ByteArray(65_536)
             while (true) {
+                currentCoroutineContext().ensureActive()
                 val read = input.read(buffer)
                 if (read < 0) break
                 total += read

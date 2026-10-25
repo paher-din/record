@@ -40,6 +40,15 @@ import java.time.ZoneOffset
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -245,6 +254,90 @@ class BackupRestoreContractTest {
             assertEquals("wal", mode?.lowercase())
         }
         source.close()
+    }
+
+    @Test
+    fun cancelledPreflightCleansStagingAndLeavesDatabaseUntouched() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-cancel-preflight-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "cancel-preflight.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+        val bytes = zip.readBytes()
+
+        val targetName = "g1-cancel-preflight-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        val privateStaging = File(context.noBackupFilesDir, "g1-preflight-cancel-${UUID.randomUUID()}")
+        privateStaging.mkdirs()
+        val slow = object : BackupSource {
+            override val displayName: String = "slow.zip"
+            override suspend fun copyTo(destination: File, maxBytes: Long): Long {
+                var offset = 0
+                destination.outputStream().use { output ->
+                    while (offset < bytes.size) {
+                        currentCoroutineContext().ensureActive()
+                        val end = minOf(offset + 32_768, bytes.size)
+                        output.write(bytes, offset, end - offset)
+                        offset = end
+                        delay(2)
+                    }
+                }
+                return bytes.size.toLong()
+            }
+        }
+        val service = RestoreService(
+            target, targetPath, privateStaging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val before = tables(targetPath)
+        val started = CompletableDeferred<Unit>()
+        val job = launch(Dispatchers.IO) {
+            started.complete(Unit)
+            runCatching { service.preflight(slow) }
+        }
+        started.await()
+        delay(10)
+        job.cancelAndJoin()
+        assertEquals(before, tables(targetPath))
+        assertTrue(privateStaging.listFiles().isNullOrEmpty())
+        privateStaging.deleteRecursively()
+        source.close()
+        target.close()
+    }
+
+    @Test
+    fun cancellationAtCommitKeepsCommittedReceipt() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-cancel-commit-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "cancel-commit.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-cancel-commit-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        var job: Job? = null
+        val service = RestoreService(
+            target, targetPath, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+            checkpoint = { point -> if (point == RestoreCheckpoint.BEFORE_COMMIT) job?.cancel() },
+        )
+        val candidate = service.preflight(FileSource(zip))
+        job = launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+            runCatching { service.restore(candidate) }
+        }
+        job.start()
+        job.join()
+
+        val receipt = service.committedReceipt(candidate)
+        assertNotNull(receipt)
+        assertEquals(receipt!!.restoredGeneration, target.records().dataState()?.dataGeneration)
+        assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath, clock).check().kind)
+        source.close()
+        target.close()
     }
 
     @Test
