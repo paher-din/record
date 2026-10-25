@@ -358,6 +358,34 @@ internal class RecordToolsHostTest {
     }
 
     @Test
+    fun poisonedRunRejectsLaterToolsBeforeBusinessWrites() = runBlocking {
+        val harness = ToolHarness()
+        val search = SearchRecordsArgs()
+        repeat(3) { harness.search.execute(search) }
+        val poison = runCatching { harness.search.execute(search) }.exceptionOrNull()
+        assertTrue("expected the no-progress limit, got $poison", poison is RecordToolException)
+        assertEquals(RecordToolFailure.BudgetExceeded, (poison as RecordToolException).code)
+
+        val staged = runCatching {
+            harness.prepare.execute(
+                PrepareChangesArgs(
+                    ops = listOf(
+                        PrepareOpArgs(
+                            op = "CREATE_TRANSACTION", localRef = "#t1", direction = "EXPENSE",
+                            amountText = "1.00", accountName = "日常账户", categoryName = "餐饮",
+                            localDateTime = "2026-10-24T12:30:00", zoneId = "Asia/Shanghai",
+                        ),
+                    ),
+                ),
+            )
+        }.exceptionOrNull()
+        assertTrue("expected a poisoned-run rejection, got $staged", staged is RecordToolException)
+        assertEquals(RecordToolFailure.BudgetExceeded, (staged as RecordToolException).code)
+        assertTrue(harness.proposals.prepares.isEmpty())
+        assertTrue(harness.proposals.revises.isEmpty())
+    }
+
+    @Test
     fun guardedStreamingPathsAreRejectedBeforeAnyTransport() = runBlocking {
         val harness = ToolHarness()
         val delegate = GuardFailingHttpClient()
@@ -737,10 +765,12 @@ internal class RecordToolsHostTest {
             assertEquals(RecordToolFailure.AuthorizationRevoked, expected.code)
         }
         assertTrue(harness.timeline.timelineCalls.isEmpty())
-        harness.security.valid = true
-        harness.history.runState = RunState.INTERRUPTED
+        // A poisoned run keeps its original hard-failure code; exercise the separate run-state
+        // guard on a fresh context instead of resetting the already-poisoned ledger.
+        val invalidated = ToolHarness()
+        invalidated.history.runState = RunState.INTERRUPTED
         try {
-            harness.aggregate.execute(AggregateFinancesArgs("2026-10-01", "2026-10-02", "Asia/Shanghai"))
+            invalidated.aggregate.execute(AggregateFinancesArgs("2026-10-01", "2026-10-02", "Asia/Shanghai"))
             fail("an invalidated run must fail closed")
         } catch (expected: RecordToolException) {
             assertEquals(RecordToolFailure.RunInvalidated, expected.code)

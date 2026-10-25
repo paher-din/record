@@ -79,6 +79,11 @@ internal class RecordToolContext(
     }
 
     suspend fun guard(tool: String, argsKey: String, perToolCap: Int) {
+        // Koog may still dispatch the remaining tool calls from the same model response after a
+        // hard failure. The poisoned run must reject them before any business service is reached.
+        poisoned?.let { code ->
+            throw RecordToolException(code, "run already failed: $code")
+        }
         try {
             ledger.checkEntry(tool, argsKey, perToolCap)
         } catch (error: RecordToolException) {

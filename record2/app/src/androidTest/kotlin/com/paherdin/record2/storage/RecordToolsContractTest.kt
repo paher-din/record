@@ -344,6 +344,24 @@ internal class RecordToolsContractTest {
         assertTrue(rows("change_proposal").isEmpty())
     }
 
+    @Test fun poisonedRunRejectsLaterToolCallsInTheSameResponse() = runBlocking {
+        val prepareArgs = """
+            {"ops":[{"op":"CREATE_TRANSACTION","localRef":"#t1","direction":"EXPENSE",
+            "amountText":"1.00","accountName":"日常账户","localDateTime":"2026-10-24T12:30:00",
+            "zoneId":"Asia/Shanghai"}]}
+        """.trimIndent()
+        val calls = List(4) { "search_records" to "{}" } + ("prepare_changes" to prepareArgs)
+        val http = ScriptedDeviceHttp { callIndex, _ ->
+            if (callIndex == 1) d1MultiToolChat(calls) else d1TextChat("这条回复不应被请求")
+        }
+        val session = history.createSession("d1-poisoned-tools")
+        val failure = runCatching { coordinator(http).run(session.id, "连续执行工具") }
+        assertTrue("expected a hard failure, got ${failure.exceptionOrNull()}", failure.isFailure)
+        assertEquals(listOf("FAILED" to "BUDGET_EXCEEDED"), runStates())
+        assertEquals(1, http.requests.size)
+        assertTrue(rows("change_proposal").isEmpty())
+    }
+
     @Test fun runWallClockStopsTheAgentAsBudgetExceeded() = runBlocking {
         val http = ScriptedDeviceHttp { _, _ ->
             delay(500)
@@ -719,6 +737,24 @@ internal fun d1TextChatWithUsageValues(
 
 internal fun d1ToolChat(name: String, arguments: String): String =
     d1Completion(d1ChatMessage(toolCall = name to arguments), "tool_calls")
+
+private fun d1MultiToolChat(calls: List<Pair<String, String>>): String {
+    val message = buildJsonObject {
+        put("role", "assistant")
+        put("content", "")
+        put("tool_calls", JsonArray(calls.map { (name, arguments) ->
+            buildJsonObject {
+                put("id", "d1-call-${d1CallCounter.incrementAndGet()}")
+                put("type", "function")
+                put("function", buildJsonObject {
+                    put("name", name)
+                    put("arguments", arguments)
+                })
+            }
+        }))
+    }
+    return d1Completion(message, "tool_calls")
+}
 
 internal class D1ToolsFixture(private val id: String) {
     val name = "d1-tools-$id.db"
