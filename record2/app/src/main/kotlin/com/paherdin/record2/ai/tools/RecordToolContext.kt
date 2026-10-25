@@ -34,6 +34,8 @@ internal class RecordToolDeps(
     val timeline: TimelineService,
     val proposals: ProposalService,
     val finance: FinanceService,
+    /** G1 restore revocation; checked at every tool entry and HTTP request boundary. */
+    val isRunRevoked: (String) -> Boolean = { false },
 )
 
 /**
@@ -85,6 +87,9 @@ internal class RecordToolContext(
         // hard failure. The poisoned run must reject them before any business service is reached.
         poisoned?.let { code ->
             throw RecordToolException(code, "run already failed: $code")
+        }
+        if (deps.isRunRevoked(start.runId)) {
+            poison(RecordToolFailure.RunInvalidated, "$tool after restore revocation")
         }
         try {
             ledger.checkEntry(tool, argsKey, perToolCap)

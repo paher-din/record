@@ -4,6 +4,10 @@ import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
+import com.paherdin.record2.backup.DataOperationGate
+import com.paherdin.record2.backup.ProcessDataOperationGate
+import com.paherdin.record2.backup.ProcessRunExecutionRevoker
+import com.paherdin.record2.backup.RunExecutionRevoker
 import com.paherdin.record2.proposals.ProposalBudget
 import com.paherdin.record2.proposals.ProposalCodec
 import com.paherdin.record2.proposals.ProposalError
@@ -32,16 +36,18 @@ internal class RoomProposalService(
     private val clock: Clock = Clock.systemUTC(),
     private val checkpoint: (ProposalCheckpoint) -> Unit = {},
 ) : ProposalService {
+    internal var dataOperationGate: DataOperationGate = ProcessDataOperationGate.gate
+    internal var runExecutionRevoker: RunExecutionRevoker = ProcessRunExecutionRevoker
     private val proposals = database.proposals()
     private val sessions = database.sessions()
     private val records = database.records()
 
     override suspend fun prepare(context: ProposalRunContext, intents: List<ProposalIntent>): ProposalView = io {
         try {
-            database.withTransaction { create(context, intents) }
+            write { create(context, intents) }
         } catch (error: SQLiteConstraintException) {
             // A unique index race is resolved by re-reading the winner, never by minting a second identity.
-            database.withTransaction { afterContention(context, intents, error) }
+            write { afterContention(context, intents, error) }
         }
     }
 
@@ -51,7 +57,7 @@ internal class RoomProposalService(
         expectedRevision: Long,
         intents: List<ProposalIntent>,
     ): ProposalView = io {
-        database.withTransaction {
+        write {
             val run = validRun(context)
             val generation = currentGeneration(run.dataGeneration)
             editable(proposalId, run.sessionId, generation, expectedRevision)
@@ -82,6 +88,9 @@ internal class RoomProposalService(
     override suspend fun proposal(proposalId: String): ProposalView? = io {
         database.withTransaction { proposals.proposal(proposalId)?.view() }
     }
+
+    private suspend fun <T> write(block: suspend () -> T): T =
+        database.withTransaction { dataOperationGate.withWrite { block() } }
 
     private suspend fun create(context: ProposalRunContext, intents: List<ProposalIntent>): ProposalView {
         val run = validRun(context)
@@ -171,6 +180,7 @@ internal class RoomProposalService(
         val run = sessions.run(context.runId) ?: fail(ProposalError.NotFound)
         if (run.sessionId != context.sessionId) fail(ProposalError.RunInvalidated)
         if (run.state != "RUNNING" || run.activeSlot != 1) fail(ProposalError.RunInvalidated)
+        if (runExecutionRevoker.isRevoked(run.id)) fail(ProposalError.RunInvalidated)
         if (run.processOwnerId != context.processOwnerId) fail(ProposalError.RunInvalidated)
         if (run.receiverIdentity != context.receiverIdentity) fail(ProposalError.RunInvalidated)
         if (run.authEpoch < 1 || run.authEpoch != context.authEpoch) fail(ProposalError.RunInvalidated)

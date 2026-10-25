@@ -3,6 +3,8 @@ package com.paherdin.record2.storage
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
+import com.paherdin.record2.backup.DataOperationGate
+import com.paherdin.record2.backup.ProcessDataOperationGate
 import com.paherdin.record2.ai.security.AiDenial
 import com.paherdin.record2.ai.security.AiMode
 import com.paherdin.record2.ai.security.AiSecurityError
@@ -31,6 +33,7 @@ internal class RoomAiSecurityService(
     private val catalog: ProviderReceiverCatalog = RecordProviderReceivers.catalog,
     private val clock: Clock = Clock.systemUTC(),
 ) : AiSecurityService {
+    internal var dataOperationGate: DataOperationGate = ProcessDataOperationGate.gate
     private val dao = database.aiControl()
     private val records = database.records()
     private val sessions = database.sessions()
@@ -51,9 +54,9 @@ internal class RoomAiSecurityService(
     }
 
     override suspend fun setMode(mode: AiMode): AiSecurityState = io {
-        val control = database.withTransaction {
+        val control = write {
             val current = requireWritableControl()
-            if (current.mode == mode.name) return@withTransaction current
+            if (current.mode == mode.name) return@write current
             val epoch = nextEpoch(current)
             if (dao.updateMode(mode.name, epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
             invalidateRunsBoundToOldEpoch()
@@ -64,9 +67,9 @@ internal class RoomAiSecurityService(
 
     override suspend fun selectReceiver(receiver: ProviderReceiver): AiSecurityState = io {
         val configured = configured(receiver)
-        val control = database.withTransaction {
+        val control = write {
             val current = requireWritableControl()
-            if (current.selectedReceiverIdentity == configured.identity) return@withTransaction current
+            if (current.selectedReceiverIdentity == configured.identity) return@write current
             val epoch = nextEpoch(current)
             if (dao.selectReceiver(configured.identity, epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
             invalidateRunsBoundToOldEpoch()
@@ -77,7 +80,7 @@ internal class RoomAiSecurityService(
 
     override suspend fun grant(receiver: ProviderReceiver): AiSecurityState = io {
         val configured = configured(receiver)
-        val control = database.withTransaction {
+        val control = write {
             val current = requireWritableControl()
             val epoch = nextEpoch(current)
             if (dao.grant(
@@ -94,7 +97,7 @@ internal class RoomAiSecurityService(
     }
 
     override suspend fun revoke(): AiSecurityState = io {
-        val control = database.withTransaction {
+        val control = write {
             val current = requireWritableControl()
             val epoch = nextEpoch(current)
             if (dao.revoke(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
@@ -107,7 +110,7 @@ internal class RoomAiSecurityService(
     override suspend fun replaceCredential(secret: CharArray): AiSecurityState = io {
         if (secret.none { !it.isWhitespace() }) fail(AiSecurityError.Validation)
         credentialMutation.withLock {
-            val control = database.withTransaction {
+            val control = write {
                 val current = requireWritableControl()
                 val epoch = nextEpoch(current)
                 if (dao.bumpAuthEpoch(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
@@ -131,7 +134,7 @@ internal class RoomAiSecurityService(
 
     override suspend fun clearCredential(): AiSecurityState = io {
         credentialMutation.withLock {
-            val control = database.withTransaction {
+            val control = write {
                 val current = requireWritableControl()
                 val epoch = nextEpoch(current)
                 if (dao.bumpAuthEpoch(epoch) != 1) fail(AiSecurityError.ConcurrentUpdate)
@@ -150,11 +153,13 @@ internal class RoomAiSecurityService(
     }
 
     override suspend fun eligibility(receiver: ProviderReceiver): AiSendEligibility = io {
+        dataOperationGate.requireAiUsable()
         val state = snapshot(database.withTransaction { ensureControl() })
         AiSecurityPolicy.eligibility(state, receiver, catalog)
     }
 
     override suspend fun requirePermit(receiver: ProviderReceiver): AiSendPermit = io {
+        dataOperationGate.requireAiUsable()
         credentialMutation.withLock {
             val state = snapshot(database.withTransaction { ensureControl() })
             when (val result = AiSecurityPolicy.eligibility(state, receiver, catalog)) {
@@ -165,11 +170,13 @@ internal class RoomAiSecurityService(
     }
 
     override suspend fun stillValid(permit: AiSendPermit): Boolean = io {
+        dataOperationGate.requireAiUsable()
         val state = snapshot(database.withTransaction { ensureControl() })
         AiSecurityPolicy.permitIsCurrent(state, permit, catalog)
     }
 
     override suspend fun <T> useCredential(permit: AiSendPermit, block: (CharArray) -> T): T = io {
+        dataOperationGate.requireAiUsable()
         val state = snapshot(database.withTransaction { ensureControl() })
         if (!AiSecurityPolicy.permitIsCurrent(state, permit, catalog)) fail(AiSecurityError.RunInvalidated)
         try {
@@ -179,17 +186,20 @@ internal class RoomAiSecurityService(
         }
     }
 
-    private fun ensureControl(): AiControlEntity {
+    private suspend fun <T> write(block: suspend () -> T): T =
+        database.withTransaction { dataOperationGate.withWrite { block() } }
+
+    private suspend fun ensureControl(): AiControlEntity {
         if (records.dataState() == null) {
             if (records.hasDataWithoutGeneration()) fail(AiSecurityError.RecoveryRequired)
             return virtualControl()
         }
         dao.control()?.let { return it }
-        dao.insertControlIfAbsent(virtualControl())
+        dataOperationGate.withWrite { dao.insertControlIfAbsent(virtualControl()) }
         return readControl()
     }
 
-    private fun requireWritableControl(): AiControlEntity {
+    private suspend fun requireWritableControl(): AiControlEntity {
         val control = ensureControl()
         if (records.dataState() == null) fail(AiSecurityError.NotInitialized)
         return control

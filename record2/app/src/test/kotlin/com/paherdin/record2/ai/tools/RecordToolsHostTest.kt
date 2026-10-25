@@ -396,6 +396,31 @@ internal class RecordToolsHostTest {
     }
 
     @Test
+    fun restoreRevokedRunRejectsToolAndHttpBeforeBusiness() = runBlocking {
+        val harness = ToolHarness()
+        val deps = RecordToolDeps(
+            harness.security, harness.history, harness.timeline, harness.proposals, harness.finance,
+            isRunRevoked = { true },
+        )
+        val context = RecordToolContext(deps, harness.permit, harness.start, harness.clock)
+        val search = runCatching {
+            SearchRecordsTool(context).execute(SearchRecordsArgs())
+        }.exceptionOrNull()
+        assertTrue("expected a revoke failure, got $search", search is RecordToolException)
+        assertEquals(RecordToolFailure.RunInvalidated, (search as RecordToolException).code)
+        assertTrue(harness.timeline.timelineCalls.isEmpty())
+
+        val delegate = GuardFailingHttpClient()
+        val guard = GuardedHttpClient(delegate, context)
+        val request = runCatching {
+            guard.post("chat", "{}", String::class, String::class, emptyMap(), emptyMap())
+        }.exceptionOrNull()
+        assertTrue("revoked request must be blocked, got $request", request is RecordToolException)
+        assertEquals(RecordToolFailure.RunInvalidated, (request as RecordToolException).code)
+        assertEquals(0, delegate.posts)
+    }
+
+    @Test
     fun catalogReadFailurePoisonsAndBlocksTheNextRequest() = runBlocking {
         val harness = ToolHarness()
         harness.finance.initializeError = FinanceException(FinanceError.StorageFull)

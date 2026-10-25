@@ -1613,3 +1613,74 @@ APK：debug `3aa2b037…`、release-unsigned `0f88685c…`、androidTest `b68138
 ### 34.4 边界
 
 PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，issue #13/#14 已关闭。合并后的 main 仍需执行 G2 联合验收。F2 绑定、G0/G1/G2 及产品预算冻结不在本任务范围。
+
+## 35. G1 核心实现与验证（2026-10-25）
+
+负责人要求“完成issue g1”，对应[GitHub #19](https://github.com/paher-din/record/issues/19)。前置G0 #18已按§31.7批准并合并；E2 #13、F1 #16仍OPEN/未合并，F2/D-SAFE最终UI接线也未启动。本批在独立worktree/分支`codex/g1-backup-restore`上实现G1引擎、Room/SQLite测试与SAF文档接缝，不修改Schema，不合并main、不关闭issue #19，不宣称最终备份UI、真机SAF/Keystore、云备份/设备迁移或G2联合验收完成。
+
+**交付与实现边界：**
+
+| 项 | 本批实现 |
+|---|---|
+| 格式/校验 | `record2/app/src/main/kotlin/com/paherdin/record2/backup/`：12段JSONL、manifest/contentDigest、严格JSON（重复key/未知字段/整数/深度/UTF-8）、ZIP v1读写（13条目、STORED/DEFLATE、空段STORED/0/0、CRC/大小/压缩比/无ZIP64/无注释/无尾随/本地头覆盖校验）、G0 §5引用/合法历史oracle、C0/C1/B1/B2/E1 owner codec重验 |
+| 导出 | 独立`OPEN_READONLY`+`query_only`单语句快照；WAL前置；按§4.2排序并**逐行流式写段文件**（不保留全量行/载荷）；staging ZIP流式自检；SAF `BackupTarget`写入/flush/关闭/回读摘要；WAL增长与卷余量监控接缝；导出不改写O、不消费草稿、不取消Run/Run/Pending、不写receipt |
+| 恢复 | 隔离preflight与候选绑定（源字节/整ZIP SHA/manifest/contentDigest/目标代际/App-Schema版本）；确认后独占门禁、staging复验、目标authEpoch重读、单Room事务删/插、RUNNING→INTERRUPTED、EDITABLE/LOCKED→NEEDS_REVIEW、Pending保留原代际、AI OFF/无grant、receipt同事务、提交前断言、失败回滚 |
+| 启动/门禁 | `RestoreStartupGate`只读校验receipt（present-malformed/代际不符→RecoveryRequired；NULL→正常启动，不新增标记）；`DataOperationGate`导出/恢复互斥、恢复等待在途写并拒绝新写；当前写服务在事务内接入gate；`RestoreMemoryBarrier`为E2/F2内存失效接缝 |
+| SAF/UI接缝 | `ContentResolverBackupSource/Target`、`BackupIntents` create/open document；未实现最终设置/备份页面、进度/取消/确认Dialog或F1导航接线 |
+
+**本批验证（仅证据见[G1 evidence](../../../engineering/evidence/2026-10-25-g1.md)）：**
+
+- **Host（T1）：** `:app:testDebugUnitTest`通过110项/0失败；其中backup新增`LogicalFormatTest`8项与`DataOperationGateTest`4项，覆盖严格JSON、manifest、ZIP空段/DEFLATE空块拒绝、往返、校验器合法/损坏历史、gate drain/互斥。
+- **API34 instrumentation（T3）：** `emulator-5594`（AVD `record-api34`，API34）运行`BackupRestoreContractTest` 13项全部通过：完整业务/聊天/Applied/旧Pending轮转与owner重读、14表零写门禁、authEpoch MAX-1拒绝/MAX-2→MAX-1、receipt损坏/NULL边界、WAL只读导出与并发写、空段恢复再导出、SAVED/DISCARDED直接状态与真实B1生命周期草稿过滤、失败恢复后旧Run迟到完成与C0 prepare/revise拒绝+受控中断+新Run成功、1/2/4/7 MiB Note导出、跨块emoji/中英文混合导出→恢复、并发多表原子更新前后的完整快照、提交边界取消后receipt仍可判定、预检取消清理staging且零写。构建`assembleDebug`/`assembleDebugAndroidTest`通过。
+- **回归：** `SessionRunContractTest`+`SessionRunRealContractTest`+`RecordSchemaContractTest`+`AiSecurityInitializationContractTest` 30项通过；Schema LF SHA-256仍为`94b02a94b5a824bd0d8e65e3a7594a08f1a35e6fe27e043b520d292b11fa8d75`，无Schema/迁移/Manifest/data-extraction规则改动。
+- **未运行/阻塞（历史批次；矩阵/资源项已由§35.2关闭）：** 真机与真实DocumentsUI picker、真实Keystore/Provider、云备份/设备迁移排除、完整BK2/BK4、F1/E2/F2最终UI、最终APK/合并/G2联合验收仍NOT RUN；进程force-stop矩阵与64 MiB/256 MiB/500,000行资源边界已在本批§35.2完成，但真机性能/ANR/OOM仍NOT RUN。
+- **P1内存修复与剩余风险（已由§35.2关闭）：** 导出为单语句快照逐行写段文件+不保留行的ZIP verify；导入改为`StreamingBackupValidator`+单Room事务流式插入，500,000行/约221 MiB/57.6 MiB ZIP实测无OOM/ANR；全量content保留已删除。模拟器墙钟不作为真机性能PASS。
+
+**2026-10-25 复审 REQUEST CHANGES 的修复：**
+- 导出快照查询草稿段限定`state='EDITING'`，SAVED/DISCARDED不进入ZIP；新增真实状态导出→恢复测试。
+- `DataOperationGate.beginRestore()`把RESTORE→排空等待→Lease交付视为资源获取，超时/取消/异常均在`finally`释放未交付的门禁；新增取消等待后继续写测试。
+- 恢复尝试失败后保留进程内Run执行撤销：门禁获取后读取O的RUNNING id并登记，`RoomAgentHistoryService.completeRun()/failRun()`在写事务内检查；新增“活动Run→恢复失败→迟到完成拒绝且14表不变”真实测试。E2/F2真实取消接线仍为后续门禁。
+- `BackupExporter.export()`整体切换到`Dispatchers.IO`。
+- **第三轮 Run 生命周期修复：** 移除全局`fenceAll`，改为仅按RUNNING id撤销；无法枚举活动Run时直接拒绝本次恢复，不再影响后续新Run；新增`interruptRevokedRun()`受控中断路径，测试覆盖“恢复失败→旧Run撤销→受控中断→新Run成功”。
+- **快照一致性/CursorWindow修复：** 导出改为单条`WITH RECURSIVE`复合SELECT：同一读事务内按段/rowid/offset分块读取每行JSON，Kotlin按**Unicode码点**累计偏移并拼接；CursorWindow只承载≤262,144码点块。新增并发多表原子更新测试证明ZIP只含完整前态；1/2/4/7 MiB Note导出通过，避免`SQLiteBlobTooBigException`。8 MiB正文加JSON开销会超过8 MiB单行限额，因此边界按实际可容纳正文测试。
+- **取消边界修复：** 确认后的恢复在`NonCancellable`作用域执行；提交后取消通过`committedReceipt()`按持久化receipt判定，不重复执行；preflight的文档复制、ZIP读取/解压逐行/逐块及校验器主循环检查协程取消，新增提交边界取消与预检取消清理测试。
+- **C0撤销接入：** `RoomProposalService.validRun()`在写事务内检查`RunExecutionRevoker`；测试覆盖恢复失败后旧Run `prepare()`/`revise()`均`RunInvalidated`且14表不变。
+- **真实草稿生命周期：** 通过`beginNewDraft()`+`saveDraft()`/`discardDraft()`产生SAVED/DISCARDED，验证导出过滤与恢复预检。
+- **未关闭：** 导入preflight/正式恢复仍用`LogicalZipReader.read()`全量content+validator；256 MiB/500,000行OOM风险未解除，需流式校验/有界暂存或覆盖上限的真实内存证据。
+
+**需负责人确认的实现偏差/风险：**
+
+1. **API34只读快照事务：** Android `SQLiteDatabase`在`OPEN_READONLY`连接上执行显式`BEGIN`会按写事务打开并以`SQLITE_READONLY`失败；本批改用同一只读连接、同一WAL、一个`WITH RECURSIVE`分块复合SELECT的隐式读事务，cursor遍历期间全部12表+`record_data_state`处于同一SQLite快照，仍不使用Room写事务、DB/WAL复制或多连接拼接。负责人2026-10-25已接受该等价实现，不再要求为字面SQL退回G0；导出P1与导入有界流式化均已按§35.2完成。
+2. **写入门禁层级：** gate接入现有Room服务的写事务边界，并覆盖当前所有生产写服务；未来新增写入口（E2/D1/F2等）必须复用`ProcessDataOperationGate.gate`，本批不提供SQLite authorizer级强制。`RestoreMemoryBarrier`只提供内存失效钩子，真实Run/工具协程取消由E2/F2接线并另测。
+3. **最终UI/SAF：** 仅提供文档Intent与ContentResolver接缝；设置入口、未加密/私人数据告知、候选展示、整体替换确认、不可取消阶段、完成/回退提示等D-SAFE/F1/F2 UI尚未实现，不能以本批声明G1产品完成。
+
+- **PR/审阅：** [#31](https://github.com/paher-din/record/pull/31)；核心提交`3759d31`、流式修复`2c0d7ed`、复审修复`d2c8f8c`、第三轮修复`359307f`、第四轮修复`7f0ad92`、Unicode修复`4efd92e`、取消边界修复`ac21574`，最终head以GitHub当前引用为准。2026-10-25复审仍为**REQUEST CHANGES**，本轮修复后待再次审阅；未合并main、未关闭issue #19。
+
+### 35.1 2026-10-25 集中修复：main同步与恢复生命周期
+
+- **基线同步：** 将`origin/main=a388caa`（含G0/E2/D1/集成）合入G1分支（merge `3ae9bab`）；保留G0 §31、E2 §32、D1 §33、集成 §34，G1顺延为§35；解决`RoomAgentHistoryService`导入冲突并保留E2 owner/D1工具/预算逻辑。
+- **架构门禁：** 新增`RestoreStore`接口与`storage/RoomRestoreStore`，把恢复单事务/实体映射/assert/receipt读取移入storage；`backup`不再引用Room/storage，`verifyBuildIsolation` PASS。
+- **RestoreCoordinator：** Application级独立scope、同进程单一已确认恢复、相同candidate重复确认返回原handle、其他candidate Busy；状态`IDLE/CONFIRMED/WAITING_FOR_GATE/PREPARING/IMPORTING/COMMITTED/POST_COMMIT/FINISHED/FAILED_NO_COMMIT/OUTCOME_UNKNOWN`；观察者取消不取消恢复；receipt作为提交权威，提交后/重启后按receipt复用结果，不重复导入；统计字段`RestoreTransformStats.Unknown`而非0。
+- **E2/D1接缝：** `AgentRunOwner.revokeForRestore()`在恢复开始时取消旧Run执行但不写终态/不释放slot；`OwnerRestoreMemoryBarrier`登记revoker并调用owner；`AgentRunCoordinator`对restore-revoked取消跳过终态写；D1工具/HTTP守卫检查revoker。失败恢复仍由`interruptRevokedRun()`受控中断，成功恢复由事务转INTERRUPTED/AI OFF。
+- **第八轮 P1（receipt身份）：** `receiptLookup`区分“新确认替换”与“原操作提交查询”：`candidate.targetGeneration == current.dataGeneration`时即使旧receipt匹配也是新替换（允许再次恢复同一ZIP）；其他合法receipt不匹配按新候选正常校验（A→B）；receipt损坏但目标代际未变时允许合法备份救援；只有receipt匹配且代际已从预检目标变化才判为原操作已提交。三个receipt测试已改为通过`RestoreCoordinator.confirm()`的真实路径（A→B、A→新增→A、损坏receipt救援），保留lost-observation复用。
+- **第九轮修复：** `RestoreService.restore()`把`progress(PREPARING)`/staging创建纳入lease的try，staging清理使用内层`runCatching`，外层`finally`无条件`lease.close()`；`progress`抛异常或cleanup失败都不会把gate永久留在RESTORE。真实API34新增`gateIsReleasedWhenProgressThrows`、`gateIsReleasedWhenStagingCleanupThrows`（后者同时源损坏、零提交、可继续写）。P2身份边界明确为：正式接线每进程只持有唯一`RestoreCoordinator`，未完成候选不跨进程持久化/复用；receipt只证明当前数据库内容，不提供跨操作attempt ID。
+- **验证（最新APK）：** host **169/169**；G1 `BackupRestoreContractTest` **20/20**；E1/E2/D1/C0基线 **97/97**；`verifyBuildIsolation` PASS。APK debug `eb60397e…`、test `335a7e7a…`、release `6714a27e…`。
+- **未完成（仍为G1阻塞）：** 64MiB/256MiB/500k行导入资源实测与导入器决策、进程强停恢复矩阵、真实SAF/DocumentsUI、F1/F2 UI与G2联合验收；issue #19保持OPEN，未合并main。
+
+### 35.2 2026-10-25 有界流式导入、资源与恢复故障验收
+
+- **决策依据：** 近上限合法包（500,000行、17条约7.4 MiB memo、约225 MiB解压）在192 MiB heap预检发生OOM，证明全量`LogicalZipReader.read`+validator不满足G0 §导入限额。按负责人G1任务书实施有界导入，保持G0/ADR/ZIP v1/12段/Schema v1/Manifest与全部校验不变，不降低限额、不使用第二套恢复协议。
+- **实现：** `StreamingBackupValidator`单遍逐行执行既有规则，只保留紧凑id/跨段元数据；preflight与restore事务前复验均流式；正式导入在同一Room事务内第二遍流式插入并计数转换（RUNNING→INTERRUPTED、EDITABLE/LOCKED→NEEDS_REVIEW）；逐段行数、active slot、AI OFF、receipt/data state在事务内assert；proposal先于session/run的段顺序以`PRAGMA defer_foreign_keys=ON`延后FK检查到commit，最终仍由SQLite校验。删除`readForValidation`临时占位方案与全量content导入。
+- **资源（API34 `record-api34`，最终debug APK `819263c8…`=提交`63662c5`）：** notes 500k/105.9 MB/13.3 MB ZIP（40.8s预检、222.7s恢复、PSS 64.7 MB）；large 500k/231.7 MB/46.5 MB ZIP（50.1s、247.5s、PSS 64.9 MB，覆盖约126 MiB单段与7.4 MiB行）；zip 500k/179.9 MB/60.4 MB ZIP=57.6 MiB（46.9s、231.4s、PSS 64.6 MB）。均无OOM/ANR；模拟器墙钟不构成真机性能PASS。
+- **故障/联合：** 真实`am force-stop`5场景（PREFLIGHT、AFTER_DELETE、BEFORE_RECEIPT、BEFORE_COMMIT、AFTER_COMMIT）PASS；前四者14表基线不变/无receipt/重启后可正常恢复，AFTER_COMMIT数据/receipt完整且按预检代际得到Committed不重导入。`G1E2JointContractTest`证明真实Owner撤销、无终态写、迟到完成NotFound、AI拒绝。`G1SafContractTest`通过MediaStore Downloads的ContentResolver写出/回读/恢复；真实DocumentsUI picker UI未接线（F1）。
+- **验证：** host **179/179**；G1 device 25/25（20+E2联合1+SAF4）；确定性storage/AI **177/177**；强停5/5；build isolation PASS；release PASS；APK debug `819263c8…`、test `f8775c80…`、release `6a6054a6…`。详见[G1 evidence §4.2](../../../engineering/evidence/2026-10-25-g1.md#42-2026-10-25-有界流式导入资源与恢复故障验收)。
+- **未完成（staging项已由§35.3关闭）：** F1/F2/D-SAFE最终UI与真实DocumentsUI picker、真机/Keystore/Provider/云备份/设备迁移、G2联合与负责人最终验收；issue #19保持OPEN，未合并main。
+
+### 35.3 2026-10-25 真实 Room 导出审计与 staging 收口（第十一轮）
+
+- **导出测试事实：** `G1ExportResourceContractTest`使用真实Room DB文件（批量SQLite灌入500,000行）调用`BackupExporter.export()`，采样PSS/WAL/staging/DB文件/temp/剩余空间。500k notes（原版查询）导出717,191ms、ZIP 21,936,175B、峰值PSS **855,049KB**、staging 127,824,438B、DB文件+WAL+SHM 114,479,104B、`etilqs_*`临时文件0、WAL增长0；资源监控仍只在cursor迭代期检查WAL/空间，首个cursor行前/附近的SQLite物化峰值无PSS守卫。
+- **P1 FAIL：** 50,000行导出首行后并发插入1条note，写入成功但导出以`snapshot chunk gap`失败；该问题在原版查询上复现，是导出单语句快照的并发正确性缺陷。50,000行+17×7.4MiB的查询实验变体（已回退）为1,201s/512,419KB；原版查询下同类组合在一次约30分钟观察仍停留1/17大事务行，未完成。500k行+大载荷组合未PASS。
+- **WAL故障：** `G1ExportFaultContractTest` 1/1 PASS：真实monitor注入1KiB WAL阈值+快照期间写入→`StorageFull`，export staging删除、gate释放、DB仍可写，重试导出成功（312行）。
+- **staging P2：** `BackupStaging.sweep`只删除私有专用root下`preflight|restore|export-<canonical UUID>`直接目录，跳过symlink/非目录/非规范名，失败不抛出；`RecordApplication`启动后台清扫；强停矩阵在每个场景预置`preflight-<uuid>`孤儿并在重启后由生产Application清除（5/5）；`RestoreService.onStagingCleanupFailure`+`successfulRestoreSurvivesStagingCleanupFailure`证明cleanup失败不破坏成功恢复/receipt/gate。host `BackupStagingTest` 3/3。
+- **回归：** host 182/182；G1 device 26/26；storage/AI 177/177；强停5/5；WAL故障1/1；build isolation/release PASS。APK debug `009ddf1b…`、test `947b7697…`、release `72be6b76…`。
+- **状态：** 导入/恢复/staging通过；**导出P1仍OPEN**，不能合并/关闭issue #19；下一步需单独批准导出快照/监控设计或G0限额复审，不能以导入资源数据替代导出PASS。

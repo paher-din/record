@@ -4,6 +4,8 @@ import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
+import com.paherdin.record2.backup.DataOperationGate
+import com.paherdin.record2.backup.ProcessDataOperationGate
 import com.paherdin.record2.proposals.AppliedCommitResult
 import com.paherdin.record2.proposals.AppliedOutcome
 import com.paherdin.record2.proposals.CommitCheckpoint
@@ -44,6 +46,7 @@ internal class RoomCommitService(
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val checkpoint: (CommitCheckpoint, Int) -> Unit = { _, _ -> },
 ) : CommitService {
+    internal var dataOperationGate: DataOperationGate = ProcessDataOperationGate.gate
     private val proposals = database.proposals()
     private val sessions = database.sessions()
     private val records = database.records()
@@ -52,11 +55,11 @@ internal class RoomCommitService(
         val outcome = try {
             io {
                 try {
-                    database.withTransaction { confirmNew(command) }
+                    write { confirmNew(command) }
                 } catch (error: SQLiteConstraintException) {
                     // A unique-index race (double click) rolls this attempt back; the winner is then
                     // re-checked by identity instead of minting a second operation.
-                    database.withTransaction { existingOutcome(command) ?: throw error }
+                    write { existingOutcome(command) ?: throw error }
                 }
             }
         } catch (error: CancellationException) {
@@ -70,7 +73,7 @@ internal class RoomCommitService(
 
     override suspend fun execute(operationId: String): CommitOutcome {
         val (outcome, performed) = try {
-            io { database.withTransaction { executeOnce(operationId) } }
+            io { write { executeOnce(operationId) } }
         } catch (error: CancellationException) {
             throw reconcileExecution(operationId, error)
         }
@@ -84,6 +87,9 @@ internal class RoomCommitService(
             proposals.operation(operationId)?.let { outcomeOf(it, it.frozen()) }
         }
     }
+
+    private suspend fun <T> write(block: suspend () -> T): T =
+        database.withTransaction { dataOperationGate.withWrite { block() } }
 
     // ---- Transaction A ----
 

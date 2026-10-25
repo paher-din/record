@@ -3,6 +3,8 @@ package com.paherdin.record2.storage
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteFullException
 import androidx.room.withTransaction
+import com.paherdin.record2.backup.DataOperationGate
+import com.paherdin.record2.backup.ProcessDataOperationGate
 import com.paherdin.record2.records.*
 import java.time.Clock
 import java.util.UUID
@@ -19,15 +21,16 @@ internal class RoomNoteService(
     private val clock: Clock = Clock.systemUTC(),
     private val checkpoint: (NoteCheckpoint) -> Unit = {},
 ) : NoteService {
+    internal var dataOperationGate: DataOperationGate = ProcessDataOperationGate.gate
     private val dao = database.records()
 
     override suspend fun save(generation: String, id: String, expectedVersion: Long?, body: String, occurredAt: Long): NoteRecord? = io {
-        val result = database.withTransaction {
+        val result = write {
             val state = state(generation)
             identity(id)
             val old = dao.noteForLifecycle(id)?.checked()
             if (expectedVersion == null && old == null) {
-                if (body.isBlank()) return@withTransaction null
+                if (body.isBlank()) return@write null
                 val now = clock.millis()
                 if (occurredAt > now) fail(NoteError.Validation)
                 dao.insertNote(NoteEntity(id, body, occurredAt, 1, now, now, null))
@@ -94,11 +97,11 @@ internal class RoomNoteService(
     override suspend fun restore(generation: String, id: String, expectedVersion: Long): NoteTransition = transition(generation, id, expectedVersion, false)
 
     private suspend fun transition(generation: String, id: String, expectedVersion: Long, deleted: Boolean): NoteTransition = io {
-        val result = database.withTransaction {
+        val result = write {
             val state = state(generation)
             val old = note(id)
             if (expectedVersion < 1) fail(NoteError.Validation)
-            if ((old.deletedAt != null) == deleted) return@withTransaction NoteTransition(old.dto(), false)
+            if ((old.deletedAt != null) == deleted) return@write NoteTransition(old.dto(), false)
             if (old.version != expectedVersion) fail(NoteError.VersionConflict)
             val now = clock.millis()
             if (now < old.createdAt) fail(NoteError.Validation)
@@ -111,6 +114,9 @@ internal class RoomNoteService(
         if (result.changed) committed(if (deleted) NoteCheckpoint.DELETE_COMMITTED else NoteCheckpoint.RESTORE_COMMITTED)
         result
     }
+
+    private suspend fun <T> write(block: suspend () -> T): T =
+        database.withTransaction { dataOperationGate.withWrite { block() } }
 
     private fun state(generation: String): RecordDataStateEntity {
         val state = dao.dataState() ?: fail(NoteError.RecoveryRequired)
