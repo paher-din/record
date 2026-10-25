@@ -111,6 +111,8 @@ internal class AgentRunCoordinator(
     private val recordTools: RecordToolDeps? = null,
     private val httpClientFactory: KoogHttpClient.Factory? = null,
     private val clock: Clock = Clock.systemUTC(),
+    /** G1 restore revocation: a cancelled old run must not write a terminal state. */
+    private val isRestoreRevoked: (String) -> Boolean = { false },
 ) {
     /** Call once at process start, before any run/session entry (B0 §6 recovery gate). */
     suspend fun beginProcessOwnership(): ProcessOwnershipReceipt = history.beginProcessOwnership(processOwnerId)
@@ -143,8 +145,13 @@ internal class AgentRunCoordinator(
             )
         } catch (error: CancellationException) {
             // Preserve cancellation semantics; clean up any run this attempt may have committed.
-            withContext(NonCancellable) {
-                markTerminal(runIdentity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+            // A restore-induced cancellation is owned by G1: its gate/revoker and the restore
+            // transaction decide the old run's fate, so this coordinator must not race a terminal
+            // write after the gate reopens.
+            if (!isRestoreRevoked(runIdentity.runId)) {
+                withContext(NonCancellable) {
+                    markTerminal(runIdentity.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+                }
             }
             throw error
         } catch (error: Exception) {
@@ -240,9 +247,13 @@ internal class AgentRunCoordinator(
             // The coroutine is already cancelled: a plain suspend call could be skipped
             // entirely, stranding the run as RUNNING with its slot held. Run the terminal
             // marking outside cancellation so the slot is freed deterministically here —
-            // not only when some later ownership gate happens to run.
-            withContext(NonCancellable) {
-                markTerminal(start.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+            // not only when some later ownership gate happens to run. G1 restore cancellation
+            // is the exception: the run is intentionally left RUNNING for the restore
+            // transaction (or controlled interruption), never raced into CANCELLED here.
+            if (!isRestoreRevoked(start.runId)) {
+                withContext(NonCancellable) {
+                    markTerminal(start.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+                }
             }
             throw error
         } catch (error: Exception) {
@@ -255,8 +266,10 @@ internal class AgentRunCoordinator(
                     history.persistedResult(start.runId)
                 } catch (readError: Exception) {
                     if (readError is CancellationException) {
-                        withContext(NonCancellable) {
-                            markTerminal(start.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+                        if (!isRestoreRevoked(start.runId)) {
+                            withContext(NonCancellable) {
+                                markTerminal(start.runId, RunTerminal.CANCELLED, SafeRunErrorCode.CANCELLED)
+                            }
                         }
                         throw readError
                     }

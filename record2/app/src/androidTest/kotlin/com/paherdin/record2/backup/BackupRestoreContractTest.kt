@@ -52,6 +52,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -338,6 +339,50 @@ class BackupRestoreContractTest {
         assertNotNull(receipt)
         assertEquals(receipt!!.restoredGeneration, target.records().dataState()?.dataGeneration)
         assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath, clock).check().kind)
+        source.close()
+        target.close()
+    }
+
+    @Test
+    fun coordinatorReusesCommittedReceiptWithoutASecondImport() = runBlocking {
+        val data = BackupTestDataFactory.create()
+        val sourceName = "g1-coordinator-source-${UUID.randomUUID()}.db"
+        val source = open(sourceName)
+        seed(source, data)
+        val zip = File(staging, "coordinator.zip")
+        export(context.getDatabasePath(sourceName), zip, DataOperationGate())
+
+        val targetName = "g1-coordinator-target-${UUID.randomUUID()}.db"
+        val target = open(targetName)
+        val targetPath = context.getDatabasePath(targetName)
+        val engine = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val candidate = engine.preflight(FileSource(zip))
+        val coordinator = RestoreCoordinator(engine)
+        val first = coordinator.confirm(candidate) as RestoreStart.Started
+        val result = withTimeout(30_000) { first.handle.await() }
+        assertEquals(candidate.manifest.sourceGeneration, result.receipt.sourceGeneration)
+        assertEquals(StartupKind.NORMAL, RestoreStartupGate(targetPath, clock).check().kind)
+        val afterFirst = tables(targetPath)
+
+        // A new coordinator/engine represents a fresh process observation; the persisted receipt
+        // must prove the same commit without running the import again.
+        val secondEngine = RestoreService(
+            RoomRestoreStore(target, clock), targetPath, staging, DataOperationGate(), clock,
+            availableBytes = { Long.MAX_VALUE },
+        )
+        val second = RestoreCoordinator(secondEngine)
+        val restarted = second.confirm(candidate) as RestoreStart.Started
+        val recovered = withTimeout(30_000) { restarted.handle.await() }
+        assertEquals(result.receipt, recovered.receipt)
+        assertTrue(recovered.transformStats is RestoreTransformStats.Unknown)
+        assertTrue(second.currentStatus().recoveredFromReceipt)
+        assertEquals(afterFirst, tables(targetPath))
+
+        coordinator.close()
+        second.close()
         source.close()
         target.close()
     }

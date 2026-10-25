@@ -183,6 +183,21 @@ internal class AgentRunOwner(
         report
     }
 
+    /**
+     * G1 restore entry point: stop the in-memory work for the enumerated RUNNING runs without
+     * writing CANCELLED/FAILED/INTERRUPTED or releasing their DB slots. The restore gate owns the
+     * durable fate; a failed restore later uses the explicit controlled-interruption path.
+     */
+    fun revokeForRestore(runIds: Set<String>) {
+        if (runIds.isEmpty()) return
+        for (entry in tracked.values.toList()) {
+            if (entry.identity.runId !in runIds) continue
+            if (tracked.remove(entry.identity.runId, entry)) {
+                entry.job?.cancel(RestoreStoppedException("run revoked for confirmed restore"))
+            }
+        }
+    }
+
     /** Process teardown only; runs are otherwise never cancelled by lifecycle events. */
     fun close() {
         scope.cancel()
@@ -217,5 +232,8 @@ internal class AgentRunOwner(
         history.activeRun(sessionId)?.takeIf { it.state == RunState.RUNNING }
 
     private class RunStoppedException(message: String) :
+        CancellationException(message)
+
+    private class RestoreStoppedException(message: String) :
         CancellationException(message)
 }

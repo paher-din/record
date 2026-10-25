@@ -30,8 +30,7 @@ internal data class RestoreResult(
     val authEpoch: Long,
     val receipt: RestoreReceipt,
     val importedRows: Long,
-    val transformedRuns: Int,
-    val transformedProposals: Int,
+    val transformStats: RestoreTransformStats,
 )
 
 internal enum class RestoreCheckpoint {
@@ -52,8 +51,8 @@ internal class RestoreService(
     private val memoryBarrier: RestoreMemoryBarrier = ProcessRestoreMemoryBarrier,
     private val processOwnerId: String? = null,
     private val currentAppVersionCode: Long = 1,
-) {
-    suspend fun preflight(source: BackupSource): RestoreCandidate = withContext(Dispatchers.IO) {
+) : RestoreEngine {
+    override suspend fun preflight(source: BackupSource): RestoreCandidate = withContext(Dispatchers.IO) {
         if (gate.isRestoreInProgress) throw DataOperationBusyException("Restore is already in progress")
         stagingDirectory.mkdirs()
         val work = File(stagingDirectory, "preflight-${UUID.randomUUID()}")
@@ -90,15 +89,20 @@ internal class RestoreService(
         }
     }
 
-    suspend fun restore(candidate: RestoreCandidate): RestoreResult = withContext(Dispatchers.IO) {
+    override suspend fun restore(
+        candidate: RestoreCandidate,
+        progress: (RestoreProgress) -> Unit,
+    ): RestoreResult = withContext(Dispatchers.IO) {
+        progress(RestoreProgress.WAITING_FOR_GATE)
         val lease = gate.beginRestore()
+        progress(RestoreProgress.PREPARING)
         stagingDirectory.mkdirs()
         val work = File(stagingDirectory, "restore-${UUID.randomUUID()}")
         val zip = File(work, "source.zip")
         try {
             try {
                 withContext(NonCancellable) {
-                    restoreLocked(candidate, work, zip)
+                    restoreLocked(candidate, work, zip, progress)
                 }
             } catch (cancelled: CancellationException) {
                 val committed = committedReceipt(candidate) ?: throw cancelled
@@ -111,22 +115,42 @@ internal class RestoreService(
     }
 
     /** Returns the canonical receipt if this candidate already committed, without re-running import. */
-    suspend fun committedReceipt(candidate: RestoreCandidate): RestoreReceipt? = withContext(Dispatchers.IO) {
-        val state = store.currentState() ?: return@withContext null
-        val text = state.restoreReceipt ?: return@withContext null
-        val receipt = runCatching { RestoreReceiptCodec.decode(text, clock.millis()) }.getOrNull()
-            ?: return@withContext null
-        if (receipt.restoredGeneration != state.dataGeneration ||
-            receipt.sourceZipSha256 != candidate.sourceSha256 ||
-            receipt.contentDigest != candidate.manifest.contentDigest ||
-            receipt.sourceGeneration != candidate.manifest.sourceGeneration
-        ) {
-            return@withContext null
-        }
-        receipt
-    }
+    suspend fun committedReceipt(candidate: RestoreCandidate): RestoreReceipt? =
+        (receiptLookup(candidate) as? RestoreReceiptLookup.Committed)?.receipt
 
-    private suspend fun restoreLocked(candidate: RestoreCandidate, work: File, zip: File): RestoreResult {
+    override suspend fun receiptLookup(candidate: RestoreCandidate): RestoreReceiptLookup =
+        withContext(Dispatchers.IO) {
+            val state = store.currentState() ?: return@withContext RestoreReceiptLookup.None
+            val text = state.restoreReceipt ?: return@withContext RestoreReceiptLookup.None
+            val receipt = try {
+                RestoreReceiptCodec.decode(text, clock.millis())
+            } catch (error: BackupException) {
+                return@withContext RestoreReceiptLookup.Unknown("restore receipt is unreadable: ${error.code}")
+            }
+            if (receipt.restoredGeneration != state.dataGeneration ||
+                receipt.sourceZipSha256 != candidate.sourceSha256 ||
+                receipt.sourceZipBytes != candidate.sourceBytes ||
+                receipt.sourceFormatVersion != candidate.manifest.formatVersion ||
+                receipt.sourceSchemaVersion != candidate.manifest.databaseSchemaVersion ||
+                receipt.contentDigest != candidate.manifest.contentDigest ||
+                receipt.sourceGeneration != candidate.manifest.sourceGeneration
+            ) {
+                return@withContext RestoreReceiptLookup.Unknown(
+                    "persisted restore receipt does not match the confirmed candidate",
+                )
+            }
+            RestoreReceiptLookup.Committed(receipt)
+        }
+
+    override suspend fun completedResult(receipt: RestoreReceipt): RestoreResult =
+        resultFromReceipt(receipt)
+
+    private suspend fun restoreLocked(
+        candidate: RestoreCandidate,
+        work: File,
+        zip: File,
+        progress: (RestoreProgress) -> Unit,
+    ): RestoreResult {
         val running = runCatching { ReadOnlyTargetInspector.runningRunIds(databasePath) }.getOrNull()
             ?: fail(BackupError.RecoverableIO, "cannot enumerate active runs; restore aborted")
         memoryBarrier.revokeRuns(running)
@@ -198,6 +222,7 @@ internal class RestoreService(
                 proposal
             }
         }
+        progress(RestoreProgress.IMPORTING)
         store.import(
             read.backup,
             transformedRuns,
@@ -211,17 +236,22 @@ internal class RestoreService(
             checkpoint,
         )
         checkpoint(RestoreCheckpoint.AFTER_COMMIT)
-        return RestoreResult(
+        progress(RestoreProgress.COMMITTED)
+        val result = RestoreResult(
             restoredGeneration = restoredGeneration,
             processOwnerId = owner,
             authEpoch = newEpoch,
             receipt = receipt,
             importedRows = receipt.importedRows,
-            transformedRuns = read.backup.content.runs.count { it.state == "RUNNING" },
-            transformedProposals = read.backup.content.proposals.count {
-                it.state == "EDITABLE" || it.state == "LOCKED"
-            },
+            transformStats = RestoreTransformStats.Known(
+                transformedRuns = read.backup.content.runs.count { it.state == "RUNNING" },
+                transformedProposals = read.backup.content.proposals.count {
+                    it.state == "EDITABLE" || it.state == "LOCKED"
+                },
+            ),
         )
+        progress(RestoreProgress.POST_COMMIT)
+        return result
     }
 
     private suspend fun resultFromReceipt(receipt: RestoreReceipt): RestoreResult {
@@ -233,8 +263,7 @@ internal class RestoreService(
             authEpoch = state.authEpoch,
             receipt = receipt,
             importedRows = receipt.importedRows,
-            transformedRuns = 0,
-            transformedProposals = 0,
+            transformStats = RestoreTransformStats.Unknown,
         )
     }
 

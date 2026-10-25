@@ -2,6 +2,7 @@ package com.paherdin.record2.ai.runs
 
 import ai.koog.http.client.KoogHttpClient
 import com.paherdin.record2.ai.security.AiDenial
+import com.paherdin.record2.backup.RunExecutionRevoker
 import com.paherdin.record2.sessions.AgentHistoryError
 import com.paherdin.record2.sessions.RunState
 import com.paherdin.record2.sessions.RunTerminal
@@ -446,6 +447,51 @@ class AgentRunOwnerContractTest {
             withTimeout(10_000) { handle.await() }
         }
         withTimeout(10_000) { while (runOwner.trackedRunCount() > 0) delay(10) }
+        assertEquals(0, runOwner.trackedRunCount())
+        runOwner.close()
+        Unit
+    }
+
+    @Test
+    fun restoreRevocationStopsWorkWithoutWritingATerminalState() = runBlocking {
+        val history = FakeHistoryService()
+        val session = history.newSession()
+        val gate = CompletableDeferred<Unit>()
+        val http = ScriptedHttp { _, _ -> gate.await(); chatResponse("LATE") }
+        val revoked = mutableSetOf<String>()
+        val coordinator = AgentRunCoordinator(
+            security = FakeAiSecurity(),
+            history = history,
+            processOwnerId = "e2-owner",
+            clock = Clock.fixed(Instant.ofEpochMilli(0), ZoneOffset.UTC),
+            isRestoreRevoked = { it in revoked },
+            httpClientFactory = httpFactory(http),
+        )
+        val runOwner = AgentRunOwner(coordinator, history, "e2-owner")
+        val revoker = object : RunExecutionRevoker {
+            override fun revoke(runIds: Set<String>) {
+                revoked += runIds
+            }
+
+            override fun isRevoked(runId: String): Boolean = runId in revoked
+        }
+        val barrier = OwnerRestoreMemoryBarrier(runOwner, revoker)
+        val handle = runOwner.launchRun(session.id, "hello")
+        awaitRequests(http, 1)
+
+        barrier.revokeRuns(setOf(handle.runId))
+
+        assertTrue(revoker.isRevoked(handle.runId))
+        withTimeout(10_000) {
+            try {
+                handle.await()
+                fail("restore-revoked run must not complete")
+            } catch (_: CancellationException) {
+            }
+        }
+        // The restore gate owns the durable fate: no CANCELLED/FAILED/INTERRUPTED write here.
+        assertTrue(history.failedRuns.isEmpty())
+        assertEquals(0, history.completedRuns.size)
         assertEquals(0, runOwner.trackedRunCount())
         runOwner.close()
         Unit

@@ -33,6 +33,9 @@ internal class GuardedHttpClient(
         if (run.state != RunState.RUNNING) {
             context.poison(RecordToolFailure.RunInvalidated, "request blocked: run is ${run.state}")
         }
+        if (context.deps.isRunRevoked(context.start.runId)) {
+            context.poison(RecordToolFailure.RunInvalidated, "request blocked: run revoked by restore")
+        }
         if (!context.deps.security.stillValid(context.permit)) {
             context.poison(RecordToolFailure.AuthorizationRevoked, "request blocked: authorization revoked")
         }
