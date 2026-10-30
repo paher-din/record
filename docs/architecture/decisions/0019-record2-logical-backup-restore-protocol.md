@@ -6,7 +6,11 @@
 
 **Rev2.1（2026-10-25，PR #28 第二轮审阅修订）：** 明确空数据段必须 STORED/0/0（禁止 DEFLATE 空块），并拒绝目标 `authEpoch` 会使恢复后到达 MAX 的恢复；其余架构/编号不变。
 
+**Rev3 提案（2026-10-26，尚未接受）：** G1导出访问架构复审提出“系统引擎一致私有物理scratch→bundled只读逻辑提取”。本ADR原决定仍为Accepted；本次修订单独为Proposed，具体替换文本与边界见文末，不据此授权生产改造。
+
 ## 背景
+
+**Rev4：S选型Accepted（2026-10-30）。** 负责人批准来源归[Plan §35.7](../../specs/record2/v1/plan.md#357-s架构批准与受控g1实施2026-10-30)。决定2的导出机制以系统OS只读来源VACUUM INTO→私有静态系统SQLite只读提取→标准流式ZIP替换；保留原逻辑格式/恢复/资格/receipt。允许一致物理scratch，不允许活跃文件copy或物理恢复；manifest采集开始Clock与采集时间窗语义生效。§6原固定128MiB导出准入改为分阶段实际工作预算，全部格式容量/WAL硬限额不变。同卷安全余量一次；移除全量JSONL，验证后释放S/K再SAF。旧Rev3/C2固定GiB预算正式否决，U暂缓。此为架构选型Accepted，ENOSPC/超调/竞态/生产一致性/性能/平台及G2门禁仍OPEN，不代表生产验收。具体条款归G0 §14。
 
 Spec §6 与 B0 §9 要求手动完整逻辑 ZIP、隔离预检、整体替换确认、原子切换/回退和跨代际旧 Pending 隔离；B0 建议由 G0 评估“单一数据库内原子整体导入”，并禁止同时建设事务导入与物理切换两套框架。G0 需在 C1/E1 的真实 Room 状态机、Schema v1 的 14 表和 B0 的资格语义之上选择唯一协议，不能从旧 P5/Vault 或旧 format1/2 推导兼容。
 
@@ -47,3 +51,13 @@ Spec §6 与 B0 §9 要求手动完整逻辑 ZIP、隔离预检、整体替换�
 - [Spec §6](../../specs/record2/v1/spec.md)
 - [ADR 0018](0018-record2-data-concurrency-and-history.md)
 - [F0-C3 D-SAFE](../../design/record2-f0-c3-review.md#8-d-safe授权历史备份与恢复)
+
+## Rev3 Proposed：导出机制替换候选
+
+基于 [G0 导出架构复审](../record2-g0-export-architecture-review.md) 的固定源码核对与隔离API34原型，建议替换决定2的具体实现：由系统SQLite在独立OS只读来源上执行官方VACUUM INTO，创建私有noBackup一致全库scratch；复制期间正常Room写入可提交；完成并关闭来源后，bundled仅以只读连接逐行提取不同文件上的12段及data_state，继续生成原逻辑ZIP。
+
+这需要明确允许**引擎生成的一致物理暂存**，不是直接复制活跃文件，也不是物理恢复/文件切换。禁止默认损坏处理器删源库、禁止同文件双引擎并发、禁止强停后复用scratch；取消须等待原生调用退出后再清理/释放。加入全部物理内容的隐私/磁盘预算、来源增长与WAL监控、目标工作配额、固定40B键记录外部归并方案及采集时间窗。exportedAt改为采集开始Clock：窗前提交必含、窗后必不含、窗内可含完整前/后态；元数据只读目标。来源页体积只是启动估计，不能声称WAL增长自动证明目标上界。详细替换条款归 [G0 §13](../record2-g0-backup-restore-design.md#13-rev3-导出访问架构修订提案2026-10-26proposed)。
+
+原决定1、3～6（格式、单事务逻辑恢复、资格转换、receipt、时间/格式限额）不变。B-unified保留后备，A当前配置、同文件B-mixed、原递归SQL等否决理由由复审报告拥有。
+
+本修订状态为Proposed。负责人批准后才成为ADR的新决定并另行授权G1实现；不把原型内容PASS提升为生产P1关闭或预算/真机/G2验收。

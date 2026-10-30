@@ -10,6 +10,8 @@
 
 ## 1. 结论与待批准决定
 
+**2026-10-30 Rev4：S架构选型已批准，生产验收未通过。** 最新批准及实施边界归[Plan §35.7](../specs/record2/v1/plan.md#357-s架构批准与受控g1实施2026-10-30)。导出机制以本文§14覆盖旧§7.1具体连接方式和§6固定导出准入；旧Rev3及C2预算不生效。恢复、格式和容量硬限额保留。
+
 推荐采用**单一手动完整逻辑 ZIP + 单一数据库事务整体导入**。不建设物理文件切换或第二套恢复框架。所有数值、状态转换和拒绝规则在本文件冻结；负责人批准前不得据此写恢复代码。
 
 | ID | 推荐决定 | 理由/边界 |
@@ -294,6 +296,8 @@ V1 没有必须随备份保存的“解释性偏好”数据库外存储：草�
 
 ### 7.1 前置与快照
 
+**2026-10-26 Rev3 提案，尚未生效：** G1 已复现当前 API34 导出访问架构的并发/资源缺陷；以下已接受条款保留其历史效力，正式替换候选见 §13 与 [G0 导出架构复审](record2-g0-export-architecture-review.md)。本轮不把新方案写成 Accepted，也不授权生产改造。
+
 1. 仅在正常启动门禁完成后提供导出；RecoveryRequired、恢复门禁进行中或数据库不可读时拒绝。导出与恢复共用唯一数据操作门禁：导出持只读操作 lease（直到 SAF 回读/失败结束），恢复在导出期间返回 Busy；导出**不**获取恢复写门禁，因此不阻塞正常业务写。
 2. 用户经 SAF 选择目标并看到未加密/含私人数据/不含 Key/有效授权的告知；若存在 `EDITING` 草稿，告知必须说明它作为未提交输入保留、SAVED/DISCARDED 不包含且导出不改变草稿状态；staging 余量检查通过。
 3. **真正只读快照（Rev2）：** 从应用私有 DB 路径打开独立的只读 SQLite 连接（`OPEN_READONLY` + `PRAGMA query_only=ON`），执行 `BEGIN DEFERRED`，在同一读事务中按固定段顺序读取全部 12 段和 `record_data_state`。**不得**使用 `RoomDatabase.withTransaction`、`beginTransaction`、`beginTransactionNonExclusive` 或任何可能取得写锁的连接；读事务只执行 SELECT，不 checkpoint、不执行会修改数据库文件的 PRAGMA/DDL/写语句（`query_only=ON` 是连接状态，不是数据库写）。
@@ -520,3 +524,30 @@ G0 只冻结合同；以下由 G1 在获批源码/设备范围执行，G2 做最
 - 行为/AC owner：[Spec §6/§7](../specs/record2/v1/spec.md)；数据语义 owner：[B0](record2-b0-data-model-design.md)；执行/任务状态 owner：[V1 Plan §31](../specs/record2/v1/plan.md#31-g0正式逻辑-zip代际协议设计审核issue-18)；长期恢复决定：[ADR 0019](decisions/0019-record2-logical-backup-restore-protocol.md)。
 - C1 冻结/回执状态、E1 历史/所有权、E0 授权/凭据、F0-C3 D-SAFE 分别由原 owner 拥有；本文只引用，不覆盖。
 - 本文为负责人已批准的G0设计审查包（Plan §31.7），未修改源码、Schema、普通数据库、构建、环境/凭据/CI；所有 G1/G2 行为均 NOT RUN。
+
+## 13. Rev3 导出访问架构修订提案（2026-10-26，Proposed）
+
+本节是对 §7.1、§6 导出空间预算、§9 私有暂存范围及 §10.4B 测试形态的**待批准替换条款**；原 G0-D1～D14、Rev2/Rev2.1 批准记录保留。它不改变 ZIP v1/12段/64MiB ZIP/256MiB解压/500,000行等产品上限，不改变恢复/receipt/AI安全合同，也不启动生产实现。
+
+建议以如下唯一流程替换 §7.1 第3～7项的具体读取机制：
+
+1. 系统 SQLite 使用独立 `OPEN_READONLY` 来源句柄，验证正常启动门禁、WAL、Schema身份；使用禁止自动删库/重建的损坏处理器。导出持既有export lease，正常业务写可继续，恢复仍互斥。
+2. 使用 SQLite 官方 `VACUUM INTO` 创建新的、应用私有noBackup全库scratch；由引擎提供一致性，不复制活跃DB/WAL/SHM文件，不在来源调用Room写事务/停写。此阶段有意允许向新attached目标写入，因此不能再要求整个连接query_only或只执行SELECT。
+3. 将取消/资源失败接到当前调用的CancellationSignal，并等原生操作和cursor/来源完全关闭；成功后验证目标，失败/强停的目标一律废弃，不续用。
+4. 只对已完成的不同文件使用bundled只读连接/逐行step；12段和data_state全部来自同一静态目标。排序键与载荷分离，生产工作集须有界；不得让bundled与framework同时操作同一活跃文件，不沿用来源rowid。
+5. exportedAt使用采集开始Clock并保留内部采集时间窗，generation/revision来自目标。此为可见语义调整：窗前提交必含、窗后提交必不含、窗内提交允许完整前态或后态但不得混合；不把开始Clock当成精确内核快照时点。既有ZIP验证、SAF关闭/回读、失败不报成功规则保留。
+
+私有scratch可能包括非导出草稿、ai_control、旧receipt、索引及Room元信息；仅限当前操作内部，不进入ZIP/外部文档/日志/系统备份。空间预算不能用256MiB逻辑上限替代物理体积：按来源页体积、复制期增长、源WAL、键/排序文件、段、ZIP与余量重新计算，并持续监控。
+
+具体待批公式、独立目标体积cap、40B键记录/固定run/fan-in≤16的外部归并与RAM/磁盘上界、候选性能预算、原型证据、未通过项和后续门禁由 [架构复审报告 §4～6](record2-g0-export-architecture-review.md#4-实际结果) 拥有。来源页体积仅为估计，不能由WAL增长推导目标必然界内；真实体积/余量越界要中止。§10.4B的测试须调整为“来源OS只读、引擎一致物理采集、采集窗可见性、静态目标提取、复制中并发写/中断/资源故障/强停/私有清理”，不能继续用单语句cursor寿命代替快照证明。
+
+状态：Proposed。只有负责人接受本次架构/隐私/预算调整后，才将这些替换条款并入生效正文，再按另行授权启动G1生产改造；本次不合并PR #31或关闭issue #19。
+
+## 14. Rev4 S导出架构（选型Accepted，2026-10-30）
+
+1. 正常启动后持既有export lease；恢复互斥，正常写入不停。独立系统OS只读来源验证WAL/Schema，提供禁止自动删库的错误处理器；通过VACUUM INTO创建私有noBackup全库scratch，不复制活跃DB/WAL/SHM，不用Room写事务。取消/资源越界调用signal并等待native退出后清理。
+2. 目标成功后检查独立身份、Schema/Room identity、journal、integrity/FK，关闭来源。只在同一静态目标提取12段及data_state，固定键与当前载荷分离；不再使用原递归JSON物化查询，不保留完整JSONL。原严格校验器不放宽，manifest-last、空段STORED/0/0及非空100:1规则保留；必要时同一静态目标重读，绝不部分成功。
+3. exportedAt为采集开始Clock，实际generation/revision来自目标；窗前提交必含、窗后必排除，窗内只能完整前/后态。导出不写源库、不取消Run/改AI/消费草稿或写receipt。
+4. 按阶段并存量计算工作预算：copy=S+Q+W，extract=S+Z+K，delivery=私有Z+同卷目标Z；关闭核验后先回收S/K再SAF。来源既有文件/空闲页不重复预留；F保留原64MiB，同卷一次，ZIP配额按实际剩余空间更新。原§6的128MiB固定导出准入被本项替换；64MiB ZIP/256MiB总解压/128MiB段/8MiB行/500k行/100:1/384MiB WAL等硬限制全部不变。
+5. 来源页数是估计，采样cap不是硬空间上界；不能声称有空间就一定完成。持续检查实际目标、临时文件、WAL和剩余空间，失败等待退出、清理且源仍可写。Q/OEM/超调、真实ENOSPC和大字段分配边界必须有生产证据；未闭合不得合并。失败不报告成功、不复用强停scratch，不删除用户外部文档。
+6. 创建/注册活动任务与启动清扫必须共享完成屏障，failed清扫必须记录；任何清扫不得删除活动任务。恢复核心/单事务/receipt/资格转换及原SAF关闭回读不改。选型批准不抵扣Plan §35.7全部生产、平台、性能及G2门禁。

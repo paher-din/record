@@ -1,0 +1,220 @@
+{
+  "identity": {
+    "warning": "Static artifact identity, not runtime or patch absence proof; no dependency installed",
+    "availableVersions": [
+      "2.5.0-alpha01",
+      "2.5.0-alpha02",
+      "2.5.0-alpha03",
+      "2.5.0-alpha04",
+      "2.5.0-alpha05",
+      "2.5.0-alpha06",
+      "2.5.0-alpha07",
+      "2.5.0-alpha08",
+      "2.5.0-alpha09",
+      "2.5.0-alpha10",
+      "2.5.0-alpha11",
+      "2.5.0-alpha12",
+      "2.5.0-alpha13",
+      "2.5.0-beta01",
+      "2.5.0-rc01",
+      "2.5.0-rc02",
+      "2.5.0-rc03",
+      "2.5.0",
+      "2.5.1",
+      "2.5.2",
+      "2.6.0-alpha01",
+      "2.6.0-beta01",
+      "2.6.0-rc01",
+      "2.6.0-rc02",
+      "2.6.0",
+      "2.6.1",
+      "2.6.2",
+      "2.7.0-alpha01",
+      "2.7.0-alpha02",
+      "2.7.0-alpha03",
+      "2.7.0-alpha04",
+      "2.7.0-alpha05",
+      "2.7.0-alpha06",
+      "2.7.0-rc01",
+      "2.7.0",
+      "2.7.1",
+      "2.8.0-alpha01",
+      "2.8.0-alpha03"
+    ],
+    "latestStable": "2.7.1",
+    "sources": [
+      {
+        "name": "metadata.xml",
+        "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-android/maven-metadata.xml",
+        "bytes": 1727,
+        "sha256": "8a794531fbab6dfc3ffc7efa6bf191f5fa22e7f1cf409498a337081034fb1661"
+      },
+      {
+        "name": "vacuum-3.39.2.c",
+        "url": "https://raw.githubusercontent.com/sqlite/sqlite/version-3.39.2/src/vacuum.c",
+        "bytes": 15460,
+        "sha256": "77138080d4eb92e573da4b7457e94221e5b56e7df6e3cc9905f81374563bbd9a"
+      },
+      {
+        "name": "aosp-sqlite-connection.cpp",
+        "url": "https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-14.0.0_r1/core/jni/android_database_SQLiteConnection.cpp",
+        "bytes": 37190,
+        "sha256": "14709965eae88b0658a06d61c5e87e40bce12595946545b247db868f9564f6a3"
+      },
+      {
+        "name": "aosp-sqlite-pool.java",
+        "url": "https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-14.0.0_r1/core/java/android/database/sqlite/SQLiteConnectionPool.java",
+        "bytes": 54423,
+        "sha256": "f2e399f51c6d28c85c837b2ab7a2c2efb36cda434d3ab20e5fd9fd0038dca176"
+      },
+      {
+        "name": "aosp-sqlite-database.java",
+        "url": "https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-14.0.0_r1/core/java/android/database/sqlite/SQLiteDatabase.java",
+        "bytes": 134583,
+        "sha256": "abc149f4bc47c9b283a6f33d7c5bd840f8dcbacd29581a68679ba537e0374351"
+      },
+      {
+        "name": "aosp-sqlite-java-connection.java",
+        "url": "https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-14.0.0_r1/core/java/android/database/sqlite/SQLiteConnection.java",
+        "bytes": 74419,
+        "sha256": "8677792d1be9d0177816ccc322251758758efeb7b085dd34ff66a9e171802f7f"
+      },
+      {
+        "name": "aosp-default-error-handler.java",
+        "url": "https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-14.0.0_r1/core/java/android/database/DefaultDatabaseErrorHandler.java",
+        "bytes": 4512,
+        "sha256": "411ebe76745262fdcf550c4f325e5405306483a630b5c306e74882cc48e8cf35"
+      },
+      {
+        "name": "sqlite-wal.html",
+        "url": "https://sqlite.org/wal.html",
+        "bytes": 42143,
+        "sha256": "f3467b530b883d4a00574fe1a898b3d121ed72764ae28cf66941080ac0badb9e"
+      },
+      {
+        "name": "sqlite-3.51.3.html",
+        "url": "https://sqlite.org/releaselog/3_51_3.html",
+        "bytes": 9857,
+        "sha256": "796996305c91c07d490f797d63b22a6e6e28d4d571a28e8ccaebef685e1beab8"
+      }
+    ],
+    "artifact": {
+      "version": "2.7.1",
+      "url": "https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-bundled-android/2.7.1/sqlite-bundled-android-2.7.1.aar",
+      "bytes": 2551019,
+      "sha256": "b5e01f31b0cc42b01a9f12836bfb6ee745b389e5be53a0813acfe12b445788a1",
+      "abis": [
+        {
+          "path": "jni/arm64-v8a/libsqliteJni.so",
+          "bytes": 1281456,
+          "sha256": "9d3ad85cca0b7b02e0fe31beec3f17c86cccdebf62e1d1c47ac46743f4967a99",
+          "sourceIds": [
+            "2025-06-06 14:52:32 b77dc5e0f596d2140d9ac682b2893ff65d3a4140aa86067a3efebe29dc914c95"
+          ],
+          "versionStrings": [
+            "3.50.1"
+          ]
+        },
+        {
+          "path": "jni/armeabi-v7a/libsqliteJni.so",
+          "bytes": 1254892,
+          "sha256": "d1bcd83899465f738a7e155007f318be8331bbae97b942cce5d29c24b633501e",
+          "sourceIds": [
+            "2025-06-06 14:52:32 b77dc5e0f596d2140d9ac682b2893ff65d3a4140aa86067a3efebe29dc914c95"
+          ],
+          "versionStrings": [
+            "3.50.1"
+          ]
+        },
+        {
+          "path": "jni/x86/libsqliteJni.so",
+          "bytes": 1140764,
+          "sha256": "b30393b5fd4414f5ccb52d20d70001ec5da6a47a7d455f7ccd36d502e70d45b9",
+          "sourceIds": [
+            "2025-06-06 14:52:32 b77dc5e0f596d2140d9ac682b2893ff65d3a4140aa86067a3efebe29dc914c95"
+          ],
+          "versionStrings": [
+            "3.50.1"
+          ]
+        },
+        {
+          "path": "jni/x86_64/libsqliteJni.so",
+          "bytes": 1189688,
+          "sha256": "0d1892faf4a90c1c99c375df704ac5dc498af492e71661fdda12c6a497a6691b",
+          "sourceIds": [
+            "2025-06-06 14:52:32 b77dc5e0f596d2140d9ac682b2893ff65d3a4140aa86067a3efebe29dc914c95"
+          ],
+          "versionStrings": [
+            "3.50.1"
+          ]
+        }
+      ]
+    }
+  },
+  "publicApi": {
+    "bundled-public-api.txt": {
+      "text": "Compiled from \"BundledSQLiteDriver.jvmAndAndroid.kt\"\npublic final class androidx.sqlite.driver.bundled.BundledSQLiteDriver implements androidx.sqlite.SQLiteDriver {\n  public androidx.sqlite.driver.bundled.BundledSQLiteDriver();\n  public boolean hasConnectionPool();\n  public static void hasConnectionPool$annotations();\n  public final int getThreadingMode();\n  public androidx.sqlite.SQLiteConnection open(java.lang.String);\n  public final androidx.sqlite.SQLiteConnection open(java.lang.String, int);\n  public final void addExtension(java.lang.String);\n  public final void addExtension(java.lang.String, java.lang.String);\n}\n",
+      "sha256": "15f047cbca5d8585dff8541546d07621603babe2c67a2e2d13bbe55e2d797257"
+    },
+    "sqlite-public-api.txt": {
+      "text": "Compiled from \"SQLiteDriver.nonWeb.kt\"\npublic interface androidx.sqlite.SQLiteDriver {\n  public default boolean hasConnectionPool();\n  public static void hasConnectionPool$annotations();\n  public abstract androidx.sqlite.SQLiteConnection open(java.lang.String);\n}\nCompiled from \"SQLiteConnection.nonWeb.kt\"\npublic interface androidx.sqlite.SQLiteConnection extends java.lang.AutoCloseable {\n  public default boolean inTransaction();\n  public abstract androidx.sqlite.SQLiteStatement prepare(java.lang.String);\n  public abstract void close();\n}\nCompiled from \"SQLiteStatement.nonWeb.kt\"\npublic interface androidx.sqlite.SQLiteStatement extends java.lang.AutoCloseable {\n  public abstract void bindBlob(int, byte[]);\n  public abstract void bindDouble(int, double);\n  public default void bindFloat(int, float);\n  public abstract void bindLong(int, long);\n  public default void bindInt(int, int);\n  public default void bindBoolean(int, boolean);\n  public abstract void bindText(int, java.lang.String);\n  public abstract void bindNull(int);\n  public abstract byte[] getBlob(int);\n  public abstract double getDouble(int);\n  public default float getFloat(int);\n  public abstract long getLong(int);\n  public default int getInt(int);\n  public default boolean getBoolean(int);\n  public abstract java.lang.String getText(int);\n  public abstract boolean isNull(int);\n  public abstract int getColumnCount();\n  public abstract java.lang.String getColumnName(int);\n  public default java.util.List<java.lang.String> getColumnNames();\n  public abstract int getColumnType(int);\n  public abstract boolean step();\n  public abstract void reset();\n  public abstract void clearBindings();\n  public abstract void close();\n}\n",
+      "sha256": "26bdf73e9ece4a79ded5a01839b3466ddaf3762cad833e61136775015ff1a98f"
+    }
+  },
+  "environmentLimits": [
+    {
+      "path": "/data/user/0/com.paherdin.record2.debug/no_backup/g0-s-final-fs-94f0b9be41a64d4a825b0edac593134b",
+      "results": [
+        {
+          "command": [
+            "C:/Users/p3148/AppData/Local/Android/Sdk/platform-tools/adb.exe",
+            "-s",
+            "emulator-5594",
+            "shell",
+            "run-as com.paherdin.record2.debug mkdir /data/user/0/com.paherdin.record2.debug/no_backup/g0-s-final-fs-94f0b9be41a64d4a825b0edac593134b"
+          ],
+          "exit": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "C:/Users/p3148/AppData/Local/Android/Sdk/platform-tools/adb.exe",
+            "-s",
+            "emulator-5594",
+            "shell",
+            "su 0 mount -t tmpfs -o 'size=1048576,mode=0700,uid=10200,gid=10200,context=\"u:object_r:app_data_file:s0:c200,c256,c512,c768\"' tmpfs /data/user/0/com.paherdin.record2.debug/no_backup/g0-s-final-fs-94f0b9be41a64d4a825b0edac593134b"
+          ],
+          "exit": 1,
+          "stdout": "",
+          "stderr": "'tmpfs' is read-only\nmount: 'tmpfs'->'/data/user/0/com.paherdin.record2.debug/no_backup/g0-s-final-fs-94f0b9be41a64d4a825b0edac593134b': Permission denied\n"
+        }
+      ]
+    },
+    {
+      "command": [
+        "C:/Users/p3148/AppData/Local/Android/Sdk/platform-tools/adb.exe",
+        "-s",
+        "emulator-5594",
+        "shell",
+        "run-as com.paherdin.record2.debug sh -c 'printf probe > /dev/full'"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "sh: can't create /dev/full: Permission denied\n",
+      "purpose": "Bounded kernel ENOSPC device probe, no device filling or policy change"
+    }
+  ],
+  "remoteState": {
+    "pr": {
+      "url": "https://github.com/paher-din/record/pull/31",
+      "state": "open",
+      "merged": false,
+      "head": "af62eef0e66ffd29129a0120ce0aeadf1582ef37"
+    },
+    "issue": {
+      "url": "https://github.com/paher-din/record/issues/19",
+      "state": "open"
+    }
+  }
+}
