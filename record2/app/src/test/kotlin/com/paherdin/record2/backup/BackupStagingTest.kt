@@ -9,6 +9,44 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 internal class BackupStagingTest {
+    @Test
+    fun activeTaskSurvivesSweepUntilReleased() {
+        val root = temporaryFolder.newFolder("active")
+        val task = BackupStaging.createTask(root, "export")
+        assertTrue(BackupStaging.sweep(root).deleted.isEmpty())
+        assertTrue(task.isDirectory)
+        BackupStaging.releaseTask(task)
+        assertEquals(listOf(task.name), BackupStaging.sweep(root).deleted)
+        assertFalse(task.exists())
+    }
+
+    @Test
+    fun creationWaitsForInFlightSweepAndThenRegistersAtomically() {
+        val root = temporaryFolder.newFolder("overlap")
+        File(root, "export-11111111-1111-4111-8111-111111111111").mkdir()
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val proceed = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val sweep = pool.submit<StagingSweepReport> {
+                BackupStaging.sweep(root) { child ->
+                    entered.countDown()
+                    check(proceed.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                    child.deleteRecursively()
+                }
+            }
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            val created = pool.submit<File> { BackupStaging.createTask(root, "export") }
+            org.junit.Assert.assertThrows(java.util.concurrent.TimeoutException::class.java) {
+                created.get(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+            proceed.countDown(); sweep.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            val task = created.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            assertTrue(BackupStaging.sweep(root).deleted.isEmpty())
+            assertTrue(task.isDirectory)
+            BackupStaging.releaseTask(task)
+        } finally { proceed.countDown(); pool.shutdownNow() }
+    }
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 

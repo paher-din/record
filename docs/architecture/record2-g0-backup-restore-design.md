@@ -283,7 +283,7 @@ V1 没有必须随备份保存的“解释性偏好”数据库外存储：草�
 | `MAX_EXPORT_WAL_GROWTH_BYTES` | 402,653,184（384 MiB） | 导出读快照期间 WAL 相对基线的增长上限（最大逻辑 256 MiB + 128 MiB 余量）；超过则中止导出 |
 | `EXPORT_FREE_RESERVE_BYTES` | 67,108,864（64 MiB） | 导出期间 DB 卷与 staging 卷各自最低余量；低于则中止 |
 | `GATE_DRAIN_TIMEOUT_MS` | 30,000 | 获取恢复门禁后等待在途短写事务排空的上限；超时放弃恢复且 O 零写 |
-| 导出 staging 余量 | 134,217,728（128 MiB） | 开始导出前 staging 所在卷至少 64 MiB ZIP + 64 MiB 余量 |
+| 导出 staging 准入（Rev4） | 分阶段动态工作预算（§14） | 替换固定128MiB启动式；F仍64MiB同卷一次，格式容量硬限额不变 |
 | 导入磁盘余量 | `zipBytes + 2*totalUncompressed + currentDbBytes + currentWalBytes + 134,217,728` | 事务删除/插入、WAL、staging 和回滚余量；低于此值在门禁前拒绝 |
 
 - 压缩策略：**空段一律 `STORED`，压缩/解压字节和 CRC 均为 0；不得写 `DEFLATE` 空块。** 非空段才优先 DEFLATE；若该段比值会超过 100:1，则改用 STORED，保证生成的包可被本格式接受；若整包仍超过 64 MiB，导出明确失败，不生成“成功”回执。导入器按 central directory 的压缩/解压大小和实际流双重检查：空段必须 STORED/0/0，`DEFLATE` 空块或 compressed>0 拒绝；非空段 compressed>0 且 `compressed*100>=uncompressed`。
@@ -296,18 +296,15 @@ V1 没有必须随备份保存的“解释性偏好”数据库外存储：草�
 
 ### 7.1 前置与快照
 
-**2026-10-26 Rev3 提案，尚未生效：** G1 已复现当前 API34 导出访问架构的并发/资源缺陷；以下已接受条款保留其历史效力，正式替换候选见 §13 与 [G0 导出架构复审](record2-g0-export-architecture-review.md)。本轮不把新方案写成 Accepted，也不授权生产改造。
+**Rev4 S，选型Accepted。** 批准来源归Plan §35.7，完整边界见§14；以下取代Rev2单语句/BEGIN机制，旧Rev3/C2预算不生效。
 
-1. 仅在正常启动门禁完成后提供导出；RecoveryRequired、恢复门禁进行中或数据库不可读时拒绝。导出与恢复共用唯一数据操作门禁：导出持只读操作 lease（直到 SAF 回读/失败结束），恢复在导出期间返回 Busy；导出**不**获取恢复写门禁，因此不阻塞正常业务写。
-2. 用户经 SAF 选择目标并看到未加密/含私人数据/不含 Key/有效授权的告知；若存在 `EDITING` 草稿，告知必须说明它作为未提交输入保留、SAVED/DISCARDED 不包含且导出不改变草稿状态；staging 余量检查通过。
-3. **真正只读快照（Rev2）：** 从应用私有 DB 路径打开独立的只读 SQLite 连接（`OPEN_READONLY` + `PRAGMA query_only=ON`），执行 `BEGIN DEFERRED`，在同一读事务中按固定段顺序读取全部 12 段和 `record_data_state`。**不得**使用 `RoomDatabase.withTransaction`、`beginTransaction`、`beginTransactionNonExclusive` 或任何可能取得写锁的连接；读事务只执行 SELECT，不 checkpoint、不执行会修改数据库文件的 PRAGMA/DDL/写语句（`query_only=ON` 是连接状态，不是数据库写）。
-4. 同一连接前置检查 `PRAGMA journal_mode` 必须为 `wal`；WAL 是读快照不阻塞正常写的必要条件。非 WAL 时导出以明确的 unsupported 状态拒绝，**不以 Room 写事务降级**；G1 记录该环境前置。
-5. 快照时点为 `BEGIN DEFERRED` 后第一次读取；全部段/`record_data_state` 必须来自同一连接/同一事务，不允许跨连接拼快照。读取时同步执行行级校验/限额计数并写入 staging ZIP 的数据条目/哈希；然后写 manifest（含 `contentDigest`）、关闭 ZIP，随后结束读事务/关闭只读连接，再进入 §7.2 SAF。manifest `exportedAt` 使用快照时点 Clock。
-6. 导出**不**要求停写：只读快照不持写锁，正常业务写可在快照期间继续（WAL）；导出期间完成的 Run/自动保存/提交不进入该 ZIP，也不会造成混合表状态。WAL 增长和两卷余量按 §6 监控并可在越界时中止导出，不报成功。
-7. 若只读连接在当前 Room/WAL 环境无法取得一致快照或无法看到当前 WAL 内容，**停止并回到 G0/实现审查**；不得静默改用 Room 写事务、复制 DB/WAL 文件或改用普通连接的多条 SELECT 拼快照。
-8. RUNNING Run 按快照原样导出（RUNNING）；Pending/LOCKED 也按快照原样导出；恢复协议负责转换。导出不回写、不消费/保存草稿、不取消 Run、不写 `ai_control`。
-
-**Rev2 说明：** 独立只读连接能否在当前 Android/Room/WAL 环境读取一致快照，是 G1 的环境前置；本设计不声称所有平台或低内存 journal mode 都支持。若非 WAL、只读连接失败或读不到当前 WAL，导出停止/拒绝，不产生第二套“写事务快照”或 DB 文件复制方案。
+1. 正常启动后持export lease，恢复互斥，正常业务写不停。用户明确获知未加密/完整私人历史/仅EDITING草稿/不含Key及有效授权，最终F1交互另验收。
+2. 系统SQLite独立OS只读打开来源，禁止默认损坏删除/重建，验证WAL/Schema。不复制活跃DB/WAL/SHM，不用Room写事务，不设置会禁止attached目标写入的query_only。
+3. VACUUM INTO创建私有noBackup全库scratch。资源失败/取消接CancellationSignal，等待native/cursor/连接退出；失败目标丢弃，重启不续用。
+4. 成功关闭来源后检查目标journal/Schema/Room identity/integrity/FK，全部12段与data_state只读同一静态目标；固定键与载荷分离，scalar逐行提取，不用大JSON物化查询。
+5. exportedAt为采集开始Clock：窗前提交必含、窗后必排除、窗内只可完整前/后态。generation/revision来自目标，不虚构内核精确时点。不回写源、消费草稿、取消Run、修改AI或写receipt。
+6. 标准流式ZIP，无完整JSONL staging；空段STORED/0/0、非空比值及全部硬限制不变，高比值同目标重读回退。原严格校验通过、关闭并回收S/K后进入§7.2。
+7. 分阶段预算与清扫屏障见§14。平台不支持时明确拒绝，不退回旧递归查询/Room写事务/多连接拼接；选型批准不抵扣生产门禁。
 
 ### 7.2 验证与 SAF 写入
 
@@ -499,6 +496,8 @@ G0 只冻结合同；以下由 G1 在获批源码/设备范围执行，G2 做最
 
 **B. 导出真正只读快照、并发写与 WAL（对应 §7.1/§6）**
 
+**Rev4替换说明：** 下表保留Rev2测试编号，但其中BEGIN/query_only/单语句的实现断言替换为§7.1/§14的来源OS只读、引擎一致采集和静态目标提取；可见性替换为采集窗前必含/窗后必不含/窗内完整前或后态。不再按旧字面机制验收，不允许用旧原型通过抵扣新生产门禁。
+
 | 测试 | 必须证明 |
 |---|---|
 | `exportUsesReadOnlyConnectionAndWal` | 实际使用 `OPEN_READONLY`/`query_only` + `BEGIN DEFERRED`，`PRAGMA journal_mode=wal`；不使用 Room 写事务；读事务只 SELECT、不 checkpoint/DDL/写 PRAGMA；读连接能看到当前 WAL 快照 |
@@ -526,6 +525,8 @@ G0 只冻结合同；以下由 G1 在获批源码/设备范围执行，G2 做最
 - 本文为负责人已批准的G0设计审查包（Plan §31.7），未修改源码、Schema、普通数据库、构建、环境/凭据/CI；所有 G1/G2 行为均 NOT RUN。
 
 ## 13. Rev3 导出访问架构修订提案（2026-10-26，Proposed）
+
+**历史提案，已被§14 Rev4替代，不生效。** 尤其bundled目标读取、全量JSONL及固定GiB预算不得作为当前生产方案。
 
 本节是对 §7.1、§6 导出空间预算、§9 私有暂存范围及 §10.4B 测试形态的**待批准替换条款**；原 G0-D1～D14、Rev2/Rev2.1 批准记录保留。它不改变 ZIP v1/12段/64MiB ZIP/256MiB解压/500,000行等产品上限，不改变恢复/receipt/AI安全合同，也不启动生产实现。
 
