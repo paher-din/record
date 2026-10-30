@@ -1726,3 +1726,4 @@ PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，iss
 - 实施按采集/静态提取与有界键工作集→流式ZIP及原校验/SAF→资源监控→staging生命周期收口，真实生产路径验证；不重写导入/恢复算法。清理仅限既有授权私有备份任务和唯一合成测试资源。
 - 合并前必须关闭：真实ENOSPC/Q与超调上界；启动清扫活动任务竞态；生产并发/原P1/强停；普通重度真实性能及产品体验；系统SQLite/WAL/checkpoint及必要真机；原G1/Storage-AI/SAF/G2回归。未完成项写入PR门禁，不用原型PASS代替、不抬阈值/降容量换绿，不合并PR #31、不关闭issue #19。
 - **首批实现供审阅：** 正式Exporter切换S/有界键/标准流式ZIP；共享staging锁覆盖活动创建/注册和清扫，Application记录failed；恢复只变更目录生命周期。实际制品、生产回归与未闭合合并门禁归[实现evidence](../../../engineering/evidence/2026-10-30-g1-s-export.md)。已完成代码/必要本批验证并提交独立Draft PR；不是生产验收通过，停在再次审阅节点，不合并/发布。
+- **PR：** [#34](https://github.com/paher-din/record/pull/34)，Draft，base为未合并G1分支`codex/g1-backup-restore`，head为`codex/g1-s-export`。研究/批准归档提交`47a2309`，受控实现提交`a61cebc`；生产与原型证据分开。六组合并门禁仍OPEN，等待再次审阅，#31与#19不关闭。
