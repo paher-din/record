@@ -6,7 +6,11 @@ Read [root rules](../AGENTS.md), then the [single R2 Engineering Policy](enginee
 
 | Work | Source |
 |---|---|
+| S controlled production export | [Implementation evidence and open merge gates](engineering/evidence/2026-10-30-g1-s-export.md); S direction approval and execution authority belong to [Plan §35.7](specs/record2/v1/plan.md#357-s架构批准与受控g1实施2026-10-30), G0 §14 and ADR 0019 Rev4; selection approval is not production acceptance |
+| S-priority final backup validation | [Final draft and gates](architecture/record2-g0-s-final-validation.md), [raw experiment index](engineering/evidence/2026-10-30-g0-s-final-results.md); latest authorization/status [Plan §35.6](specs/record2/v1/plan.md#356-s优先的最终架构验证2026-10-30) |
 | Product/architecture | [Frozen unified R1](architecture/record2-v1-unified-architecture.md), [V1 Spec](specs/record2/v1/spec.md) |
+| Lightweight complete backup re-evaluation | [New draft](architecture/record2-g0-lightweight-backup-review.md); product-scale, official/community, cost and prototype evidence are linked there. Latest authorization and C2 budget rejection belong to [V1 Plan §35.5](specs/record2/v1/plan.md#355-轻量化完整备份架构重新评估2026-10-26) |
+| G0 export architecture re-review | [Architecture decision candidate and API34 experiments](architecture/record2-g0-export-architecture-review.md), [fixed-version primary-source research](engineering/evidence/2026-10-26-g0-export-source-research.md); task authorization/status belongs to [V1 Plan §35.4](specs/record2/v1/plan.md#354-g0-导出架构复审与隔离技术验证2026-10-26) |
 | Dependencies/authorization/actual execution state | [V1 Plan](specs/record2/v1/plan.md), including product approval §13 and governance flow §14 |
 | G3 legacy machine constraints / A1 isolation checklist | [Static isolation audit](engineering/record2-g3-machine-isolation.md); task authorization and two-part acceptance status belong to V1 Plan §15 |
 | A0 build structure / identity / asset admission | [Engineering design review package](architecture/record2-a0-engineering-design.md); task authorization and actual state belong to V1 Plan §16 |

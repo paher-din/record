@@ -59,12 +59,11 @@ internal class RestoreService(
     override suspend fun preflight(source: BackupSource): RestoreCandidate = withContext(Dispatchers.IO) {
         if (gate.isRestoreInProgress) throw DataOperationBusyException("Restore is already in progress")
         stagingDirectory.mkdirs()
-        val work = File(stagingDirectory, "preflight-${UUID.randomUUID()}")
+        val work = BackupStaging.createTask(stagingDirectory, "preflight")
         val zip = File(work, "source.zip")
         val context = currentCoroutineContext()
         val check = { context.ensureActive() }
         try {
-            if (!work.mkdirs()) fail(BackupError.RecoverableIO, "could not create preflight directory")
             val bytes = source.copyTo(zip, BackupLimits.MAX_ZIP_BYTES)
             check()
             if (bytes > BackupLimits.MAX_ZIP_BYTES) fail(BackupError.InvalidSource, "backup exceeds 64 MiB")
@@ -93,7 +92,7 @@ internal class RestoreService(
                 appVersionCode = currentAppVersionCode,
             )
         } finally {
-            work.deleteRecursively()
+            try { work.deleteRecursively() } finally { BackupStaging.releaseTask(work) }
         }
     }
 
@@ -109,7 +108,7 @@ internal class RestoreService(
         try {
             progress(RestoreProgress.PREPARING)
             stagingDirectory.mkdirs()
-            val work = File(stagingDirectory, "restore-${UUID.randomUUID()}")
+            val work = BackupStaging.createTask(stagingDirectory, "restore")
             val zip = File(work, "source.zip")
             try {
                 try {
@@ -121,7 +120,7 @@ internal class RestoreService(
                     resultFromReceipt(committed)
                 }
             } finally {
-                cleanupAfterRestore(work)
+                try { cleanupAfterRestore(work) } finally { BackupStaging.releaseTask(work) }
             }
         } finally {
             lease.close()
@@ -199,7 +198,7 @@ internal class RestoreService(
         if (candidate.appVersionCode != currentAppVersionCode) {
             fail(BackupError.TargetInvalid, "app version changed since preflight")
         }
-        if (!work.mkdirs()) fail(BackupError.RecoverableIO, "could not create restore staging directory")
+        if (!work.isDirectory) fail(BackupError.RecoverableIO, "restore staging directory is missing")
         val copied = candidate.source.copyTo(zip, BackupLimits.MAX_ZIP_BYTES)
         if (copied != candidate.sourceBytes) {
             fail(BackupError.InvalidSource, "source bytes changed since preflight")

@@ -21,6 +21,19 @@ internal data class StagingSweepReport(
  * reported instead of thrown so startup never blocks on a damaged staging directory.
  */
 internal object BackupStaging {
+    private val lock = Any()
+    private val active = HashSet<String>()
+
+    fun createTask(root: File, prefix: String): File = synchronized(lock) {
+        require(prefix in prefixes)
+        if (!root.mkdirs() && !root.isDirectory) throw IOException("staging root unavailable")
+        val task = File(root, "$prefix-${java.util.UUID.randomUUID()}")
+        if (!task.mkdir()) throw IOException("staging task unavailable")
+        active += task.canonicalPath
+        task
+    }
+
+    fun releaseTask(task: File) = synchronized(lock) { active.remove(task.canonicalPath); Unit }
     private val prefixes = setOf("preflight", "restore", "export")
 
     fun appDirectory(context: Context): File =
@@ -29,13 +42,14 @@ internal object BackupStaging {
     fun sweep(
         root: File,
         deleteTask: (File) -> Boolean = ::deleteTaskDirectory,
-    ): StagingSweepReport {
-        if (!root.isDirectory) return StagingSweepReport(emptyList(), emptyList())
+    ): StagingSweepReport = synchronized(lock) {
+        if (!root.isDirectory) return@synchronized StagingSweepReport(emptyList(), emptyList())
         val deleted = ArrayList<String>()
         val failed = ArrayList<String>()
         root.listFiles()?.forEach { child ->
             if (Files.isSymbolicLink(child.toPath())) return@forEach
             if (!child.isDirectory) return@forEach
+            if (child.canonicalPath in active) return@forEach
             val name = child.name
             val separator = name.indexOf('-')
             if (separator <= 0) return@forEach
@@ -44,7 +58,7 @@ internal object BackupStaging {
             if (prefix !in prefixes || !canonicalUuid(identity)) return@forEach
             if (deleteTask(child)) deleted += name else failed += name
         }
-        return StagingSweepReport(deleted, failed)
+        StagingSweepReport(deleted, failed)
     }
 
     private fun deleteTaskDirectory(directory: File): Boolean = try {

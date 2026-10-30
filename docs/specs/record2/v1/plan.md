@@ -1684,3 +1684,46 @@ PR #32 已合并 main `4f92878`；E2 #29 已合并，D1 #30 由 #32 替代，iss
 - **staging P2：** `BackupStaging.sweep`只删除私有专用root下`preflight|restore|export-<canonical UUID>`直接目录，跳过symlink/非目录/非规范名，失败不抛出；`RecordApplication`启动后台清扫；强停矩阵在每个场景预置`preflight-<uuid>`孤儿并在重启后由生产Application清除（5/5）；`RestoreService.onStagingCleanupFailure`+`successfulRestoreSurvivesStagingCleanupFailure`证明cleanup失败不破坏成功恢复/receipt/gate。host `BackupStagingTest` 3/3。
 - **回归：** host 182/182；G1 device 26/26；storage/AI 177/177；强停5/5；WAL故障1/1；build isolation/release PASS。APK debug `009ddf1b…`、test `947b7697…`、release `72be6b76…`。
 - **状态：** 导入/恢复/staging通过；**导出P1仍OPEN**，不能合并/关闭issue #19；下一步需单独批准导出快照/监控设计或G0限额复审，不能以导入资源数据替代导出PASS。
+
+### 35.4 G0 导出架构复审与隔离技术验证（2026-10-26）
+
+负责人通过本轮粘贴任务书要求暂停 G1 局部修补、冻结 PR #31，在独立任务中复审数据库访问架构。授权仅覆盖源码/官方资料调研、独立合成库技术原型和设计裁决候选；不授权改写生产 `BackupSnapshot.kt` 或其他已验收 G1 内核。先验证 Room 2.8.4 现有 compatibility 配置的 `useReaderConnection`/DEFERRED；再验证 AndroidX BundledSQLiteDriver 的只读/逐行读取能力及与 framework 引擎混用的安全边界；前两者不能成立时再评估官方备份快照路线。
+
+- **隔离与 owner：** 独立工作树 `C:/Users/p3148/.codex/worktrees/g0-export-review/record`、分支 `codex/g0-export-architecture-review`，基线 G1 `af62eef`。主 Agent 拥有原型/实测/裁决文档；独立 research agent 只拥有 [一手来源核对](../../../engineering/evidence/2026-10-26-g0-export-source-research.md)。既有 G1/F1 工作树内容原样保留。
+- **验证边界：** 复用既有 G1 `record-api34` / `emulator-5594`，仅安装本轮 debug/test APK、使用唯一 `g0-export-prototype-*` 合成 Room Schema v1 和私有临时目录；不操作用户库/真实 Provider/凭据、不 wipe、不改 Schema/索引/CI。新增依赖只用于原型 androidTest，不进入生产 runtime；APK/库身份、数据/字段摘要、时间/PSS/heap/WAL/磁盘均记录。清理沿用获准合成测试资源范围，不删除源码或既有证据。
+- **交付门禁：** 保持 ZIP/恢复/AI 安全不变量及 G0 现有限额；候选资源预算须真实标为待批准，不能以调阈值掩盖失败。正式选型与 G0 §7.1/ADR 0019 修订作为待审设计，负责人批准后才可另行授权生产改造。PR #31/issue #19 保持 OPEN，不合并、不关闭、不发布。本次实测结论与命令见后续架构复审报告。
+- **裁决材料：** [G0 导出架构复审报告](../../../architecture/record2-g0-export-architecture-review.md)拥有A/B/C对照结果、失败原文索引与C2候选；G0 §7.1/§13及ADR 0019已加入明确Proposed的修订文本，原Accepted决定与历史批准不被覆盖。现阶段没有生产实现授权，不能关闭G1导出P1。
+- **本轮交付状态：** 架构技术验证/一手调研/裁决候选与静态核对已完成，含独立来源与设计复核；原生产失败已重现，实际资源/一致性/故障结果与未覆盖项统一见报告§4。不宣称生产G1完成。下一步只待负责人对C2、全库明文scratch、磁盘/工作配额与采集时间窗语义作设计裁决；接受后仍须另行授权生产改造，不能把“继续复审”解释为实现许可。
+
+### 35.5 轻量化完整备份架构重新评估（2026-10-26）
+
+负责人本轮明确否决C2现有空间预算：GiB级启动可用空间不符合Record轻量本地工具的产品定位。C2退回待比较候选，不是已确定生产方案；§35.4的原型结果/历史建议保留，不作为本轮选型前提。负责人要求从产品数据增长与资源预算出发，重新调研官方/成熟开源方案，至少比较两条现实路线，交付 `docs/architecture/record2-g0-lightweight-backup-review.md` 和对应evidence后停止在设计裁决阶段。
+
+- **授权：** 只读审查真实源码/Spec/B0/Schema/产物、外部一手调研、数据与资源模型、隔离原型/测试和设计修订建议。复用本独立工作树、既有API34 `record-api34` / `emulator-5594`、唯一合成库与原型私有目录；只构建/安装测试制品，不操作真实用户库/Provider/凭据或wipe。
+- **保护：** 不改G1生产备份/导入/恢复/Agent/Schema，不改正式限额或引入生产依赖，不把新方案标Accepted，不Commit/Push/合并PR #31/关闭issue #19/公开发布。已有未提交G0复审材料与测试原样保留；新原型使用独立文件和输出目录。大小测量只用隔离size-probe，不将bundled放入正式app依赖。
+- **本轮owner：** 主Agent负责实际代码/产物成本、增长模型、隔离关键实验与总报告；独立research agents分别拥有官方路线与社区源码evidence。既有已失败路径不重跑；优先验证能区分候选的新假设。
+- **决策边界：** 500k行/256MiB逻辑/64MiB ZIP可以提出调整建议，本轮不实施；不以截断/丢失/伪成功换轻量。恢复安全和权威数据完整性保留，任何需触及既验收内核的候选须单列收益/风险。只有负责人明确裁决后才能另行进入生产开发。
+- **研究交付：** [轻量备份复审草案](../../../architecture/record2-g0-lightweight-backup-review.md)及其官方/社区/成本/容量模型evidence已完成；[API34原型记录](../../../engineering/evidence/2026-10-26-lightweight-prototype-results.md)含19次运行（18通过、1次初始ZIP extra失败）及完整命令/身份回执。新U单遍50k导出25.161s、PSS采样111.43MiB、工作文件2.44MiB；这不覆盖混合AI/最大包或新预算的生产验收。
+- **当前候选：** U为有条件的推荐架构方向，S为保留系统驱动的替代；2.6.2及补查的2.7.1没有在本轮取得已修补引擎的生产准入证明。先裁决发行渠道/维护责任及产品资源目标，再讨论迁移。S预算仍需补测采集journal/临时文件。§35.4旧C2建议不再是当前主线，旧实验事实保留。
+- **停止点：** 本轮研究完成，保持Draft；没有生产改造或正式数值修订。负责人批准兼容性调整以前，原500k合法上限仍为生产验收门禁，150k仅为建议性能目标档。下一步只待负责人对路线/版本责任/容量兼容性/按实际量的工作预算裁决，不自动进入开发；PR #31与issue #19不合并、不关闭。
+
+### 35.6 S优先的最终架构验证（2026-10-30）
+
+负责人最新任务书要求优先验证S作为V1候选，原则接受标准流式ZIP/取消全量JSONL；U只做正式发行物身份及修复核查。此为隔离技术验证和设计草案授权，不是生产架构Accepted或G1改造许可。§35.5的U优先建议保留为历史研究，当前验证顺序以本节为准。
+
+- 复用独立工作树/分支、API34 `record-api34` / `emulator-5594`；新增独立androidTest与runner，不改生产driver/事务/Schema/恢复内核/ZIP格式/硬常量或CI。仅使用唯一`g0-s-final-*`合成库、noBackup任务目录及对应测试私有回执；任务内清理/强停/重启恢复检查只作用于这些合成资源，不清理其他任务或用户数据，不wipe设备。
+- 验证小型约1k、普通30k、中型50k持续写、重度150k混合有效历史，以及原500k+17大字段上限；按阶段采样S/Q/K/W/ZIP/空间/PSS/heap/耗时/写延迟，覆盖取消/真实force-stop/资源与读取故障，保存准确命令、原始回执及FAIL/NOT RUN。不能用历史PASS代替本轮结果，也不因失败上调阈值。
+- SAF接缝验证仅用MediaStore创建唯一`g0-s-final-<token>.zip`合成文档，沿用原ContentResolver target的写入/关闭/回读；测试后清理自己创建的URI，不触碰既有文档，不启动最终DocumentsUI。低空间实验不填满设备；若隔离限容文件系统受平台安全策略阻挡，保留失败原文并标NOT RUN，不关闭SELinux或改设备全局策略。
+- 交付新的最终验证报告与G0/ADR具体修订草案，唯一架构建议须说明阻断和准入条件；不Commit/Push、合并PR #31、关闭issue #19或开始生产开发。待负责人设计裁决。
+- **研究交付完成：** [最终S验证草案](../../../architecture/record2-g0-s-final-validation.md)及[本轮结果/原始回执](../../../engineering/evidence/2026-10-30-g0-s-final-results.md)。27次记录中26次功能/故障核对PASS，首次50k copy kill未命中FAIL保留，150k补测在环境恢复后完成新PID验证；不以这些功能结果抵扣资源未达标。
+- **结论与停止点：** 唯一建议后续收敛到S，生产准入未通过。普通36.403s、重度253.766s未达15s/120s候选目标，小包PSS未达96MiB。真实低空间ENOSPC、Q/OEM/软cap超调和系统补丁门禁未闭合；U稳定2.7.1仍无已核对修复的发行物证明。保持Draft，等待负责人裁决；不改生产/正式限额，不合并PR #31或关闭issue #19。
+
+### 35.7 S架构批准与受控G1实施（2026-10-30）
+
+负责人本轮明确批准S为V1唯一完整备份架构方向，否决旧C2固定GiB预算，暂缓U；接受系统SQLite一致私有快照、标准流式ZIP、分阶段动态预算与采集时间窗。授权修订G0/ADR并在独立分支实现导出、监控、staging及对应测试，完成后Commit/Push并创建独立PR等再次审阅；不授权合并/发布。**这是架构选型批准，不是生产验收通过。**
+
+- 分支`codex/g1-s-export`，从G1 `af62eef`承接本工作树全部已记录研究材料，不丢弃旧修改；独立PR以G1分支为base，避免把原G1误当已合入main。保留Schema/ZIP v1/12段/全部容量硬限额/Room事务恢复/Agent安全，不新增生产依赖，不改CI/凭据。
+- 实施按采集/静态提取与有界键工作集→流式ZIP及原校验/SAF→资源监控→staging生命周期收口，真实生产路径验证；不重写导入/恢复算法。清理仅限既有授权私有备份任务和唯一合成测试资源。
+- 合并前必须关闭：真实ENOSPC/Q与超调上界；启动清扫活动任务竞态；生产并发/原P1/强停；普通重度真实性能及产品体验；系统SQLite/WAL/checkpoint及必要真机；原G1/Storage-AI/SAF/G2回归。未完成项写入PR门禁，不用原型PASS代替、不抬阈值/降容量换绿，不合并PR #31、不关闭issue #19。
+- **首批实现供审阅：** 正式Exporter切换S/有界键/标准流式ZIP；共享staging锁覆盖活动创建/注册和清扫，Application记录failed；恢复只变更目录生命周期。实际制品、生产回归与未闭合合并门禁归[实现evidence](../../../engineering/evidence/2026-10-30-g1-s-export.md)。已完成代码/必要本批验证并提交独立Draft PR；不是生产验收通过，停在再次审阅节点，不合并/发布。
+- **PR：** [#34](https://github.com/paher-din/record/pull/34)，Draft，base为未合并G1分支`codex/g1-backup-restore`，head为`codex/g1-s-export`。研究/批准归档提交`47a2309`，受控实现提交`a61cebc`；生产与原型证据分开。六组合并门禁仍OPEN，等待再次审阅，#31与#19不关闭。

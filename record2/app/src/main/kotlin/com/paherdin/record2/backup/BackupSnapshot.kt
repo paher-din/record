@@ -52,11 +52,9 @@ internal class FileSystemExportResourceMonitor(
 }
 
 /**
- * Reads the whole snapshot with one SELECT statement on an OPEN_READONLY + query_only connection.
- * The statement itself is the read transaction: every segment and record_data_state is pinned to
- * the same WAL snapshot until its cursor is exhausted. Large payloads are split into ASCII-safe
- * character chunks inside that one statement, so CursorWindow never has to hold an entire row
- * while the cross-statement snapshot guarantee is preserved.
+ * Legacy fixture inspection helper retained for existing tests. Production exports use
+ * SystemExportSnapshot and StaticLogicalZip. A CursorWindow refill can restart this SELECT;
+ * this helper must not be reused as a concurrent production snapshot implementation.
  */
 internal object ReadOnlyBackupSnapshot {
     private const val CHUNK_CHARS = 262_144

@@ -1,0 +1,63 @@
+{
+  "matrixSourceIdentity": {
+    "testApkSha256": "d0ca77286e618b1f9fd200b39e9a975a6e20dffef00d02c8fdb616562c3240ed",
+    "files": [
+      {
+        "path": "record2\\app\\src\\androidTest\\kotlin\\com\\paherdin\\record2\\backup\\prototype\\SFinalEngine.kt",
+        "sha256": "df17aa9a0d7b9f87b6cec58151ba7b2bf6bf19645e02ba17b4b06bac56d2e701"
+      },
+      {
+        "path": "record2\\app\\src\\androidTest\\kotlin\\com\\paherdin\\record2\\backup\\prototype\\SFinalFixture.kt",
+        "sha256": "1b074911d08990fc65373b6a5e0dd28fb9ceb786491603350b90d0d32dcf62fd"
+      },
+      {
+        "path": "record2\\app\\src\\androidTest\\kotlin\\com\\paherdin\\record2\\backup\\prototype\\SFinalMonitor.kt",
+        "sha256": "6672dee525445da1685615097b961149138315e45c546c5ee184f336d051d05b"
+      },
+      {
+        "path": "record2\\app\\src\\androidTest\\kotlin\\com\\paherdin\\record2\\backup\\prototype\\SFinalPrototype.kt",
+        "sha256": "d79877c6a747bf66d884cf546089a2b20631965fa49e0e5f99faa071b3d7a9d6"
+      },
+      {
+        "path": "record2\\tools\\run-s-final-prototype.py",
+        "sha256": "24a84392787bc49178c183fdb3a3517e4a4054bb0d1ab1cc666a021bc944ddef"
+      },
+      {
+        "path": "record2\\tools\\run-s-final-matrix.py",
+        "sha256": "fd6e0d757c5dceff4386ff062bad90e94be376e6e3fe4ce6df972ddc4a96ceed"
+      }
+    ]
+  },
+  "finalSources": [
+    {
+      "path": "record2\\app\\src\\androidTest\\kotlin\\com\\paherdin\\record2\\backup\\prototype\\SFinalEngine.kt",
+      "sha256": "d77539ea28bfed443d6d5bd2e76b18584a644dc30837e948ae82cdd93a412504",
+      "diffFromMatrix": "--- matrix/SFinalEngine.kt\n+++ final/SFinalEngine.kt\n@@ -88,7 +88,7 @@\n                     stream.closeEntry();require(e.size==bytes&&e.crc==crc.value)\n                     stats[s]=Stat(rows,bytes,e.compressedSize,crc.value,hex(hash.digest()))\n                 }\n-                val p=BackupManifest(BackupLimits.FORMAT,1,1,BackupTestDataFactory.FINISH+86400000,gen,rev,1,\"s-final-prototype\",13,rowTotal,total,LogicalSegment.entries.map{s->stats.getValue(s).let{ManifestSegment(s.path,it.rows,it.bytes,it.sha)}},\"0\".repeat(64))\n+                val p=BackupManifest(BackupLimits.FORMAT,1,1,report.getLong(\"captureStartedAtMs\"),gen,rev,1,\"s-final-prototype\",13,rowTotal,total,LogicalSegment.entries.map{s->stats.getValue(s).let{ManifestSegment(s.path,it.rows,it.bytes,it.sha)}},\"0\".repeat(64))\n                 val m=p.copy(contentDigest=ManifestCodec.contentDigest(p));val data=ManifestCodec.encode(m)\n                 stream.putNextEntry(ZipEntry(\"manifest.json\").apply{time=946771200000L;method=0;size=data.size.toLong();compressedSize=size;crc=CRC32().apply{update(data)}.value});stream.write(data);stream.closeEntry()\n                 report.put(\"manifestDigest\",m.contentDigest)\n"
+    },
+    {
+      "path": "record2\\app\\src\\androidTest\\kotlin\\com\\paherdin\\record2\\backup\\prototype\\SFinalFixture.kt",
+      "sha256": "1b074911d08990fc65373b6a5e0dd28fb9ceb786491603350b90d0d32dcf62fd",
+      "diffFromMatrix": ""
+    },
+    {
+      "path": "record2\\app\\src\\androidTest\\kotlin\\com\\paherdin\\record2\\backup\\prototype\\SFinalMonitor.kt",
+      "sha256": "6672dee525445da1685615097b961149138315e45c546c5ee184f336d051d05b",
+      "diffFromMatrix": ""
+    },
+    {
+      "path": "record2\\app\\src\\androidTest\\kotlin\\com\\paherdin\\record2\\backup\\prototype\\SFinalPrototype.kt",
+      "sha256": "efb618cdc90392fdf377123b7764106c0634fc60fc34c36c7c64073c7ca96f76",
+      "diffFromMatrix": "--- matrix/SFinalPrototype.kt\n+++ final/SFinalPrototype.kt\n@@ -30,6 +30,14 @@\n     private val fixture=SFinalFixture(args.getString(\"rows\")!!.toInt(),args.getString(\"profile\")?:\"normal\",args.getString(\"large\")==\"true\",args.getString(\"largeNote\")==\"true\")\n     private fun db()=Room.databaseBuilder(context,RecordDatabase::class.java,path.name).setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING).build().also{it.openHelper.writableDatabase}\n     private fun emit(o:JSONObject){val dir=File(context.noBackupFilesDir,\"s-final-reports\");dir.mkdirs();File(dir,\"$run.json\").writeText(o.put(\"pid\",android.os.Process.myPid()).put(\"runId\",run).toString());println(\"S-FINAL $o\")}\n+    @Test fun monitorProbe(){\n+        val work=File(root,\"probe\");work.mkdirs();val m=SFinalMonitor(path,work,{\"probe\"}){error(it)}\n+        val f=File(work,\"etilqs_probe\");m.start()\n+        RandomAccessFile(f,\"rw\").use{o->repeat(32){o.write(ByteArray(65536))};assertTrue(f.delete());Thread.sleep(250)\n+            val result=m.stop();assertTrue(result.getJSONObject(\"phasePeaks\").getJSONObject(\"probe\").getLong(\"qBytes\")>=2097152)\n+            assertTrue(result.getJSONArray(\"qFileNames\").toString().contains(\"(deleted)\"));emit(JSONObject().put(\"verdict\",\"PASS\").put(\"unlinkedFdVisible\",true).put(\"metrics\",result))\n+        };context.deleteDatabase(path.name);root.deleteRecursively()\n+    }\n     @Test fun sortEdges(){\n         val random=java.util.Random(42);val engine=SFinalEngine(root,{},{})\n         val keys=(0..8192).map{SFinalEngine.Key(random.nextLong(),random.nextLong(),random.nextLong(),random.nextLong(),it.toLong())}\n@@ -53,6 +61,13 @@\n             val raw=android.database.sqlite.SQLiteDatabase.openDatabase(path.path,null,android.database.sqlite.SQLiteDatabase.OPEN_READWRITE)\n             try{val meta=fixture.seed(raw);File(root,\"fixture.json\").writeText(meta.toString());raw.execSQL(\"UPDATE note SET body='checkpoint-placeholder' WHERE id=?\",arrayOf(BackupTestDataFactory.NOTE_ACTIVE));raw.rawQuery(\"PRAGMA wal_checkpoint(TRUNCATE)\",null).use{it.moveToFirst()}}\n             finally{raw.close()}\n+            if(args.getString(\"fragmented\")==\"true\"){\n+                val writable=d.openHelper.writableDatabase\n+                writable.execSQL(\"PRAGMA auto_vacuum=INCREMENTAL\")\n+                writable.execSQL(\"INSERT INTO note VALUES('ffffffff-ffff-4fff-8fff-ffffffffffff',zeroblob(67108864),0,1,0,0,NULL)\")\n+                writable.execSQL(\"DELETE FROM note WHERE id='ffffffff-ffff-4fff-8fff-ffffffffffff'\")\n+                writable.query(\"PRAGMA wal_checkpoint(TRUNCATE)\").use{it.moveToFirst()}\n+            }\n             emit(JSONObject().put(\"prepared\",true).put(\"rows\",fixture.wanted).put(\"profile\",fixture.profile))\n         }finally{d.close()}\n     }\n@@ -134,13 +149,14 @@\n         }},\"s-final-writer\")\n         var zip:File?=null;var caught:Throwable?=null;val started=System.nanoTime()\n         try{\n-            val pages=rawSource().use{SFinalEngine.scalar(it,\"PRAGMA page_count\").toLong()*SFinalEngine.scalar(it,\"PRAGMA page_size\").toLong()}\n+            val pages=rawSource().use{val pageSize=SFinalEngine.scalar(it,\"PRAGMA page_size\").toLong();val total=SFinalEngine.scalar(it,\"PRAGMA page_count\").toLong();val free=SFinalEngine.scalar(it,\"PRAGMA freelist_count\").toLong();report.put(\"sourcePhysicalPageBytes\",total*pageSize).put(\"sourceFreelistBytes\",free*pageSize);(total-free)*pageSize}\n             val cap=if(fault==\"target-cap\")16384L else pages+maxOf(1048576L,pages/10)\n             val walWork=minOf(SFinalMonitor.BackupWalCap,maxOf(1048576L,pages/16))\n             report.put(\"sourcePageBytes\",pages).put(\"sourceCap\",cap).put(\"walWorkCap\",walWork).put(\"qWorkCap\",1048576).put(\"copyAdmissionEstimate\",cap+1048576+walWork+67108864).put(\"freeBefore\",android.os.StatFs(work.path).availableBytes)\n             require(android.os.StatFs(work.path).availableBytes>=cap+1048576+walWork+67108864)\n             monitor.caps(cap,if(fault==\"wal\")1024 else walWork);monitor.start();observer.start();writer.start()\n             phase=\"copy\";val copyStart=System.nanoTime()\n+            report.put(\"captureStartedAtMs\",System.currentTimeMillis())\n             SFinalEngine.protectedOpen(path).use{source->\n                 report.put(\"systemSqliteVersion\",SFinalEngine.scalar(source,\"SELECT sqlite_version()\"))\n                     .put(\"systemSqliteSourceId\",SFinalEngine.scalar(source,\"SELECT sqlite_source_id()\"))\n@@ -151,6 +167,7 @@\n                 source.rawQuery(\"VACUUM main INTO ?\",arrayOf(target.path),signal).use{assertEquals(0,it.count)}\n             }\n             File(root,\"copy-returned\").writeText(\"returned\")\n+            report.put(\"captureFinishedAtMs\",System.currentTimeMillis())\n             report.put(\"copyMs\",SFinalEngine.ms(copyStart)).put(\"snapshotBytes\",target.length());phase=\"inspect\";monitor.sample()\n             if(aborted.get())throw IOException(abortReason)\n             if(fault==\"corrupt\")RandomAccessFile(target,\"rw\").use{it.write(ByteArray(64){0x5a})}\n@@ -160,6 +177,7 @@\n                 assertEquals(\"1\",SFinalEngine.scalar(snapshot,\"PRAGMA user_version\"))\n                 assertEquals(\"c1b84c0a7822f354324484b6995cfb0d\",SFinalEngine.scalar(snapshot,\"SELECT identity_hash FROM room_master_table WHERE id=42\"))\n                 val n=LogicalSegment.entries.sumOf{s->SFinalEngine.scalar(snapshot,\"SELECT COUNT(*) FROM ${SFinalFixture.table(s)}\"+(if(s==LogicalSegment.DRAFT)\" WHERE state='EDITING'\"else\"\")).toLong()}\n+                require(n<=BackupLimits.MAX_ROWS_TOTAL)\n                 val blocks=android.os.StatFs(work.path).blockSizeLong\n                 val kBound=88*n+(2*((n+4095)/4096)+48)*blocks\n                 val zipWork=minOf(BackupLimits.MAX_ZIP_BYTES,android.os.StatFs(work.path).availableBytes-67108864-kBound-65536)\n"
+    },
+    {
+      "path": "record2\\tools\\run-s-final-prototype.py",
+      "sha256": "f0f591134600a69058609fbbc9437dbca91fb09689c5acf402b4ec0e13790d96",
+      "diffFromMatrix": "--- matrix/run-s-final-prototype.py\n+++ final/run-s-final-prototype.py\n@@ -18,6 +18,8 @@\n p.add_argument('--fault',choices=['none','cancel','kill','target-cap','wal','zip-output','corrupt','permission','free-floor'],default='none')\n p.add_argument('--saf',action='store_true')\n p.add_argument('--sort-check',action='store_true')\n+p.add_argument('--monitor-check',action='store_true')\n+p.add_argument('--fragmented',action='store_true')\n p.add_argument('--at',choices=['copy','extract-row','zip','verify-read'],default='copy')\n p.add_argument('--install',action='store_true')\n args=p.parse_args()\n@@ -45,6 +47,7 @@\n def command(method,rid):\n     cmd=[args.adb,'-s',args.serial,'shell','am','instrument','-w','-r','-e','class','com.paherdin.record2.backup.prototype.SFinalPrototype#'+method]\n     for k,v in {'token':token,'runId':rid,'rows':args.rows,'profile':args.profile,'large':str(args.large).lower(),'largeNote':str(args.large_note).lower(),'concurrent':str(args.concurrent).lower(),'fault':args.fault,'at':args.at,'saf':str(args.saf).lower()}.items(): cmd+=['-e',k,str(v)]\n+    cmd+=['-e','fragmented',str(args.fragmented).lower()]\n     return cmd+[package+'.test/androidx.test.runner.AndroidJUnitRunner']\n \n def execute(method,label,timeout=1200):\n@@ -78,7 +81,7 @@\n     (out/'killed.txt').write_text(proc.communicate(timeout=30)[0],encoding='utf-8')\n     (out/'kill-marker.json').write_text(json.dumps(marker,indent=2),encoding='utf-8')\n     passed=execute('verifyKilled','verify')\n-else: passed=execute('sortEdges' if args.sort_check else 'runExperiment','experiment')\n+else: passed=execute('monitorProbe' if args.monitor_check else 'sortEdges' if args.sort_check else 'runExperiment','experiment')\n try: metrics=json.loads(adb('shell','run-as',package,'cat',f'no_backup/s-final-reports/{run}.json'))\n except RuntimeError: metrics={}\n passed=passed and metrics.get('verdict')=='PASS' and metrics.get('pid')!=prepare['pid']\n"
+    },
+    {
+      "path": "record2\\tools\\run-s-final-matrix.py",
+      "sha256": "fd6e0d757c5dceff4386ff062bad90e94be376e6e3fe4ce6df972ddc4a96ceed",
+      "diffFromMatrix": ""
+    }
+  ]
+}

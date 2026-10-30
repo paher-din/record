@@ -6,14 +6,18 @@
 
 **Rev2.1（2026-10-25，PR #28 第二轮审阅修订）：** 明确空数据段必须 STORED/0/0（禁止 DEFLATE 空块），并拒绝目标 `authEpoch` 会使恢复后到达 MAX 的恢复；其余架构/编号不变。
 
+**Rev3 提案（2026-10-26，尚未接受）：** G1导出访问架构复审提出“系统引擎一致私有物理scratch→bundled只读逻辑提取”。本ADR原决定仍为Accepted；本次修订单独为Proposed，具体替换文本与边界见文末，不据此授权生产改造。
+
 ## 背景
+
+**Rev4：S选型Accepted（2026-10-30）。** 负责人批准来源归[Plan §35.7](../../specs/record2/v1/plan.md#357-s架构批准与受控g1实施2026-10-30)。决定2的导出机制以系统OS只读来源VACUUM INTO→私有静态系统SQLite只读提取→标准流式ZIP替换；保留原逻辑格式/恢复/资格/receipt。允许一致物理scratch，不允许活跃文件copy或物理恢复；manifest采集开始Clock与采集时间窗语义生效。§6原固定128MiB导出准入改为分阶段实际工作预算，全部格式容量/WAL硬限额不变。同卷安全余量一次；移除全量JSONL，验证后释放S/K再SAF。旧Rev3/C2固定GiB预算正式否决，U暂缓。此为架构选型Accepted，ENOSPC/超调/竞态/生产一致性/性能/平台及G2门禁仍OPEN，不代表生产验收。具体条款归G0 §14。
 
 Spec §6 与 B0 §9 要求手动完整逻辑 ZIP、隔离预检、整体替换确认、原子切换/回退和跨代际旧 Pending 隔离；B0 建议由 G0 评估“单一数据库内原子整体导入”，并禁止同时建设事务导入与物理切换两套框架。G0 需在 C1/E1 的真实 Room 状态机、Schema v1 的 14 表和 B0 的资格语义之上选择唯一协议，不能从旧 P5/Vault 或旧 format1/2 推导兼容。
 
 ## 决定
 
 1. **格式。** 使用 `record2.logical`、`formatVersion=1`、`databaseSchemaVersion=1` 的手动逻辑 ZIP；包含 `manifest.json` 与 12 个 JSONL 数据段，覆盖业务事实、草稿（仅 EDITING）、Proposal/Operation 历史、Session/Message/Run/引用；排除 `ai_control`、凭据/Keystore 材料、授权资格、缓存、隐藏推理/Trace/日志和 SQLite 内部文件。空数据段（0 行）必须 `STORED`、压缩/解压 0/0、CRC 0，禁止 DEFLATE 空块；非空段才使用 STORED/DEFLATE。详见 G0 §3–§4。
-2. **导出。** 用独立的只读 SQLite 连接（`OPEN_READONLY`/`query_only`）执行 `BEGIN DEFERRED`，在一个读事务中取得全部表的时点快照；要求 WAL，禁止使用 Room `withTransaction`/写连接或 DB/WAL 复制。导出与恢复共用数据操作门禁（互斥）但不获取写门禁，正常业务写可在快照期间继续；监控 WAL 增长与卷余量，越界中止且不报成功。ZIP 先在私有 staging 构建并验证，再写入 SAF，关闭后回读校验；任一步失败都不报成功。详见 G0 §7。
+2. **导出（Rev4 S）。** 系统SQLite独立OS只读来源VACUUM INTO一致采集，禁止自动删库；关闭来源后系统只读scalar提取同一私有静态目标的12段和data_state，标准流式ZIP，无完整JSONL。正常写不停、恢复互斥，不复制活跃DB/WAL/SHM、不用Room写事务。采用采集时间窗和分阶段动态预算，F同卷一次，全部格式容量硬限额保留；原严格校验后回收S/K再SAF写入/关闭/回读。失败不成功、强停scratch不续用。详见G0 §7.1/§14；架构选型Accepted不等于生产验收，合并门禁归Plan §35.7。
 3. **恢复。** 门禁/prepare **事务前零写入**：不持久化 Run 取消、owner、AI、草稿、receipt 或 checkpoint；当前 Run 只在内存失效，迟到写在 SQL 前拒绝，预检失败时 O 的 14 表逐字段不变。只有全部事务前校验通过后才使用**一个 Room 事务**整体删除并导入全部逻辑内容；不使用数据库文件复制、WAL/SHM 替换、目录切换或外部完成标记。失败回滚 O，成功提交 S，不混库。详见 G0 §8.3–§8.4。
 4. **资格转换。** 恢复生成新 `dataGeneration`/`processOwnerId`：RUNNING→INTERRUPTED（清 slot），EDITABLE/LOCKED Proposal→NEEDS_REVIEW（清 slot）；Pending Operation 保留原 `createdGeneration`/冻结输入但不可执行；终态 Operation/Proposal 与完整可见历史保留。恢复重置 `ai_control` 为 OFF/无 grant；旧行 `authEpoch` 必须为 `0..MAX-2` 才递增到 `≤MAX-1`，旧值为 `MAX-1`/`MAX`/负值必须在事务前拒绝，禁止恢复写入 E0 `nextEpoch()` 无法继续使用的 MAX；不创建/删除/沿用 Keystore 凭据或授权。详见 G0 §4.3。
 5. **完成与启动。** 恢复成功时在同一事务写 `record_data_state.restoreReceipt`；启动只读校验**存在的** receipt 与当前代际，再进入 E1 所有权门禁。receipt 损坏/代际不符进入 RecoveryRequired，不自动修复/重放。Schema v1 没有独立期望标记：receipt 为 NULL 与从未恢复不可区分，不能承诺检测“提交后缺失”，也不新增持久化标记；NULL 按正常启动处理。详见 G0 §8.5。
@@ -47,3 +51,13 @@ Spec §6 与 B0 §9 要求手动完整逻辑 ZIP、隔离预检、整体替换�
 - [Spec §6](../../specs/record2/v1/spec.md)
 - [ADR 0018](0018-record2-data-concurrency-and-history.md)
 - [F0-C3 D-SAFE](../../design/record2-f0-c3-review.md#8-d-safe授权历史备份与恢复)
+
+## Rev3 Proposed：导出机制替换候选
+
+基于 [G0 导出架构复审](../record2-g0-export-architecture-review.md) 的固定源码核对与隔离API34原型，建议替换决定2的具体实现：由系统SQLite在独立OS只读来源上执行官方VACUUM INTO，创建私有noBackup一致全库scratch；复制期间正常Room写入可提交；完成并关闭来源后，bundled仅以只读连接逐行提取不同文件上的12段及data_state，继续生成原逻辑ZIP。
+
+这需要明确允许**引擎生成的一致物理暂存**，不是直接复制活跃文件，也不是物理恢复/文件切换。禁止默认损坏处理器删源库、禁止同文件双引擎并发、禁止强停后复用scratch；取消须等待原生调用退出后再清理/释放。加入全部物理内容的隐私/磁盘预算、来源增长与WAL监控、目标工作配额、固定40B键记录外部归并方案及采集时间窗。exportedAt改为采集开始Clock：窗前提交必含、窗后必不含、窗内可含完整前/后态；元数据只读目标。来源页体积只是启动估计，不能声称WAL增长自动证明目标上界。详细替换条款归 [G0 §13](../record2-g0-backup-restore-design.md#13-rev3-导出访问架构修订提案2026-10-26proposed)。
+
+原决定1、3～6（格式、单事务逻辑恢复、资格转换、receipt、时间/格式限额）不变。B-unified保留后备，A当前配置、同文件B-mixed、原递归SQL等否决理由由复审报告拥有。
+
+本修订状态为Proposed。负责人批准后才成为ADR的新决定并另行授权G1实现；不把原型内容PASS提升为生产P1关闭或预算/真机/G2验收。

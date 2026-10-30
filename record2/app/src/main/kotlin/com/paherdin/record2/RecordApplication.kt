@@ -16,6 +16,9 @@ class RecordApplication : Application() {
         val root = BackupStaging.appDirectory(this)
         Thread({
             runCatching { BackupStaging.sweep(root) }
+                .onSuccess { report ->
+                    if (report.failed.isNotEmpty()) Log.w("RecordStaging", "orphan staging cleanup failures: ${report.failed}")
+                }
                 .onFailure { Log.w("RecordStaging", "orphan staging sweep failed", it) }
         }, "record2-staging-sweep").apply { isDaemon = true }.start()
     }

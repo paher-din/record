@@ -56,4 +56,6 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.junit)
+    // G0 architecture experiment only; no change to the production runtime driver.
+    androidTestImplementation("androidx.sqlite:sqlite-bundled:2.6.2")
 }

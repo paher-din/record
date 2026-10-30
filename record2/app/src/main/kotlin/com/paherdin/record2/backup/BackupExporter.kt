@@ -5,6 +5,7 @@ import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 
 internal data class AppInfo(val versionCode: Long, val versionName: String)
 
@@ -41,67 +42,51 @@ internal class BackupExporter(
     private val checkpoint: (ExportCheckpoint) -> Unit = {},
 ) {
     suspend fun export(target: BackupTarget, displayName: String? = null): ExportReceipt = withContext(Dispatchers.IO) {
-        stagingDirectory.mkdirs()
         val lease = gate.beginExport()
-        val work = File(stagingDirectory, "export-${UUID.randomUUID()}")
+        val work = try { BackupStaging.createTask(stagingDirectory, "export") }
+            catch (error: Throwable) { lease.close(); throw error }
         try {
-            if (availableBytes(stagingDirectory) < BackupLimits.EXPORT_STAGING_RESERVE_BYTES) {
-                fail(BackupError.StorageFull, "staging volume has less than 128 MiB available")
+            val context = kotlinx.coroutines.currentCoroutineContext()
+            val monitor = monitorFactory(databasePath, stagingDirectory)
+            val monitorLock = Any()
+            var nextSample = 0L
+            fun check() {
+                context.ensureActive()
+                synchronized(monitorLock) {
+                    val now = System.nanoTime()
+                    if (now >= nextSample) {
+                        monitor.check()
+                        nextSample = now + 10_000_000L
+                    }
+                }
             }
-            if (availableBytes(databasePath.parentFile ?: databasePath) < BackupLimits.EXPORT_FREE_RESERVE_BYTES) {
-                fail(BackupError.StorageFull, "database volume has less than 64 MiB available")
-            }
-            if (!work.mkdirs()) fail(BackupError.RecoverableIO, "could not create export staging directory")
             val exportedAt = clock.millis()
-            val snapshot = ReadOnlyBackupSnapshot.stream(
-                databasePath,
-                exportedAt,
-                monitorFactory(databasePath, stagingDirectory),
-                snapshotHook,
-                work,
-            )
+            val snapshot = SystemExportSnapshot.capture(databasePath, work, ::check) { availableBytes(stagingDirectory) }
+            snapshotHook()
+            check()
             checkpoint(ExportCheckpoint.SNAPSHOT_READ)
-            val sources = snapshot.sources
-            val totalRows = snapshot.totalRows
-            val totalBytes = snapshot.totalUncompressedBytes
-            checkpoint(ExportCheckpoint.SEGMENTS_WRITTEN)
-            val segments = sources.mapIndexed { index, source ->
-                ManifestSegment(
-                    name = LogicalSegment.entries[index].path,
-                    rows = source.rows,
-                    uncompressedBytes = source.uncompressedBytes,
-                    sha256 = source.sha256,
-                )
+            val (zip, verified) = SystemExportSnapshot.openReadOnly(snapshot).use { db ->
+                StaticLogicalZip.write(db, work, exportedAt, appInfo, ::check,
+                    available = { availableBytes(stagingDirectory) }, written = {
+                        checkpoint(ExportCheckpoint.SEGMENTS_WRITTEN)
+                        checkpoint(ExportCheckpoint.ZIP_WRITTEN)
+                    })
             }
-            val provisional = BackupManifest(
-                format = BackupLimits.FORMAT,
-                formatVersion = BackupLimits.FORMAT_VERSION,
-                databaseSchemaVersion = BackupLimits.DATABASE_SCHEMA_VERSION,
-                exportedAt = exportedAt,
-                sourceGeneration = snapshot.dataGeneration,
-                businessRevision = snapshot.businessRevision,
-                appVersionCode = appInfo.versionCode,
-                appVersionName = appInfo.versionName,
-                entryCount = BackupLimits.ENTRY_COUNT,
-                totalRows = totalRows,
-                totalUncompressedBytes = totalBytes,
-                segments = segments,
-                contentDigest = "0".repeat(64),
-            )
-            val manifest = provisional.copy(contentDigest = ManifestCodec.contentDigest(provisional))
-            val zip = File(work, "backup.zip")
-            LogicalZipWriter.write(zip, manifest, sources)
-            checkpoint(ExportCheckpoint.ZIP_WRITTEN)
-            val verified = LogicalZipReader.verify(zip)
-            if (verified.manifest != manifest) {
-                fail(BackupError.Internal, "staging ZIP does not round-trip its manifest")
-            }
+            val manifest = verified.manifest
+            val totalRows = manifest.totalRows
+            val totalBytes = manifest.totalUncompressedBytes
             if (zip.length() > BackupLimits.MAX_ZIP_BYTES) {
                 fail(BackupError.StorageFull, "export ZIP exceeds 64 MiB")
             }
-            val zipSha = sha256FileOrFail(zip)
+            val zipSha = verified.zipSha256
             checkpoint(ExportCheckpoint.ZIP_VERIFIED)
+            check()
+            // Release all physical/key scratch before a same-volume SAF copy can coexist.
+            work.listFiles()?.filter { it != zip }?.forEach {
+                if (!it.deleteRecursively()) fail(BackupError.RecoverableIO, "could not release snapshot workspace")
+            }
             target.writeFrom(zip)
+            check()
             checkpoint(ExportCheckpoint.SAF_WRITTEN)
             val readBackBytes = target.readBackBytes()
             if (readBackBytes != zip.length()) {
@@ -121,9 +106,22 @@ internal class BackupExporter(
                 totalUncompressedBytes = totalBytes,
                 segmentCount = LogicalSegment.entries.size,
             )
+        } catch (error: android.database.sqlite.SQLiteFullException) {
+            throw BackupException(BackupError.StorageFull, "snapshot volume is full", error)
+        } catch (error: java.io.IOException) {
+            val full = generateSequence<Throwable>(error) { it.cause }.any {
+                it is android.system.ErrnoException && it.errno == android.system.OsConstants.ENOSPC
+            }
+            throw BackupException(if (full) BackupError.StorageFull else BackupError.RecoverableIO, "export I/O failed", error)
         } finally {
-            lease.close()
-            work.deleteRecursively()
+            try {
+                val cleanup = runCatching { work.deleteRecursively() }
+                if (!cleanup.getOrDefault(false)) android.util.Log.w(
+                    "RecordStaging", "export workspace cleanup failed", cleanup.exceptionOrNull(),
+                )
+            } finally {
+                try { BackupStaging.releaseTask(work) } finally { lease.close() }
+            }
         }
     }
 }
